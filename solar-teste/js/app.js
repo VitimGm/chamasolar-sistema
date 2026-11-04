@@ -1,6 +1,6 @@
 /* =====================================================================
    Chama Solar — CENTRAL DE VENDAS (teste, banco simulado)
-   Rotas: #painel · #novo · #lead/ORC-0001 · #agentes · #parametros
+   Rotas: #painel · #novo · #lead-ORC-0001 · #agentes · #parametros
    ===================================================================== */
 (function () {
   'use strict';
@@ -60,14 +60,14 @@
       </div>
       <div class="secao-t"><h2>Fazer agora</h2><span class="sutil">ordenado pelo que mais aproxima do fechamento</span></div>
       <div class="agora">${fazer.map((x) => `
-        <a class="acao p${x.acao.prioridade} entra" href="#lead/${x.o.id}"><div class="ic">${x.acao.icone}</div>
+        <a class="acao p${x.acao.prioridade} entra" href="#lead-${x.o.id}"><div class="ic">${x.acao.icone}</div>
           <div><b>${esc(x.o.nome)} <span class="temp ${x.t.nivel}">${x.t.rotulo}</span></b><p>${esc(x.acao.texto)}</p></div>
           <span class="sutil">›</span></a>`).join('')}</div>
       <div class="secao-t"><h2>Funil</h2><span class="sutil">arraste para o lado no celular</span></div>
       <div class="funil">${STATUS.map(([s, rot]) => {
         const col = info.filter((x) => x.o.status === s).sort((a, b) => b.t.pontos - a.t.pontos);
         return `<div class="coluna-f"><h3>${rot}<em>${col.length}</em></h3>${col.map((x) => `
-          <a class="cartao-l" href="#lead/${x.o.id}"><b>${esc(x.o.nome)}</b>
+          <a class="cartao-l" href="#lead-${x.o.id}"><b>${esc(x.o.nome)}</b>
             <div class="entre"><span class="valor">${brl(x.a.op.preco.precoFinal)}</span><span class="temp ${x.t.nivel}">${x.t.nivel === 'quente' ? '🔥 ' : ''}${x.t.rotulo}</span></div>
             <div class="rodape"><span>${esc(x.o.cidade)} · ${n(x.a.op.dim.kwpReal, 1)} kWp</span><span>${x.ev.length ? tempoRel(x.ev[x.ev.length - 1].em) : tempoRel(x.o.criadoEm)}</span></div></a>`).join('') || '<p class="mini" style="padding:6px">vazio</p>'}</div>`;
       }).join('')}</div>`;
@@ -94,7 +94,7 @@
         </div>
         <div class="proxima" style="margin-top:14px"><div class="ic">${acao.icone}</div><div><span class="rotulo" style="color:var(--sol)">Próxima melhor ação</span><div style="font-weight:600;margin-top:4px">${esc(acao.texto)}</div></div></div>
         <div class="acoes-r" style="margin-top:14px">
-          <a class="btn sol pequeno" href="${linkProposta(o, true)}" target="_blank" rel="noopener">Abrir Proposta Viva</a>
+          <a class="btn sol pequeno" href="${linkProposta(o, true)}" id="abrirPV">Abrir Proposta Viva</a>
           <a class="btn zap pequeno" href="https://wa.me/55${String(o.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(msgZap)}" target="_blank" rel="noopener" id="enviarZap">Enviar no WhatsApp</a>
           <button class="btn vidro pequeno" id="copiarLink">Copiar link</button>
           <button class="btn vidro pequeno" id="editar">Editar orçamento</button>
@@ -148,6 +148,7 @@
     app.querySelectorAll('[data-ag]').forEach((b) => b.onclick = () => { agenteAtual = b.dataset.ag; app.querySelectorAll('[data-ag]').forEach((x) => x.classList.toggle('sel', x === b)); rodarAgente(); });
     rodarAgente();
     $('#copiarLink').onclick = () => copiar(link);
+    $('#abrirPV').onclick = () => { try { sessionStorage.setItem('sol2_abrir', JSON.stringify({ t: o.token, v: 1 })); } catch { /* sem armazenamento */ } };
     $('#enviarZap').onclick = () => { if (o.status === 'novo') { o.status = 'proposta'; o.enviadoEm = new Date().toISOString(); B.salvar(o); } B.interacao(o.id, 'whatsapp', 'Proposta enviada'); };
     $('#editar').onclick = () => { B.rascunho.gravar(o); B.rascunho.gravarEtapa(0); location.hash = '#novo'; };
     $('#status').onchange = (e) => { o.status = e.target.value; if (o.status !== 'novo' && !o.enviadoEm) o.enviadoEm = new Date().toISOString(); B.salvar(o); ficha(id); };
@@ -215,7 +216,7 @@
     const salvo = B.salvar(orc);
     orc = novoOrc(); etapa = 0; salvarR();
     toast(novoLead ? 'Proposta Viva criada' : 'Orçamento atualizado');
-    location.hash = '#lead/' + salvo.id;
+    location.hash = '#lead-' + salvo.id;
   };
 
   function passo1(el) {
@@ -365,7 +366,8 @@
 
   /* ======================= ROTAS ======================= */
   function render() {
-    const [rota, arg] = (location.hash.slice(1) || 'painel').split('/');
+    const h = location.hash.slice(1) || 'painel';
+    const [rota, arg] = h.startsWith('lead-') ? ['lead', h.slice(5)] : [h, null];
     document.querySelectorAll('[data-rota]').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === (rota === 'lead' ? 'painel' : rota)));
     if (rota !== 'novo') { document.body.classList.remove('com-barra'); $('#barra').hidden = true; }
     const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'parametros') parametrosPag(); else painel(); };

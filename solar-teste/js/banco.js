@@ -86,7 +86,7 @@
       });
       gravar('semeado', true);
     },
-    zerarTudo() { ['orcamentos', 'eventos', 'interacoes', 'semeado', 'rascunho', 'etapa'].forEach((k) => localStorage.removeItem(PREFIXO + k)); },
+    zerarTudo() { ['orcamentos', 'eventos', 'interacoes', 'semeado', 'rascunho', 'etapa'].forEach((k) => { try { localStorage.removeItem(PREFIXO + k); } catch { /* sem armazenamento */ } }); },
     rascunho: { ler: () => ler('rascunho', null), gravar: (v) => gravar('rascunho', v), etapa: () => ler('etapa', 0), gravarEtapa: (e) => gravar('etapa', e) },
   };
 

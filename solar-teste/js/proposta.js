@@ -16,8 +16,10 @@
 
   B.semear();
   const qs = new URLSearchParams(location.search);
-  const vendedor = qs.get('v') === '1';
-  const o = B.porToken(qs.get('t')) || B.orcamentos().find((x) => x.status !== 'novo');
+  // reserva: se o endereço perder o ?t=, usa a última proposta aberta pela central
+  let reserva = {}; try { reserva = JSON.parse(sessionStorage.getItem('sol2_abrir') || '{}'); } catch { /* sem armazenamento */ }
+  const vendedor = qs.has('t') ? qs.get('v') === '1' : !!reserva.v;
+  const o = B.porToken(qs.get('t') || reserva.t) || B.orcamentos().find((x) => x.status !== 'novo');
   const raiz = $('#proposta');
   if (!o) { raiz.innerHTML = '<div class="pv secao"><h2>Proposta não encontrada</h2><p class="lead">Peça um novo link ao seu consultor.</p></div>'; return; }
 
@@ -34,7 +36,7 @@
   const ICONES = { negocio: '🏪', crescendo: '📈', verao: '🌡️', reajuste: '⚡', conta: '💸' };
 
   raiz.innerHTML = `
-    ${vendedor ? '<div class="faixa-teste">MODO VENDEDOR · suas visitas não contam como do cliente</div>' : ''}
+    ${vendedor ? `<div class="faixa-teste">MODO VENDEDOR · suas visitas não contam · <a href="index.html#lead-${esc(o.id)}" style="color:inherit">‹ voltar para a central</a></div>` : ''}
     <div class="faixa-teste" style="background:#2a3656;color:#cfd8ee">VERSÃO DE TESTE · números simulados</div>
     <div class="pv">
       <header class="topo-pv">
@@ -236,7 +238,7 @@
       <div class="campo"><span>Melhor horário para a visita</span><div class="chips" id="hr">${['Manhã', 'Tarde', 'Sábado'].map((t) => `<button type="button" class="chip ${est.hr === t ? 'sel' : ''}" data-hr="${t}">${t}</button>`).join('')}</div></div>
       <button class="btn sol bloco" id="aceitar" style="margin-top:18px">Quero minha usina ☀️</button>
       <a class="btn zap bloco" href="${zap}" target="_blank" rel="noopener" id="zap" style="margin-top:10px">Tirar uma dúvida com o Victor</a>
-      <button class="btn vidro bloco" id="compartilhar" style="margin-top:10px">Mostrar para quem decide comigo</button>
+      <a class="btn vidro bloco" id="compartilhar" target="_blank" rel="noopener" style="margin-top:10px" href="https://wa.me/?text=${encodeURIComponent(`Olha a proposta de energia solar que recebi: a conta cai de ${brl(a.op.eco.contaAtual)} para ${brl(a.op.eco.contaDepois)}. ${link}`)}">Mostrar para quem decide comigo</a>
       <p class="mini" style="margin-top:12px;text-align:center">Preço do kit garantido até ${validade.toLocaleDateString('pt-BR')} (cotação do distribuidor).</p>
       ${passos()}`;
   }
@@ -255,12 +257,8 @@
     else if (t.dataset.pg) { est.pg = t.dataset.pg; decidir($('#zap').href); }
     else if (t.dataset.hr) { est.hr = t.dataset.hr; decidir($('#zap').href); }
     else if (t.id === 'zap' || t.id === 'zap-fixo') registrar('whatsapp', {});
-    else if (t.id === 'compartilhar') {
-      registrar('compartilhou', {});
-      const texto = `Olha a proposta de energia solar que recebi: a conta cai de ${brl(a.op.eco.contaAtual)} para ${brl(a.op.eco.contaDepois)}. ${link}`;
-      if (navigator.share) navigator.share({ title: 'Proposta Chama Solar', text: texto }).catch(() => {});
-      else window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank', 'noopener');
-    } else if (t.id === 'aceitar') {
+    else if (t.id === 'compartilhar') registrar('compartilhou', {});
+    else if (t.id === 'aceitar') {
       const dados = { opcao: est.opcao, nivel: a.op.nivel, preco: a.op.preco.precoFinal, pagamento: est.pg || 'financiamento', horario: est.hr || 'a combinar' };
       if (!vendedor) { B.evento(o.token, 'aceite', dados); Object.assign(o, B.porToken(o.token)); }
       else { o.status = 'ganho'; o.aceite = dados; }
