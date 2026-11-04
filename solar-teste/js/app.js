@@ -188,7 +188,7 @@
   const salvarR = () => { B.rascunho.gravar(orc); B.rascunho.gravarEtapa(etapa); };
   const ETAPAS = [
     ['Cliente e conta', passo1, () => (orc.nome.trim() && C.consumoMedio(orc) > 0 && orc.cidade) ? '' : 'Preencha nome, CEP e o consumo.'],
-    ['Local e telhado', passo2, () => ''], ['Dimensionamento', passo3, () => ''], ['Kits e preços', passo4, () => ''],
+    ['Local e telhado', passo2, () => ''], ['Dimensionamento', passo3, () => ''], ['Kit Belenergy', passo4, () => (orc.kitsFechados && orc.kitsFechados[1]) ? '' : 'Monte o kit da opção Recomendada para continuar.'],
     ['Preço e pagamento', passo5, () => ''], ['Proposta Viva', passo6, () => ''],
   ];
   function novo() {
@@ -204,7 +204,7 @@
     $('#btnVoltar').style.visibility = etapa ? 'visible' : 'hidden';
     $('#btnAvancar').textContent = etapa === 5 ? (orc.id ? 'Salvar e abrir ficha' : 'Gerar Proposta Viva') : 'Continuar';
     const r = $('#barraResumo');
-    if (C.consumoMedio(orc) > 0 && orc.cidade && etapa >= 2) { const op = C.opcoes(orc, P())[orc.opcaoEscolhida]; r.innerHTML = `<b>${brl(op.preco.precoFinal)}</b>${op.nivel} · ${n(op.dim.kwpReal, 2)} kWp`; }
+    if (C.consumoMedio(orc) > 0 && orc.cidade && etapa >= 2) { const ops0 = C.opcoes(orc, P()); const op = ops0[C.indiceOpcao(orc, ops0)]; r.innerHTML = `<b>${brl(op.preco.precoFinal)}</b>${op.nivel} · ${n(op.dim.kwpReal, 2)} kWp`; }
     else r.innerHTML = C.consumoMedio(orc) ? `<b>${n(C.consumoMedio(orc))} kWh/mês</b>${esc(orc.nome)}` : '';
   }
   $('#btnVoltar').onclick = () => { if (etapa) { etapa--; salvarR(); novo(); scrollTo(0, 0); } };
@@ -317,7 +317,7 @@
   }
 
   function passo3(el) {
-    const p = P(), op = C.opcoes(orc, p)[orc.opcaoEscolhida], d = op.dim;
+    const p = P(), op = C.opcoes({ ...orc, kitsFechados: null }, p)[1], d = op.dim;
     el.innerHTML = `<div class="kpis">
         <div class="kpi destaque"><span class="rotulo">Potência</span><b>${n(d.kwpReal, 2)} kWp</b></div>
         <div class="kpi"><span class="rotulo">Módulos</span><b>${d.placas} × ${op.modulo.potenciaW} W</b></div>
@@ -333,20 +333,141 @@
         ${op.strings.avisos.map((x) => `<div class="aviso ruim">${esc(x)}</div>`).join('') || '<div class="aviso ok">✓ Strings dentro dos limites do inversor.</div>'}</div>`;
   }
 
+  /* ---------- Passo 4: KIT FECHADO na Belenergy (mesmo caminho do portal) ---------- */
+  const NIVEIS_KIT = ['Econômica', 'Recomendada', 'Premium'];
+  let cot = null, cotSlot = 1, cotModo = null;
   function passo4(el) {
-    const ops = C.opcoes(orc, P());
-    el.innerHTML = `<p class="sutil">Mesmo dimensionamento, três níveis. O cliente verá as três na Proposta Viva, com a Recomendada em destaque.</p>
-      <div class="ops-v">${ops.map((o, i) => `<button class="op-v ${orc.opcaoEscolhida === i ? 'sel' : ''}" data-op="${i}">
-        <span class="rotulo" style="color:var(--sol)">${o.destaque ? 'Recomendada' : '&nbsp;'}</span><h3 style="margin:4px 0">${esc(o.nivel)}</h3>
-        <div class="preco">${brl(o.preco.precoFinal)}</div><span class="semaforo ${o.preco.semaforo}">R$ ${n(o.preco.rsPorWp, 2)}/Wp · ${NOME_SEMAFORO[o.preco.semaforo]}</span>
-        <ul><li><span>Potência</span><span>${n(o.dim.kwpReal, 2)} kWp</span></li><li><span>Inversor</span><span>${esc(o.inversor.nome)}</span></li>${o.bateria ? `<li><span>Bateria</span><span>${esc(o.bateria.nome)}</span></li>` : ''}
-        <li><span>Retorno</span><span>${n(o.eco.paybackAnos, 1)} anos</span></li><li><span>Kit (custo)</span><span>${brl(o.kit)}</span></li></ul>
-        ${!o.dcAcOk ? `<div class="aviso">DC/AC ${n(o.relacaoDcAc, 2)} fora da faixa ideal.</div>` : ''}</button>`).join('')}</div>`;
-    el.querySelectorAll('[data-op]').forEach((b) => b.onclick = () => { orc.opcaoEscolhida = +b.dataset.op; salvarR(); novo(); });
+    const p = P();
+    orc.kitsFechados = orc.kitsFechados || [null, null, null];
+    if (cot) return assistente(el);
+    const est = C.opcoes({ ...orc, kitsFechados: null }, p)[1];
+    const kwpSug = Math.max(est.dim.kwpNecessario, 0.5);
+    el.innerHTML = `
+      <div class="painel brilha"><span class="rotulo" style="color:var(--sol)">Kit fechado Belenergy</span>
+        <p style="margin:8px 0 4px">Monte cada opção no <b>Personalize seu Gerador</b>. O valor final do kit é o que entra no preço.</p>
+        <p class="mini" id="cot-status">Verificando o robô no seu computador…</p></div>
+      <div class="ops-v" style="margin-top:14px">${NIVEIS_KIT.map((nv, i) => { const k = orc.kitsFechados[i]; return `
+        <div class="op-v ${k ? 'sel' : ''}" style="cursor:default">
+          <span class="rotulo" style="color:var(--sol)">${i === 1 ? 'Principal' : 'Opcional'}</span><h3 style="margin:4px 0">${nv}</h3>
+          ${k ? `<div class="preco">${brl(k.valorKit, 2)}</div><span class="mini">valor do kit · ${esc(k.numeroBelenergy)}${k.origem === 'simulado' ? ' · SIMULADO' : ''}</span>
+            <ul><li><span>Módulos</span><span>${k.modulo.qtd} × ${esc(k.modulo.nome)}</span></li><li><span>Inversor</span><span>${esc(k.inversor.nome)}</span></li>
+            <li><span>Estrutura</span><span>${esc(k.estrutura.tipo.toLowerCase())}</span></li><li><span>Frete · pgto</span><span>${esc(k.frete.split(' ')[0])} · ${esc(k.pagamento)}</span></li>
+            ${k.valorAvulso ? `<li><span>Avulso sairia</span><span>${brl(k.valorAvulso)}</span></li>` : ''}</ul>
+            <div class="acoes-r" style="margin-top:10px"><button class="btn vidro pequeno" data-montar="${i}">Refazer</button><button class="btn vidro pequeno" data-tirar="${i}">Remover</button></div>`
+          : `<p class="sutil" style="margin:8px 0 12px">${i === 1 ? 'Obrigatório: é a opção que o cliente vê em destaque.' : 'Monte se quiser oferecer outra opção.'}</p>
+            <button class="btn ${i === 1 ? 'sol' : 'vidro'} pequeno" data-montar="${i}">Montar kit · ${n(kwpSug, 2)} kWp</button>`}
+        </div>`; }).join('')}</div>
+      <p class="mini" style="margin-top:12px">Potência sugerida pelo pré-dimensionamento: <b>${n(kwpSug, 2)} kWp</b> (consumo que dá para zerar + ${n((p.margemGeracao || 0) * 100)}% de margem).</p>`;
+    Cotador.conectado().then((ok) => { cotModo = ok ? 'conectado' : 'simulado'; const st = $('#cot-status'); if (st) st.innerHTML = ok ? '🟢 Robô conectado: a cotação é feita no site da Belenergy, com a sua sessão.' : '🟡 Robô não encontrado neste computador. Modo <b>simulado</b> (mesmas telas, valores de teste).'; });
+    el.querySelectorAll('[data-montar]').forEach((b) => b.onclick = async () => {
+      cotSlot = +b.dataset.montar; cot = Cotador.novaSessao(cotModo || 'simulado'); cot.escolhas.kwp = +kwpSug.toFixed(2);
+      cot.escolhas.ligacao = { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[orc.ligacao];
+      cot.escolhas.estruturaTipo = { ceramico: 'TELHADO CERÂMICO / COLONIAL', fibrocimento: 'TELHADO FIBROCIMENTO', metalico: 'TELHADO METÁLICO', laje: 'LAJE', solo: 'SOLO' }[orc.telhado];
+      cot.escolhas.nome = `${orc.id || 'NOVO'} ${orc.nome} ${NIVEIS_KIT[cotSlot]}`.trim();
+      novo();
+    });
+    el.querySelectorAll('[data-tirar]').forEach((b) => b.onclick = () => { orc.kitsFechados[+b.dataset.tirar] = null; salvarR(); novo(); });
+  }
+
+  async function passoCot(entrada) {
+    const alvo = $('#cot-corpo'); if (alvo) alvo.style.opacity = .5;
+    try { await Cotador.avancar(cot, entrada); } catch (e) { toast(e.message); }
+    novo();
+  }
+
+  function assistente(el) {
+    const e = cot.escolhas, o = cot.opcoes, et = cot.etapa;
+    const trilha = Cotador.ETAPAS.map((t, i) => `<span class="chip ${i === et ? 'sel' : ''}" style="cursor:default;${i < et ? 'opacity:.6' : ''}">${i < et ? '✓' : i + 1} ${t}</span>`).join('');
+    let corpo = '';
+    if (et === 0) corpo = `<label class="campo"><span>Potência em kWp (do pré-dimensionamento)</span><input type="number" step="0.01" id="c-kwp" value="${e.kwp}"></label>
+      <button class="btn sol" id="c-ok" style="margin-top:12px">Avançar ›</button>`;
+    else if (et === 1) corpo = `<p class="sutil">Escolha o módulo. Do mais barato ao mais caro (valor dos módulos do kit).</p>
+      <div class="tabela-cat"><table><tr><th></th><th>Módulo</th><th class="v">Qtd</th><th class="v">kWp</th><th class="v">Módulos no kit</th></tr>
+      ${o.modulos.map((m, i) => `<tr><td><input type="radio" name="c-mod" value="${esc(m.sku)}" ${i === 0 ? 'checked' : ''} class="marcar"></td><td><b>${esc(m.nome)}</b><div class="desc mono">${esc(m.sku)}</div></td>
+        <td class="v"><input type="number" min="1" data-qtd="${esc(m.sku)}" value="${m.qtdSugerida}" style="width:70px;padding:6px"></td><td class="v">${n(m.kwp, 2)}</td><td class="v">${brl(m.total)}</td></tr>`).join('')}</table></div>
+      <button class="btn sol" id="c-ok" style="margin-top:12px">Próximo ›</button>`;
+    else if (et === 2) {
+      const sel = (id, lista, atual) => `<select id="${id}">${lista.map((x) => `<option ${x === atual ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>`;
+      const tipo = e.tipoInversor || o.tipos[0], lig = e.ligacao || o.ligacoes[0];
+      corpo = `<div class="grade g2">
+        <label class="campo"><span>1º Tipo do inversor</span>${sel('c-tipo', o.tipos, tipo)}</label>
+        <label class="campo"><span>2º Tipo de ligação</span>${sel('c-lig', o.ligacoes, lig)}</label>
+        <label class="campo"><span>3º Tensão de saída (V)</span>${sel('c-ten', (o.tensoes[lig] || ['220']), e.tensao)}</label>
+        <label class="campo"><span>4º Fabricante</span><select id="c-fab"><option value="">Todos (melhor custo-benefício)</option>${(o.fabricantes[tipo] || []).map((f) => `<option ${f === e.fabricante ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></label></div>
+        <button class="btn vidro" id="c-filtrar" style="margin-top:12px">Filtrar inversores</button>
+        ${o.inversores ? (o.inversores.length ? `<div class="tabela-cat" style="margin-top:12px"><table><tr><th></th><th>Inversor</th><th class="v">Qtd</th><th class="v">DC/AC</th><th class="v">Valor</th></tr>
+          ${o.inversores.map((v, i) => `<tr><td><input type="radio" name="c-inv" value="${esc(v.sku)}" ${i === 0 ? 'checked' : ''} class="marcar"></td><td><b>${esc(v.nome)}</b></td><td class="v">${v.qtd}</td><td class="v">${n(v.relacaoDcAc, 2)}</td><td class="v">${brl(v.precoUn * v.qtd)}</td></tr>`).join('')}</table></div>
+          <button class="btn sol" id="c-ok" style="margin-top:12px">Próximo ›</button>` : '<div class="aviso">Nenhum inversor para esse filtro. Troque a ligação ou o fabricante.</div>') : ''}`;
+    } else if ((et === 3 || et === 6) && o.campos && cot.modo === 'conectado') {
+      corpo = `<p class="sutil">Campos lidos da tela da Belenergy:</p><div class="grade g2">${o.campos.map((c) => c.tipo === 'select'
+        ? `<label class="campo"><span>${esc(c.rotulo)}</span><select data-campo="${esc(c.fc)}">${c.opcoes.map((x) => `<option>${esc(x)}</option>`).join('')}</select></label>`
+        : `<label class="campo"><span>${esc(c.rotulo)}</span><input type="${c.tipo === 'numero' ? 'number' : 'text'}" data-campo="${esc(c.fc)}" value="${esc(/nome/i.test(c.fc) ? e.nome : c.valor || '')}"></label>`).join('')}</div>
+        <button class="btn sol" id="c-gen" style="margin-top:12px">${et === 6 ? 'Finalizar e pegar o valor do kit' : 'Próximo ›'}</button>`;
+    } else if (et === 3) {
+      const tipos = Object.keys(o.estruturas), t = e.estruturaTipo && o.estruturas[e.estruturaTipo] ? e.estruturaTipo : tipos[0];
+      corpo = `<div class="grade g2">
+        <label class="campo"><span>Tipo de estrutura</span><select id="c-et">${tipos.map((x) => `<option ${x === t ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
+        <label class="campo"><span>Detalhe</span><select id="c-ed">${o.estruturas[t].map((x) => `<option>${esc(x)}</option>`).join('')}</select></label>
+        <label class="campo"><span>Número de linhas</span><input type="number" min="1" id="c-lin" value="${e.linhas || o.sugestao.linhas}"></label>
+        <label class="campo"><span>Módulos por linha</span><input type="number" min="1" id="c-mpl" value="${e.modulosPorLinha || o.sugestao.modulosPorLinha}"></label>
+        <label class="campo"><span>Orientação</span><select id="c-ori">${o.orientacoes.map((x) => `<option>${esc(x)}</option>`).join('')}</select></label></div>
+        <p class="mini" id="c-conf"></p>
+        <button class="btn sol" id="c-ok" style="margin-top:12px">Próximo ›</button>`;
+    } else if (et === 4 || et === 5) {
+      const lista = et === 4 ? o.componentes : o.eletricos, chave = et === 4 ? 'componentes' : 'eletricos';
+      e[chave] = e[chave] || lista.map((x) => ({ ...x, qtd: x.opcional ? 0 : x.qtd }));
+      corpo = `<p class="sutil">${et === 4 ? 'Ajuste as quantidades, tire ou aumente itens.' : 'Opcional: adicione componentes elétricos se quiser.'}</p>
+        <div class="tabela-cat"><table><tr><th>Item</th><th class="v">Qtd</th><th class="v">Valor un.</th></tr>
+        ${e[chave].map((c, i) => `<tr><td>${esc(c.nome)}<div class="desc mono">${esc(c.sku)}</div></td><td class="v"><input type="number" min="0" data-cq="${i}" value="${c.qtd}" style="width:76px;padding:6px"></td><td class="v">${brl(c.precoUn, 2)}</td></tr>`).join('')}</table></div>
+        <button class="btn sol" id="c-ok" style="margin-top:12px">Próximo ›</button>`;
+    } else if (et === 6) {
+      corpo = `<div class="grade">
+        <label class="campo"><span>Nome do orçamento</span><input type="text" id="c-nome" value="${esc(e.nome)}"></label>
+        <div class="grade g2"><label class="campo"><span>Tipo de frete</span><select id="c-frete">${o.fretes.map((x) => `<option>${esc(x)}</option>`).join('')}</select></label>
+        <label class="campo"><span>Forma de pagamento</span><select id="c-pg">${o.pagamentos.map((x) => `<option>${esc(x)}</option>`).join('')}</select></label></div></div>
+        <button class="btn sol" id="c-ok" style="margin-top:12px">Finalizar e pegar o valor do kit</button>`;
+    } else if (et === 7) {
+      const f = cot.final;
+      corpo = `<div class="kpis"><div class="kpi destaque"><span class="rotulo">Valor do kit solar</span><b>${brl(f.valorKit, 2)}</b><span class="sutil">${esc(f.numero)}${cot.modo === 'simulado' ? ' · SIMULADO' : ''}</span></div>
+        <div class="kpi"><span class="rotulo">Se fosse avulso</span><b>${brl(f.valorAvulso)}</b></div><div class="kpi"><span class="rotulo">Módulos</span><b>${e.modulo.qtd} × ${e.modulo.potenciaW} W</b></div>
+        <div class="kpi"><span class="rotulo">Inversor</span><b style="font-size:16px">${esc(e.inversor.nome)}</b></div></div>
+        <button class="btn sol" id="c-usar">Usar este kit na opção ${NIVEIS_KIT[cotSlot]}</button>`;
+    }
+    el.innerHTML = `<div class="painel brilha"><div class="entre"><span class="rotulo" style="color:var(--sol)">Personalize seu Gerador · ${NIVEIS_KIT[cotSlot]} · ${cot.modo === 'conectado' ? '🟢 site Belenergy' : '🟡 simulado'}</span>
+        <button class="link" id="c-sair">cancelar</button></div>
+        <div class="chips" style="margin:12px 0 16px">${trilha}</div><div id="cot-corpo">${corpo}</div></div>`;
+
+    const v = (id) => $('#' + id)?.value;
+    $('#c-sair').onclick = () => { cot = null; novo(); };
+    el.querySelectorAll('[data-cq]').forEach((i) => i.oninput = () => { const ch = et === 4 ? 'componentes' : 'eletricos'; e[ch][+i.dataset.cq].qtd = +i.value || 0; });
+    if (et === 2) {
+      $('#c-tipo').onchange = () => { e.tipoInversor = v('c-tipo'); e.fabricante = ''; o.inversores = null; novo(); };
+      $('#c-lig').onchange = () => { e.ligacao = v('c-lig'); o.inversores = null; novo(); };
+      $('#c-filtrar').onclick = () => passoCot({ filtrar: true, tipoInversor: v('c-tipo'), ligacao: v('c-lig'), tensao: v('c-ten'), fabricante: v('c-fab') });
+    }
+    if (et === 3) {
+      const conf = () => { const t = +v('c-lin') * +v('c-mpl'); $('#c-conf').textContent = t === e.modulo.qtd ? `✓ ${t} módulos, bate com o kit.` : `⚠ ${t} posições para ${e.modulo.qtd} módulos.`; };
+      ['c-lin', 'c-mpl'].forEach((id) => $('#' + id).oninput = conf); conf();
+      $('#c-et').onchange = () => { e.estruturaTipo = v('c-et'); e.linhas = +v('c-lin'); e.modulosPorLinha = +v('c-mpl'); novo(); };
+    }
+    const ok = $('#c-ok');
+    if (ok) ok.onclick = () => {
+      if (et === 0) return passoCot({ kwp: +v('c-kwp') });
+      if (et === 1) { const sku = el.querySelector('[name=c-mod]:checked').value; return passoCot({ moduloSku: sku, moduloQtd: +el.querySelector(`[data-qtd="${sku}"]`).value }); }
+      if (et === 2) return passoCot({ inversorSku: el.querySelector('[name=c-inv]:checked').value });
+      if (et === 3) return passoCot({ estruturaTipo: v('c-et'), estruturaDetalhe: v('c-ed'), linhas: +v('c-lin'), modulosPorLinha: +v('c-mpl'), orientacao: v('c-ori') });
+      if (et === 4) return passoCot({ componentes: e.componentes });
+      if (et === 5) return passoCot({ eletricos: e.eletricos });
+      if (et === 6) return passoCot({ nome: v('c-nome'), frete: v('c-frete'), pagamento: v('c-pg') });
+    };
+    const gen = $('#c-gen');
+    if (gen) gen.onclick = () => passoCot({ campos: Object.fromEntries([...el.querySelectorAll('[data-campo]')].map((x) => [x.dataset.campo, x.value])) });
+    const usar = $('#c-usar');
+    if (usar) usar.onclick = () => { orc.kitsFechados[cotSlot] = Cotador.paraKit(cot, NIVEIS_KIT[cotSlot]); orc.opcaoEscolhida = orc.kitsFechados.filter(Boolean).findIndex((k) => k.nivel === 'Recomendada'); cot = null; salvarR(); toast('Kit fechado salvo na opção ' + NIVEIS_KIT[cotSlot]); novo(); };
   }
 
   function passo5(el) {
-    const p = P(), op = C.opcoes(orc, p)[orc.opcaoEscolhida], pr = op.preco, sem = p.semaforo;
+    const p = P(), ops5 = C.opcoes(orc, p), op = ops5[C.indiceOpcao(orc, ops5)], pr = op.preco, sem = p.semaforo;
     const pos = (v) => Math.min(Math.max((v - 1.8) / 1.7, 0), 1) * 100;
     el.innerHTML = `<div class="lado"><div>
       <div class="painel grade">

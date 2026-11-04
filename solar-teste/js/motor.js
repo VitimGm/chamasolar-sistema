@@ -82,7 +82,7 @@
 
   function custosDiretos({ kit, placas, kwp, distanciaKm, trocaPadrao }, p) {
     const linhas = [
-      { id: 'kit', nome: 'Kit (módulos + inversor + estrutura)', valor: kit },
+      { id: 'kit', nome: 'Kit solar (valor final Belenergy)', valor: kit },
       { id: 'terceiro', nome: `Instalação terceirizada (${placas} placas)`, valor: placas * p.maoDeObraPorPlaca },
       { id: 'projeto', nome: 'Projeto e homologação', valor: faixaDe(p.engenharia, kwp).valor },
       { id: 'art', nome: 'ART', valor: p.art },
@@ -207,7 +207,31 @@
   }
 
   /* ---------- 7. Montar as 3 opções de kit ---------- */
+  /* Opção a partir de um KIT FECHADO cotado no "Personalize seu Gerador" da Belenergy.
+     O valor final do kit (já com estrutura e componentes) é o custo do kit. */
+  function opcaoKitFechado(orc, k, p) {
+    const modulo = { id: k.modulo.sku, nome: k.modulo.nome, potenciaW: k.modulo.potenciaW, preco: 0, areaM2: k.modulo.areaM2 || k.modulo.potenciaW / 222, voc: k.modulo.voc, vmp: k.modulo.vmp, isc: k.modulo.isc };
+    const placas = k.modulo.qtd;
+    const hspEf = orc.hsp * (FATOR_ORIENTACAO[orc.orientacao] ?? 1);
+    const kwpReal = (placas * modulo.potenciaW) / 1000;
+    const disp = DISPONIBILIDADE[orc.ligacao] ?? 50;
+    const alvoKwh = Math.max(orc.consumoMedio - disp, 0);
+    const geracaoMes = kwpReal * hspEf * 30 * p.pr;
+    const dim = { disponibilidade: disp, hspEfetivo: arred(hspEf, 2), alvoKwh: arred(alvoKwh, 0), kwpNecessario: arred((alvoKwh * (1 + (p.margemGeracao ?? 0))) / (hspEf * 30 * p.pr), 2), placas, kwpReal: arred(kwpReal, 2), geracaoMes: arred(geracaoMes, 0), cobertura: alvoKwh ? arred(geracaoMes / alvoKwh, 3) : 0 };
+    const inversor = { id: k.inversor.sku, nome: k.inversor.nome, potenciaKw: k.inversor.potenciaKw, hibrido: k.inversor.tipo === 'hibrido', vMaxDc: k.inversor.vMaxDc || 0 };
+    const relacao = inversor.potenciaKw ? kwpReal / inversor.potenciaKw : 0;
+    const preco = precificar({ ...orc, kit: k.valorKit, placas, kwp: kwpReal }, p);
+    const eco = economia({ ...orc, geracaoMes, investimento: preco.precoFinal, anoInicio: p.anoBase }, p);
+    const areaM2 = arred(placas * modulo.areaM2, 1);
+    return { nivel: k.nivel, destaque: k.nivel === 'Recomendada', descricao: k.descricao || 'Kit fechado Belenergy.', modulo, inversor, relacaoDcAc: arred(relacao, 2), dcAcOk: relacao >= p.faixaDcAc.min && relacao <= p.faixaDcAc.max,
+      bateria: k.bateria || null, dim, strings: { strings: k.estrutura?.linhas || 1, porString: k.estrutura?.modulosPorLinha || placas, avisos: [], vocFrio: 0, ok: true }, kit: k.valorKit, kitFechado: k, preco, eco, areaM2, cabeNoTelhado: !orc.areaDisponivel || areaM2 <= orc.areaDisponivel };
+  }
+
   function montarOpcoes(orc, catalogo, p) {
+    // Kits fechados cotados na Belenergy têm prioridade sobre a estimativa por catálogo
+    if (Array.isArray(orc.kitsFechados) && orc.kitsFechados.some(Boolean)) {
+      return orc.kitsFechados.filter(Boolean).map((k) => opcaoKitFechado(orc, k, p));
+    }
     const res = [];
     for (const nivel of catalogo.niveis) {
       const modulo = catalogo.modulos.find((m) => m.id === nivel.modulo);
@@ -227,7 +251,7 @@
     return res;
   }
 
-  const Motor = { DISPONIBILIDADE, FATOR_ORIENTACAO, dimensionar, escolherInversor, conferirStrings, custosDiretos, precificar, parcelaPrice, economia, fioBPct, tir, vpl, montarOpcoes };
+  const Motor = { DISPONIBILIDADE, FATOR_ORIENTACAO, dimensionar, escolherInversor, conferirStrings, custosDiretos, precificar, parcelaPrice, economia, fioBPct, tir, vpl, montarOpcoes, opcaoKitFechado };
   if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
   else raiz.Motor = Motor;
 })(typeof window !== 'undefined' ? window : globalThis);

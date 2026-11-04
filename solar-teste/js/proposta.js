@@ -25,7 +25,7 @@
   if (!o) { raiz.innerHTML = '<div class="pv"><div class="bloco"><h2>Proposta não encontrada</h2><p>Peça um novo link ao seu consultor.</p></div></div>'; return; }
 
   const p = B.parametros();
-  const est = { opcao: o.opcaoEscolhida ?? 1, prazo: p.financiamento.prazos[2], hr: null };
+  const est = { opcao: C.indiceOpcao(o, C.opcoes(o, B.parametros())), prazo: p.financiamento.prazos[2], hr: null };
   const registrar = (tipo, dados) => { if (!vendedor) B.evento(o.token, tipo, dados); };
   let a = C.analisar({ ...o, opcaoEscolhida: est.opcao }, p, est.prazo);
 

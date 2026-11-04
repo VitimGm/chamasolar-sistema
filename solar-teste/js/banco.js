@@ -67,6 +67,7 @@
     /* Popula o banco de teste com os leads de exemplo (uma vez) */
     semear(forcar = false) {
       if (!forcar && ler('semeado', false)) return;
+      if (!forcar && this.orcamentos().length) { gravar('semeado', true); return; } // nunca apaga orçamentos existentes
       gravar('orcamentos', []); gravar('eventos', []); gravar('interacoes', []);
       const p = this.parametros();
       D.leadsExemplo.slice().reverse().forEach((l) => {

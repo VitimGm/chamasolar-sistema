@@ -24,9 +24,10 @@
     };
   }
 
+  function indiceOpcao(o, ops) { const i = o.opcaoEscolhida ?? 1; return ops[i] ? i : Math.max(ops.findIndex((x) => x.destaque), 0); }
   function opcoes(o, p) {
     const pp = { ...p, tarifaKwh: Number(o.tarifaKwh) || p.tarifaKwh };
-    const ops = M.montarOpcoes(entrada(o), raiz.Catalogo ? raiz.Catalogo.paraMotor() : D.catalogo, pp);
+    const ops = M.montarOpcoes({ ...entrada(o), kitsFechados: o.kitsFechados }, raiz.Catalogo ? raiz.Catalogo.paraMotor() : D.catalogo, pp);
     ops.forEach((x) => { if (x.bateria) x.preco.semaforo = 'neutro'; });
     return ops;
   }
@@ -150,7 +151,7 @@
   /* ---------- Análise completa de um orçamento ---------- */
   function analisar(o, p, prazo) {
     const ops = opcoes(o, p);
-    const op = ops[o.opcaoEscolhida ?? 1];
+    const op = ops[o.opcaoEscolhida ?? 1] || ops.find((x) => x.destaque) || ops[0];
     const rx = raioX(o, p, op);
     return {
       opcoes: ops, op, raioX: rx, espera: espera(o, p, op), energia: custoEnergia(op, p),
@@ -171,5 +172,5 @@
 
   function fmt(v, c = 0) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: c, maximumFractionDigits: c }); }
 
-  raiz.Conversao = { consumoMedio, entrada, opcoes, raioX, espera, custoEnergia, boleto, perfil, temperatura, proximaAcao, vizinhos, analisar, funil, fmt };
+  raiz.Conversao = { indiceOpcao, consumoMedio, entrada, opcoes, raioX, espera, custoEnergia, boleto, perfil, temperatura, proximaAcao, vizinhos, analisar, funil, fmt };
 })(window);
