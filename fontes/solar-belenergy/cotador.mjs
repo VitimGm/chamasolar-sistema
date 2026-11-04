@@ -57,11 +57,29 @@ async function matSelect(seletor, texto) {
   else await pg.keyboard.press('Escape');
   await pausa(1200);
 }
-async function listaCustom(rotulo, texto) { // dropdowns próprios da tela de estrutura
-  await pg.getByText(exato(rotulo)).locator('xpath=following-sibling::*[1]').click().catch(async () => { await pg.getByText(exato(rotulo)).locator('..').click(); });
-  await pausa(600);
-  await pg.getByText(exato(texto)).last().click(); await pausa(1200);
+const rx = (t) => new RegExp(String(t).replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'), 'i');
+async function listaCustom(rotulo, texto) { // listas da tela de estrutura (select comum, mat-select, ng-select ou lista própria)
+  if (!texto) return true;
+  const alvo = rx(texto);
+  // 1) <select> comum que tenha a opção
+  const sel = pg.locator('select:visible').filter({ has: pg.locator('option', { hasText: alvo }) }).first();
+  if (await sel.count()) { const t = (await sel.locator('option', { hasText: alvo }).first().textContent()).trim(); await sel.selectOption({ label: t }); await pausa(900); return true; }
+  // 2) abrir o campo logo depois do rótulo
+  const rot = pg.getByText(rx(rotulo)).first();
+  const campos = [rot.locator('xpath=following::*[self::mat-select or self::ng-select or @role="combobox" or @role="listbox" or contains(@class,"select") or contains(@class,"dropdown")][1]'), rot.locator('xpath=following-sibling::*[1]'), rot.locator('..')];
+  for (const c of campos) {
+    if (!(await c.count())) continue;
+    await c.first().click({ timeout: 4000 }).catch(() => {}); await pausa(700);
+    const op = pg.locator('mat-option, [role="option"], .ng-option, .dropdown-item, li, .option, .item').filter({ hasText: alvo }).locator('visible=true').first();
+    if (await op.count()) { await op.click({ timeout: 4000 }).catch(() => {}); await pausa(1000); return true; }
+    const folha = pg.getByText(alvo).locator('visible=true').last();
+    if (await folha.count()) { await folha.click({ timeout: 4000 }).catch(() => {}); await pausa(1000); return true; }
+    await pg.keyboard.press('Escape').catch(() => {});
+  }
+  console.log(`Não achei "${texto}" em "${rotulo}": seguindo com o que o portal sugeriu.`);
+  return false;
 }
+async function printErro(nome) { try { const f = path.resolve('erros', `${new Date().toISOString().replace(/[:.]/g, '-')}-${nome}.png`); await import('node:fs').then((fs) => fs.mkdirSync(path.resolve('erros'), { recursive: true })); await pg.screenshot({ path: f, fullPage: true }); return f; } catch { return ''; } }
 async function linhas(filtro) { // linhas das tabelas (módulos, inversores, itens)
   return pg.evaluate((filtro) => [...document.querySelectorAll('tr')].map((r, i) => {
     const t = r.innerText.replace(/\s+/g, ' ').trim(); if (!new RegExp(filtro, 'i').test(t)) return null;
@@ -84,7 +102,7 @@ async function ajustarItens(itens) { for (const it of itens || []) if (it.sku) a
 const NOMES = ['potência', 'módulo', 'inversor', 'estrutura', 'itens da estrutura', 'elétricos CC', 'elétricos CA', 'confirmação'];
 async function passo(etapa, e = {}) {
   try { return await passoInterno(etapa, e); }
-  catch (err) { console.error(err); throw new Error(`Robô parou na etapa "${NOMES[etapa] || etapa}" do portal: ${String(err.message || err).split('\n')[0].slice(0, 160)}`); }
+  catch (err) { console.error(err); const f = await printErro('etapa-' + etapa); throw new Error(`Robô parou na etapa "${NOMES[etapa] || etapa}" do portal: ${String(err.message || err).split('\n')[0].replace(/\u001b\[\d+m/g, '').slice(0, 140)}${f ? ' · print salvo em ' + f : ''}`); }
 }
 async function passoInterno(etapa, e = {}) {
   if (!(await logado())) throw new Error('A sessão da Belenergy expirou: faça login na janela do robô e tente de novo.');
@@ -181,8 +199,11 @@ async function passoInterno(etapa, e = {}) {
 
 /* Detalhes da estrutura dependem do tipo: rota extra para o sistema buscar */
 async function detalhes(tipo) {
+  try { return await detalhesInterno(tipo); } catch (err) { console.error(err); await printErro('detalhes'); return []; }
+}
+async function detalhesInterno(tipo) {
   await listaCustom('Tipo de estrutura', tipo);
-  await pg.getByText(exato('Detalhes da Estrutura')).locator('xpath=following-sibling::*[1]').click().catch(() => {}); await pausa(700);
+  await pg.getByText(rx('Detalhes da Estrutura')).first().locator('xpath=following-sibling::*[1]').click({ timeout: 4000 }).catch(() => {}); await pausa(700);
   const t = await pg.evaluate(() => [...document.querySelectorAll('*')].filter((e) => e.children.length === 0 && /^Modelo /.test((e.innerText || '').trim())).map((e) => e.innerText.trim()));
   await pg.keyboard.press('Escape'); return [...new Set(t)];
 }

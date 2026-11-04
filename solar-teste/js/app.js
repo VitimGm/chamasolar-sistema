@@ -486,9 +486,16 @@
       for (let i = 0; i < NIVEIS_KIT.length; i++) {
         if (orc.kitsFechados[i]) continue; // já cotada: use "Refazer" para cotar de novo
         try {
-          const s = await Cotador.cotarAuto(modo, { ...base, ...(orc.selKits || [])[i], tipoInversor: TIPO_POR_OPCAO[i], nome: `${orc.id || 'NOVO'} ${orc.nome} ${NIVEIS_KIT[i]}`.trim() },
+          const pedido = { ...base, ...(orc.selKits || [])[i], tipoInversor: TIPO_POR_OPCAO[i] };
+          // mesma potência, mesmas escolhas e mesmo frete nas últimas 24 h: usa a cotação guardada (instantâneo)
+          const chave = 'k:' + modo + ':' + JSON.stringify([pedido.kwp, pedido.ligacao, pedido.frete, pedido.estruturaTipo, pedido.tipoInversor, pedido.fabMod || '', pedido.potMod || '', pedido.fabInv || '', pedido.potInv || '']);
+          let cache = {}; try { cache = JSON.parse(localStorage.getItem('sol_cache_kits') || '{}'); } catch { /* */ }
+          const guardado = cache[chave] && Date.now() - cache[chave].em < 24 * 3600e3 ? cache[chave].kit : null;
+          if (guardado) { orc.kitsFechados[i] = { ...guardado, nivel: NIVEIS_KIT[i] }; if (prog) prog.textContent = `${NIVEIS_KIT[i]}: cotação de hoje reaproveitada`; continue; }
+          const s = await Cotador.cotarAuto(modo, { ...pedido, nome: `${orc.id || 'NOVO'} ${orc.nome} ${NIVEIS_KIT[i]}`.trim() },
             (etapa) => { if (prog) prog.textContent = `${NIVEIS_KIT[i]} (${i + 1}/${NIVEIS_KIT.length}): ${etapa}… ${Math.round((Date.now() - inicio) / 1000)} s`; });
           orc.kitsFechados[i] = Cotador.paraKit(s, NIVEIS_KIT[i]);
+          if (modo === 'conectado') { cache[chave] = { em: Date.now(), kit: orc.kitsFechados[i] }; Object.keys(cache).forEach((k) => { if (Date.now() - cache[k].em > 48 * 3600e3) delete cache[k]; }); try { localStorage.setItem('sol_cache_kits', JSON.stringify(cache)); } catch { /* */ } }
         } catch (e) {
           erros.push(`${NIVEIS_KIT[i]}: ${e.message}`);
           if (modo === 'conectado' && /etapa "(potência|módulo)"|sessão/.test(e.message)) { erros.push('A outra opção não foi tentada: o erro é no começo do portal e se repetiria.'); break; }
