@@ -10,15 +10,15 @@
 
   // Módulos com preço real lido no portal em 03/11/2026 (amostra). Ficha elétrica estimada.
   const amostraBelenergy = {
-    fornecedor: 'Belenergy', origem: 'amostra lida no portal', capturadoEm: '2026-11-03T23:10:00-03:00',
+    fornecedor: 'Belenergy', origem: 'amostra FICTÍCIA (formato do portal)', capturadoEm: '2026-11-03T23:10:00-03:00',
     produtos: [
-      { sku: 'MFMA-1.3-MO-66-425W', tipo: 'modulo', marca: 'Maxeon', descricao: 'Módulo monofacial 66 cél. P type 425 W black frame', potenciaW: 425, preco: 335.75, precoPorWp: 0.79, estoque: 2126, disponivelSP: true },
-      { sku: 'MFAS-1.4-BF-144-575W', tipo: 'modulo', marca: 'Astronergy', descricao: 'Módulo bifacial 144 cél. N type 575 W', potenciaW: 575, preco: 557.75, precoPorWp: 0.97, estoque: 15355, disponivelSP: true },
-      { sku: 'MFAS-1.4-BF-144-580W', tipo: 'modulo', marca: 'Astronergy', descricao: 'Módulo bifacial 144 cél. N type 580 W', potenciaW: 580, preco: 562.61, precoPorWp: 0.97, estoque: 13570, disponivelSP: true },
-      { sku: 'MFAS-1.4-BF-132-615W', tipo: 'modulo', marca: 'Astronergy', descricao: 'Módulo bifacial 132 cél. N type 615 W', potenciaW: 615, preco: 559.04, precoPorWp: 0.91, estoque: 3365, disponivelSP: true },
-      { sku: 'MFJA-1.5-BF-132-615W', tipo: 'modulo', marca: 'JA Solar', descricao: 'Módulo bifacial 132 cél. N type 615 W', potenciaW: 615, preco: 590.40, precoPorWp: 0.96, estoque: 119464, disponivelSP: true },
-      { sku: 'MFJA-1.5-BF-132-620W', tipo: 'modulo', marca: 'JA Solar', descricao: 'Módulo bifacial 132 cél. N type 620 W', potenciaW: 620, preco: 620.00, precoPorWp: 1.00, estoque: 42539, disponivelSP: true },
-      { sku: 'MFJA-1.4-BF-132-625W', tipo: 'modulo', marca: 'JA Solar', descricao: 'Módulo bifacial 132 cél. N type 625 W', potenciaW: 625, preco: 625.01, precoPorWp: 1.00, estoque: 14931, disponivelSP: true },
+      { sku: 'MFMA-1.3-MO-66-425W', tipo: 'modulo', marca: 'Maxeon', descricao: 'Módulo monofacial 66 cél. P type 425 W black frame', potenciaW: 425, preco: 488.75, precoPorWp: 1.15, estoque: 1000, disponivelSP: true },
+      { sku: 'MFAS-1.4-BF-144-575W', tipo: 'modulo', marca: 'Astronergy', descricao: 'Módulo bifacial 144 cél. N type 575 W', potenciaW: 575, preco: 661.25, precoPorWp: 1.15, estoque: 1000, disponivelSP: true },
+      { sku: 'MFAS-1.4-BF-144-580W', tipo: 'modulo', marca: 'Astronergy', descricao: 'Módulo bifacial 144 cél. N type 580 W', potenciaW: 580, preco: 667.00, precoPorWp: 1.15, estoque: 1000, disponivelSP: true },
+      { sku: 'MFAS-1.4-BF-132-615W', tipo: 'modulo', marca: 'Astronergy', descricao: 'Módulo bifacial 132 cél. N type 615 W', potenciaW: 615, preco: 707.25, precoPorWp: 1.15, estoque: 1000, disponivelSP: true },
+      { sku: 'MFJA-1.5-BF-132-615W', tipo: 'modulo', marca: 'JA Solar', descricao: 'Módulo bifacial 132 cél. N type 615 W', potenciaW: 615, preco: 707.25, precoPorWp: 1.15, estoque: 1000, disponivelSP: true },
+      { sku: 'MFJA-1.5-BF-132-620W', tipo: 'modulo', marca: 'JA Solar', descricao: 'Módulo bifacial 132 cél. N type 620 W', potenciaW: 620, preco: 713.00, precoPorWp: 1.15, estoque: 1000, disponivelSP: true },
+      { sku: 'MFJA-1.4-BF-132-625W', tipo: 'modulo', marca: 'JA Solar', descricao: 'Módulo bifacial 132 cél. N type 625 W', potenciaW: 625, preco: 718.75, precoPorWp: 1.15, estoque: 1000, disponivelSP: true },
     ],
   };
 

@@ -140,16 +140,16 @@
     } else if (s.etapa === 6) {
       e.itensCA = entrada.itens || s.opcoes.itens;
       const kwp = (e.modulo.qtd * e.modulo.potenciaW) / 1000;
-      // calibrado no kit real: 4,3 kWp (7×615 W Astronergy + Huawei 4 kW + colonial) = R$ 6.848,21
+      // valores FICTÍCIOS de teste: o preço real vem só do robô / banco, nunca do código
       const fatorMod = 1 + (PORTAL.modulos.findIndex((m) => m[0] === e.modulo.sku) / PORTAL.modulos.length) * 0.12;
       const fatorInv = e.inversor.tipo === 'hibrido' ? 1.55 : e.inversor.tipo === 'micro' ? 1.25 : 1;
       const extras = [...(e.itensCC || []), ...(e.itensCA || [])].reduce((t, i) => t + (ADIC[i.sku] || 0) * i.qtd, 0);
       const semEstr = e.estrutura.semEstrutura ? 0.88 : 1;
-      const valorProdutos = r2(kwp * 1000 * 1.5926 * fatorMod * fatorInv * semEstr + extras);
+      const valorProdutos = r2(kwp * 1000 * 1.85 * fatorMod * fatorInv * semEstr + extras);
       s.opcoes = { fretes: PORTAL.fretes, pagamentos: PORTAL.pagamentos, valorProdutos };
       s.etapa = 7;
     } else if (s.etapa === 7) {
-      const frete = /Entrega no Cliente/.test(e.frete) ? r2(s.opcoes.valorProdutos * 0.0761) : 0; /* real: R$ 521,11 sobre R$ 6.848,21 até Ribeirão Preto */
+      const frete = /Entrega no Cliente/.test(e.frete) ? r2(s.opcoes.valorProdutos * 0.08) : 0; /* fictício */
       s.final = { valorKit: r2(s.opcoes.valorProdutos + frete), valorProdutos: s.opcoes.valorProdutos, frete, numero: 'SIMULADO' };
       s.etapa = 8;
     }
