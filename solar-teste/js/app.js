@@ -681,6 +681,7 @@
     ['Custo fixo', [['custoFixoMes', 'Custo fixo do mês (R$)', 1], ['kwpPrevistosMes', 'Meta de venda (kWp/mês)', 1], ['obrasPrevistasMes', 'Obras/mês (se meta = 0)', 1]]],
     ['Custos por obra', [['maoDeObraPorPlaca', 'Terceiro por placa (R$)', 1], ['art', 'ART (R$)', 1], ['materialCaBase', 'Material CA fixo (R$)', 1], ['materialCaPorKwp', 'Material CA/kWp (R$)', 1], ['custoKm', 'Custo por km (R$)', 1], ['visitasObra', 'Viagens por obra', 1], ['trocaPadrao', 'Troca de padrão (R$)', 1], ['reservaGarantia', 'Reserva garantia (% kit)', 100]]],
     ['Resposta rápida', [['kitRefWp', 'Kit de referência (R$/Wp)', 1], ['moduloRefW', 'Placa de referência (W)', 1]]],
+    ['Regras técnicas', [['limiteMonoEmTriKw', 'Cliente trifásico: inversor mono 220 V até (kW)', 1]]],
     ['Percentuais', [['impostoTotal', 'Imposto com kit (%)', 100], ['impostoServico', 'Imposto só serviço (%)', 100], ['reservaNegociacao', 'Reserva de negociação (%)', 100]]],
     ['Conversão e retorno', [['tarifaKwh', 'Tarifa padrão (R$/kWh)', 1], ['margemGeracao', 'Margem de geração (%)', 100], ['perdaOrientacao', 'Perda de segurança da orientação (%)', 100], ['reajusteAnual', 'Reajuste ao ano (%)', 100], ['simultaneidade', 'Simultaneidade (%)', 100], ['validadeDias', 'Validade da cotação (dias)', 1], ['manutencaoAnual', 'Manutenção/ano (R$)', 1], ['pr', 'PR (eficiência)', 1]]],
   ];

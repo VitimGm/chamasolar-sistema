@@ -36,6 +36,7 @@
     // Custo fixo rateado
     custoFixoMes: 6000,                 // TESTE — aguardando custos reais
     obrasPrevistasMes: 4,
+    limiteMonoEmTriKw: 10,               // cliente trifásico: até X kW de inversor usa mono 220 V (entre 2 fases). CONFIRMAR com o engenheiro / GED-15303 CPFL
     kitRefWp: 1.35,                     // resposta rápida: kit médio por Wp (ajustar com as cotações)
     moduloRefW: 685,
     kwpPrevistosMes: 0,                 // meta de kWp vendidos/mês; > 0 rateia o custo fixo por kWp

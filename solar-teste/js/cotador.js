@@ -176,12 +176,23 @@
     if (!mod && (base.fabMod || base.potMod)) throw new Error(`O portal não tem módulo ${base.fabMod || ''} ${base.potMod ? base.potMod + ' W' : ''} hoje.`);
     if (!mod) throw new Error('O portal não devolveu módulos.');
     aviso('módulo'); await avancar(s, { moduloSku: mod.sku, moduloQtd: Math.max(mod.qtdSugerida, Math.ceil((base.kwp * 1000) / mod.potenciaW - 0.05)) });
-    const lig = (s.opcoes.ligacoes || []).includes(base.ligacao) ? base.ligacao : (s.opcoes.ligacoes || [])[0];
-    const ten = ((s.opcoes.tensoes || {})[lig] || [])[0];
+    /* Ligação do INVERSOR (não é a do cliente): em rede 127/220 V o inversor monofásico 220 V liga entre 2 fases.
+       Cliente bifásico → mono 220. Cliente trifásico → mono 220 até o limite em kW (Parâmetros), acima disso trifásico 220.
+       Microinversor é sempre monofásico 220 V. */
+    const par = (window.Banco && window.Banco.parametros && window.Banco.parametros()) || {};
+    const limite = Number(par.limiteMonoEmTriKw) || 10;
+    const potEst = +base.potInv || (base.kwp / 1.2);
+    let ligDesejada = base.tipoInversor === 'MICROINVERSOR' || base.ligacao !== 'TRIFÁSICO' ? 'MONOFÁSICO' : potEst <= limite ? 'MONOFÁSICO' : 'TRIFÁSICO';
+    const ligs = s.opcoes.ligacoes || [];
+    const lig = ligs.includes(ligDesejada) ? ligDesejada : ligs.includes(base.ligacao) ? base.ligacao : ligs[0];
+    const tens = (s.opcoes.tensoes || {})[lig] || [];
+    const ten = tens.find((t) => /127\s*\/\s*220|^220/.test(t) && !/380/.test(t)) || tens[0];
     const fabs = base.fabInv ? [base.fabInv] : [];
     aviso('inversor'); await avancar(s, { filtrar: true, tipoInversor: base.tipoInversor, ligacao: lig, tensao: ten, fabricantes: fabs });
     let inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0);
-    if (!inv && lig !== 'MONOFÁSICO') { await avancar(s, { filtrar: true, tipoInversor: base.tipoInversor, ligacao: 'MONOFÁSICO', tensao: '127/220V', fabricantes: fabs }); inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0); }
+    // não achou: tenta a outra ligação possível (mono ↔ trifásico) antes de desistir
+    const outra = lig === 'MONOFÁSICO' ? (base.ligacao === 'TRIFÁSICO' ? 'TRIFÁSICO' : null) : 'MONOFÁSICO';
+    if (!inv && outra && ligs.includes(outra)) { const t2 = ((s.opcoes.tensoes || {})[outra] || []).find((t) => /127\s*\/\s*220|^220/.test(t) && !/380/.test(t)) || '127/220V'; await avancar(s, { filtrar: true, tipoInversor: base.tipoInversor, ligacao: outra, tensao: t2, fabricantes: fabs }); inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0); }
     if (!inv) throw new Error(`O portal não tem ${base.tipoInversor.toLowerCase()}${base.fabInv ? ' ' + base.fabInv : ''}${base.potInv ? ' de ' + base.potInv + ' kW' : ''} para ${base.kwp} kWp nessa ligação.`);
     await avancar(s, { inversorSku: inv.sku });
     const tipos = Object.keys(s.opcoes.estruturas || {});
