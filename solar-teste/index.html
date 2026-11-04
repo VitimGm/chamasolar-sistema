@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1c1612">
+  <title>Chama Solar · Orçamento (teste)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <header class="topo">
+    <div class="topo-in">
+      <a class="marca" href="#novo" aria-label="Chama Solar">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3c1.6 4.2 6.5 6.8 6.5 13.1A6.5 6.5 0 0 1 16 23a6.5 6.5 0 0 1-6.5-6.9c.2-2.6 1.6-4.2 2.9-5.6.2 1.8 1 3 2.3 3.6C14.2 9.8 15 6.4 16 3Z" fill="currentColor"/><rect x="6" y="25" width="20" height="3" rx="1.5" fill="currentColor" opacity=".55"/></svg>
+        <span>Chama<b>Solar</b></span>
+      </a>
+      <span class="selo-teste" title="Banco simulado no navegador. Nada vai para o Supabase.">TESTE · dados simulados</span>
+      <nav class="menu">
+        <a href="#novo" data-rota="novo">Novo</a>
+        <a href="#lista" data-rota="lista">Orçamentos</a>
+        <a href="#parametros" data-rota="parametros">Parâmetros</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="app" class="app"></main>
+
+  <footer class="barra" id="barra" hidden>
+    <div class="barra-in">
+      <button class="btn fantasma" id="btnVoltar" type="button">Voltar</button>
+      <div class="barra-resumo" id="barraResumo"></div>
+      <button class="btn primario" id="btnAvancar" type="button">Continuar</button>
+    </div>
+  </footer>
+
+  <script src="dados-teste.js"></script>
+  <script src="motor.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
