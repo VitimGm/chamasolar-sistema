@@ -106,6 +106,9 @@
     async salvarUsina(u) { const lista = this.usinas(); if (!u.id) u.id = lista.reduce((m, x) => Math.max(m, x.id), 0) + 1; const i = lista.findIndex((x) => x.id === u.id); i >= 0 ? (lista[i] = u) : lista.push(u); gravar('usinas', lista); return u; },
     async gravarGeracao(id, linhas) { const g = ler('geracao', {}); const m = Object.fromEntries((g[id] || []).map((l) => [l.dia, l])); linhas.forEach((l) => { m[l.dia] = { dia: l.dia, kwh: l.kwh }; }); g[id] = Object.values(m).sort((a, b) => a.dia.localeCompare(b.dia)); gravar('geracao', g); return linhas.length; },
 
+    modelo() { return null; }, // teste: usa os modelos genéricos
+    async guardarCredencial() { throw new Error('No teste os acessos não são guardados. Use a versão no Chamae.'); },
+    async credenciaisStatus() { return []; },
     rascunho: { ler: () => ler('rascunho', null), gravar: (v) => gravar('rascunho', v), etapa: () => ler('etapa', 0), gravarEtapa: (e) => gravar('etapa', e) },
   };
 

@@ -58,7 +58,7 @@
   }
 
   /* ---------- cache ---------- */
-  let orcs = [], eventos = [], interacoes = [], paramVigente = {}, publico = null, usinas = [], geracaoPor = {};
+  let orcs = [], eventos = [], interacoes = [], paramVigente = {}, publico = null, usinas = [], geracaoPor = {}, modelos = {};
   const dbid = {}; // ORC-0001 -> id no banco
 
   function linhaParaOrc(r) {
@@ -172,6 +172,10 @@
       geracaoPor[id] = Object.values(m).sort((a, b) => a.dia.localeCompare(b.dia)); aviso('Salvo ✓'); return linhas.length;
     },
 
+    modelo(chave) { return modelos[chave] || null; },
+    /* acessos das plataformas: só escrita (ficam no cofre do Supabase, ninguém lê pelo site) */
+    async guardarCredencial(marca, dados) { await api('rpc/sol_guardar_credencial', { method: 'POST', body: JSON.stringify({ p_marca: marca, p_dados: dados }) }); aviso('Acesso guardado ✓'); return true; },
+    async credenciaisStatus() { return api('rpc/sol_credenciais_status', { method: 'POST', body: '{}' }); },
     semear() { /* no oficial não existem leads de exemplo */ },
     zerarTudo() { ['rascunho', 'etapa'].forEach((k) => { try { localStorage.removeItem(LOCAL + k); } catch { /* */ } }); },
     rascunho: { ler: () => lerL('rascunho', null), gravar: (v) => gravarL('rascunho', v), etapa: () => lerL('etapa', 0), gravarEtapa: (e) => gravarL('etapa', e) },
@@ -191,6 +195,7 @@
       paramVigente = (pr[0] && pr[0].dados) || {};
       const desde = new Date(Date.now() - 400 * 864e5).toISOString().slice(0, 10);
       const [us, ge] = await Promise.all([api('sol_usinas?select=*&order=cliente_nome.asc'), api('sol_geracao?select=usina_id,dia,kwh&dia=gte.' + desde + '&order=dia.asc&limit=100000')]);
+      try { (await api('sol_modelos?select=chave,titulo,corpo,versao')).forEach((m) => { modelos[m.chave] = m; }); } catch { /* sem modelos: usa os genéricos */ }
       usinas = us; geracaoPor = {}; ge.forEach((g) => { (geracaoPor[g.usina_id] = geracaoPor[g.usina_id] || []).push({ dia: g.dia, kwh: +g.kwh }); });
     },
     /* proposta aberta pelo cliente: só a vitrine, pelo token */

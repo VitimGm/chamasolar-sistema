@@ -98,8 +98,59 @@
     abrir(pagina('Proposta ' + o.id, corpo, { qr: link }));
   }
 
+  /* ---------- MODELOS DA EMPRESA (guardados no banco, não no código) ---------- */
+  function extenso(valor) {
+    const U = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze', 'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove'];
+    const DZ = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
+    const CT = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
+    const ate999 = (n) => { if (n === 100) return 'cem'; const c = Math.floor(n / 100), r = n % 100, d = Math.floor(r / 10), u = r % 10; const p = []; if (c) p.push(CT[c]); if (r) p.push(r < 20 ? U[r] : DZ[d] + (u ? ' e ' + U[u] : '')); return p.join(' e '); };
+    const grupo = (n) => {
+      const partes = [], mi = Math.floor(n / 1e6), mil = Math.floor((n % 1e6) / 1000), r = n % 1000;
+      if (mi) partes.push(ate999(mi) + (mi === 1 ? ' milhão' : ' milhões'));
+      if (mil) partes.push(mil === 1 ? 'mil' : ate999(mil) + ' mil');
+      if (r) partes.push(ate999(r));
+      if (partes.length < 2) return partes.join('');
+      const ult = partes.pop(), liga = (r && (r < 100 || r % 100 === 0)) || (!r && mil && (mil < 100 || mil % 100 === 0)) ? ' e ' : ' ';
+      return partes.join(' ') + liga + ult;
+    };
+    const v = Math.round((Number(valor) || 0) * 100), reais = Math.floor(v / 100), cent = v % 100;
+    const t = [];
+    if (reais) t.push(grupo(reais) + (reais === 1 ? ' real' : (reais % 1e6 === 0 ? ' de reais' : ' reais')));
+    if (cent) t.push(ate999(cent) + (cent === 1 ? ' centavo' : ' centavos'));
+    return (t.join(' e ') || 'zero reais').toUpperCase();
+  }
+  const dataExtenso = () => { const s = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); return s; };
+  function valoresModelo(o, p) {
+    const a = C().analisar(o, p), op = a.op, k = o.contrato || {};
+    const end = [k.rua, k.numero ? 'nº ' + k.numero : '', k.bairro].filter(Boolean).join(', ');
+    const qMod = op.dim.placas || (op.modulo && op.modulo.qtd), qInv = (op.inversor && op.inversor.qtd) || 1;
+    const linhaEq = (t, itens) => `<p class="clausula"><b>${t}:</b><br>${itens.map(esc).join('<br>')}</p>`;
+    const eq = linhaEq('Módulos Fotovoltaicos', [`${qMod} und. – ${op.modulo.nome}${op.modulo.potenciaW ? ' - ' + op.modulo.potenciaW + 'Wp' : ''}`])
+      + linhaEq(op.inversor.tipo === 'micro' ? 'Microinversores' : 'Inversores', [`${qInv} und. – ${op.inversor.nome} - ${n(op.inversor.potenciaUnKw || op.inversor.potenciaKw, 2)} kW`])
+      + (op.kitFechado && op.kitFechado.estrutura && !op.kitFechado.estrutura.semEstrutura ? linhaEq('Estrutura', [`${op.kitFechado.estrutura.tipo || ''}${op.kitFechado.estrutura.detalhe ? ' – ' + op.kitFechado.estrutura.detalhe : ''}`]) : '');
+    return {
+      cliente_nome: o.nome, cliente_documento: k.documento, cliente_rua: k.rua, cliente_numero: k.numero, cliente_bairro: k.bairro, cliente_cep: k.cep || o.cep,
+      cliente_cidade: k.cidade || o.cidade, cliente_endereco: end, local_instalacao: end ? `${end}, ${k.cidade || o.cidade || ''}${k.cep || o.cep ? ', CEP ' + (k.cep || o.cep) : ''}` : '',
+      preco: brl(op.preco.precoFinal), preco_extenso: extenso(op.preco.precoFinal), equipamentos: eq,
+      modulo_modelo: op.modulo.nome, inversor_modelo: op.inversor.nome, garantia_modulo: k.garantiaModulo, garantia_eficiencia: k.garantiaEficiencia,
+      degradacao: k.degradacao, garantia_inversor: k.garantiaInversor, geracao_ano: n((op.dim.geracaoMes || 0) * 12, 2),
+      forma_pagamento: k.condicao || PAGAMENTO[o.formaPagamento] || '', data_extenso: dataExtenso(),
+    };
+  }
+  const ROTULOS = { cliente_documento: 'CPF/CNPJ', cliente_rua: 'rua', cliente_numero: 'número', cliente_bairro: 'bairro', cliente_cep: 'CEP', cliente_cidade: 'cidade', cliente_endereco: 'endereço', local_instalacao: 'endereço da instalação', garantia_modulo: 'anos (ficha do módulo)', garantia_eficiencia: 'anos (ficha do módulo)', degradacao: '% (ficha do módulo)', garantia_inversor: 'anos (ficha do inversor)', forma_pagamento: 'condição de pagamento' };
+  function preencher(corpo, v) {
+    return corpo.replace(/\{\{\{(\w+)\}\}\}/g, (_, c) => v[c] || '').replace(/\{\{(\w+)\}\}/g, (_, c) => lacuna(v[c], ROTULOS[c] || c));
+  }
+  function deModelo(chave, o, p) {
+    const m = raiz.Banco && raiz.Banco.modelo && raiz.Banco.modelo(chave);
+    if (!m) return false;
+    abrir(pagina(m.titulo + ' ' + o.id, '<div class="aviso naoimprime">Campos em amarelo estão faltando: preencha em "Dados do cliente" na ficha.</div>' + preencher(m.corpo, valoresModelo(o, p))));
+    return true;
+  }
+
   /* ---------- CONTRATO (MODELO) ---------- */
   function contrato(o, p) {
+    if (deModelo('contrato', o, p)) return;
     const a = C().analisar(o, p), op = a.op, eq = C().equipamentos(op), e = empresaDe(p), k = o.contrato || {};
     const cl = (num, titulo, txt) => `<div class="clausula"><b>Cláusula ${num} · ${titulo}.</b> ${txt}</div>`;
     const corpo = `
@@ -124,6 +175,7 @@
 
   /* ---------- PROCURAÇÃO PARA A CPFL (MODELO) ---------- */
   function procuracao(o, p) {
+    if (deModelo('procuracao', o, p)) return;
     const e = empresaDe(p), k = o.contrato || {};
     const corpo = `
       <div class="aviso naoimprime">MODELO de procuração. Confira se a CPFL pede formulário próprio ou firma reconhecida. Os campos em amarelo estão faltando.</div>
@@ -140,10 +192,10 @@
   /* campos que faltam para os documentos (mostra ao vendedor) */
   function faltando(o, p) {
     const k = o.contrato || {}, e = empresaDe(p), f = [];
-    [['documento', 'CPF/CNPJ'], ['rg', 'RG'], ['endereco', 'endereço completo'], ['instalacao', 'nº da instalação CPFL'], ['estadoCivil', 'estado civil'], ['profissao', 'profissão']].forEach(([c, r]) => { if (!k[c]) f.push(r); });
-    if (!e.razao || !e.cnpj) f.push('razão social e CNPJ da Chama Solar (em Parâmetros)');
+    (raiz.Banco && raiz.Banco.modelo && raiz.Banco.modelo('contrato') ? [['documento', 'CPF/CNPJ'], ['rua', 'rua'], ['numero', 'número'], ['bairro', 'bairro'], ['cep', 'CEP'], ['garantiaModulo', 'garantia do módulo'], ['garantiaEficiencia', 'garantia de desempenho'], ['degradacao', 'perda ao ano'], ['garantiaInversor', 'garantia do inversor']] : [['documento', 'CPF/CNPJ'], ['rg', 'RG'], ['rua', 'endereço'], ['instalacao', 'nº da instalação CPFL'], ['estadoCivil', 'estado civil'], ['profissao', 'profissão']]).forEach(([c, r]) => { if (!k[c]) f.push(r); });
+    if (!(raiz.Banco && raiz.Banco.modelo && raiz.Banco.modelo('contrato')) && (!e.razao || !e.cnpj)) f.push('razão social e CNPJ da Chama Solar (em Parâmetros)');
     return f;
   }
 
-  raiz.Documentos = { proposta, contrato, procuracao, faltando, empresaDe, pagina, abrir };
+  raiz.Documentos = { proposta, contrato, procuracao, faltando, empresaDe, pagina, abrir, extenso, preencher };
 })(window);
