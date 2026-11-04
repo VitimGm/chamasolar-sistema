@@ -207,7 +207,7 @@
       modulo: { sku: e.modulo.sku, nome: e.modulo.nome, marca: fabModulo(e.modulo.nome), potenciaW: e.modulo.potenciaW, qtd: e.modulo.qtd, ...ficha },
       inversor: { sku: e.inversor.sku, qtd: e.inversor.qtd || 1, potenciaUnKw: (e.inversor.potenciaKw || 0) / (e.inversor.qtd || 1), nome: e.inversor.nome + (e.inversor.qtd > 1 ? ` (${e.inversor.qtd} un.)` : ''), potenciaKw: e.inversor.potenciaKw, tipo: e.inversor.tipo, fabricante: e.inversor.fabricante, overload: e.inversor.overload },
       estrutura: e.estrutura, itens: { estrutura: e.itensEstrutura, cc: (e.itensCC || []).filter((i) => i.qtd > 0), ca: (e.itensCA || []).filter((i) => i.qtd > 0) },
-      descricao: { Inversor: 'Inversor string: o melhor custo por energia gerada.', Microinversor: 'Um microinversor para cada par de placas: ideal com sombra e mais seguro.', Premium: 'Equipamento de topo ou híbrido com bateria.' }[nivel] || 'Kit fechado Belenergy.',
+      descricao: { Inversor: 'Inversor string: o melhor custo por energia gerada.', Microinversor: 'Um microinversor para cada par de placas: ideal com sombra e mais seguro.' }[nivel] || 'Kit fechado Belenergy.',
     };
   }
 

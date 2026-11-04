@@ -21,18 +21,29 @@ import path from 'node:path';
 const BASE = 'https://belenus.com.br';
 const PORTA = 8787;
 const ORIGENS_OK = [/^https:\/\/([a-z0-9-]+\.)*chamae\.[a-z.]+$/i, /^https:\/\/([a-z0-9-]+\.)*claude\.ai$/, /^https:\/\/([a-z0-9-]+\.)*claudeusercontent\.com$/, /^https:\/\/vitimgm\.github\.io$/i, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/, /^null$/];
+const exato = (t) => new RegExp('^\\s*' + String(t).replace(/[.*+?^${}()|[\]\\/]/g, '\\$&') + '\\s*$', 'i'); // texto inteiro, sem caixa
 const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
 const num = (t) => +String(t || '').replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '') || 0;
 
 const ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), { headless: false, viewport: { width: 1450, height: 900 } });
 const pg = ctx.pages()[0] || (await ctx.newPage());
-pg.setDefaultTimeout(20000);
+pg.setDefaultTimeout(30000);
 await pg.goto(BASE + '/');
 const logado = async () => (await pg.locator('text=/Chama Solar Instala|Meus Orçamentos/i').count()) > 0;
 
 /* ---------- utilidades ---------- */
 const botao = (texto) => pg.locator('button:visible').filter({ hasText: texto }).first();
-async function proximo() { await botao(/^\s*PRÓXIMO\s*$/).click(); await pg.waitForLoadState('networkidle').catch(() => {}); await pausa(1500); }
+/* O portal escreve os botões em minúsculas e mostra em MAIÚSCULAS via CSS: comparar sempre sem caixa */
+async function proximo() { await botao(/^\s*PRÓXIMO\s*$/i).click(); await pg.waitForLoadState('networkidle').catch(() => {}); await pausa(800); }
+async function semCookies() { const b = pg.locator('button:visible').filter({ hasText: /^\s*Rejeitar\s*$/i }).first(); if (await b.count()) await b.click().catch(() => {}); }
+async function esperarLinhas(filtro, ms = 60000) { // o portal demora (~13 s para listar módulos): espera a tabela estabilizar
+  const t0 = Date.now(); let antes = -1;
+  while (Date.now() - t0 < ms) {
+    const n = await pg.evaluate((f) => [...document.querySelectorAll('tr')].filter((r) => new RegExp(f, 'i').test(r.innerText) && /Código:/.test(r.innerText)).length, filtro);
+    if (n > 0 && n === antes) return n; antes = n; await pausa(700);
+  }
+  return 0;
+}
 async function matSelect(seletor, texto) {
   if (!texto) return;
   await pg.locator(seletor).first().click(); await pausa(600);
@@ -43,9 +54,9 @@ async function matSelect(seletor, texto) {
   await pausa(1200);
 }
 async function listaCustom(rotulo, texto) { // dropdowns próprios da tela de estrutura
-  await pg.getByText(rotulo, { exact: true }).locator('xpath=following-sibling::*[1]').click().catch(async () => { await pg.getByText(rotulo, { exact: true }).locator('..').click(); });
+  await pg.getByText(exato(rotulo)).locator('xpath=following-sibling::*[1]').click().catch(async () => { await pg.getByText(exato(rotulo)).locator('..').click(); });
   await pausa(600);
-  await pg.getByText(texto, { exact: true }).last().click(); await pausa(1200);
+  await pg.getByText(exato(texto)).last().click(); await pausa(1200);
 }
 async function linhas(filtro) { // linhas das tabelas (módulos, inversores, itens)
   return pg.evaluate((filtro) => [...document.querySelectorAll('tr')].map((r, i) => {
@@ -76,10 +87,12 @@ async function passoInterno(etapa, e = {}) {
   if (etapa === 0) {
     await pg.goto(BASE + '/energy/escolha-metodo'); await pausa(1500);
     // "ESCOLHER" do Convencional não é <button>: clica pelo texto (o 1º é o Convencional)
-    await pg.getByText('ESCOLHER', { exact: true }).first().click(); await pausa(2000);
-    await pg.locator('#inputPotencia').waitFor({ timeout: 15000 });
-    await pg.locator('#inputPotencia').fill(String(e.kwp));
-    await pg.locator('button').filter({ hasText: 'navigate_next' }).first().click(); await pausa(3500);
+    await semCookies();
+    await pg.locator('button:visible').filter({ hasText: /^\s*escolher\s*$/i }).first().click();
+    await pg.locator('#inputPotencia').waitFor({ timeout: 30000 });
+    await pg.locator('#inputPotencia').fill(String(e.kwp).replace(',', '.'));
+    await pg.locator('button:enabled').filter({ hasText: 'navigate_next' }).first().click();
+    if (!(await esperarLinhas('MODULO'))) throw new Error('o portal não listou módulos para ' + e.kwp + ' kWp');
     await pg.locator('select').filter({ hasText: 'Menor Preço Por Watt' }).first().selectOption({ label: 'Menor Preço Por Watt' }).catch(() => {});
     await pausa(1200);
     const mods = (await linhas('MODULO')).map((m) => ({ sku: m.sku, nome: m.nome.replace(/^MODULO\s*/i, ''), potenciaW: num(m.potencia) || num((m.nome.match(/(\d{3,4})W/) || [])[1]), qtdSugerida: m.qtdSugerida || m.qtd }));
@@ -101,10 +114,11 @@ async function passoInterno(etapa, e = {}) {
     await pg.locator('mat-option').filter({ hasText: e.tensao && tensoes.includes(e.tensao) ? e.tensao : tensoes[0] }).first().click(); await pausa(1200);
     if (e.fabricantes && e.fabricantes.length) {
       await pg.locator('ng-multiselect-dropdown .dropdown-btn').click(); await pausa(500);
-      for (const f of e.fabricantes) await pg.locator('ng-multiselect-dropdown li').filter({ hasText: new RegExp('^\\s*' + f + '\\s*$') }).click();
+      for (let k = 0; k < 20 && (await pg.locator('ng-multiselect-dropdown li').filter({ hasText: /Não há fabricantes/i }).count()); k++) await pausa(500);
+      for (const f of e.fabricantes) { const li = pg.locator('ng-multiselect-dropdown li').filter({ hasText: new RegExp('^\\s*' + f + '\\s*$', 'i') }); if (await li.count()) await li.first().click(); }
       await pg.locator('body').click({ position: { x: 5, y: 5 } }); await pausa(400);
     }
-    await botao(/FILTRAR/).click(); await pausa(3500);
+    await botao(/FILTRAR/i).click(); await esperarLinhas('INVERSOR|MICRO', 45000);
     const invs = (await linhas('INVERSOR|MICRO')).map((v) => ({ sku: v.sku, nome: v.nome.replace(/^INVERSOR DE CORRENTE\s*/i, 'Inversor '), potenciaKw: num((v.nome.match(/(\d+(?:\.\d+)?)KW/i) || [])[1]), qtd: v.qtdSugerida || 1, overload: num(v.overload), tipo: /H[IÍ]BRID/i.test(v.nome) ? 'hibrido' : /MICRO/i.test(v.nome) ? 'micro' : 'string', fabricante: (v.nome.match(/(AUXSOL|DEYE|GROWATT|HUAWEI|SOLIS|SUNGROW|HOYMILES|TSUNESS|ENPHASE)/i) || [])[1] || '' }));
     return { etapa: 2, opcoes: { tipos: [e.tipoInversor], ligacoes: [e.ligacao], tensoes: { [e.ligacao]: tensoes }, fabricantes: [], inversores: invs } };
   }
@@ -112,19 +126,19 @@ async function passoInterno(etapa, e = {}) {
     await pg.locator('tr').filter({ hasText: 'Código: ' + e.inversorSku }).first().locator('input[type=checkbox]').check({ force: true }); await pausa(600);
     await proximo();
     const tipos = []; // lê as opções reais de tipo de estrutura
-    await pg.getByText('Tipo de estrutura', { exact: true }).locator('xpath=following-sibling::*[1]').click().catch(() => {}); await pausa(600);
-    for (const t of ['Colonial', 'Telha Fibrocimento', 'Telha Metálico', 'Telha Shingle', 'Laje', 'Solo']) if (await pg.getByText(t, { exact: true }).count()) tipos.push(t);
+    await pg.getByText(exato('Tipo de estrutura')).locator('xpath=following-sibling::*[1]').click().catch(() => {}); await pausa(600);
+    for (const t of ['Colonial', 'Telha Fibrocimento', 'Telha Metálico', 'Telha Shingle', 'Laje', 'Solo']) if (await pg.getByText(exato(t)).count()) tipos.push(t);
     await pg.keyboard.press('Escape');
     const estruturas = Object.fromEntries(tipos.map((t) => [t, []]));
     return { etapa: 3, opcoes: { estruturas, orientacoes: ['Retrato', 'Paisagem'], sugestao: { linhas: 1, modulosPorLinha: 0 }, detalhesSobDemanda: true } };
   }
   if (etapa === 3) {
-    if (e.semEstrutura) { await pg.getByText('Sem Estrutura', { exact: true }).click(); await pausa(800); return { etapa: 4, opcoes: { itens: [] } }; }
+    if (e.semEstrutura) { await pg.getByText(exato('Sem Estrutura')).click(); await pausa(800); return { etapa: 4, opcoes: { itens: [] } }; }
     await listaCustom('Tipo de estrutura', e.estruturaTipo);
     if (e.estruturaDetalhe) await listaCustom('Detalhes da Estrutura', e.estruturaDetalhe);
     await pg.locator('#numero-linhas').fill(String(e.linhas)); await pg.locator('#modulos-linha').fill(String(e.modulosPorLinha));
     await matSelect('#tipo-orientacao', e.orientacao || 'Retrato');
-    await botao(/CALCULAR ESTRUTURA/).click(); await pausa(4000);
+    await botao(/CALCULAR ESTRUTURA/i).click(); await esperarLinhas('.', 45000);
     return { etapa: 4, opcoes: { itens: (await linhas('Código:')).map((x) => ({ sku: x.sku, nome: x.nome, qtd: x.qtd })) } };
   }
   if (etapa === 4 || etapa === 5) {
@@ -151,7 +165,7 @@ async function passoInterno(etapa, e = {}) {
     const produtos = num((t.match(/Valor dos produtos:\s*R\$\s*([\d.,]+)/) || [])[1]);
     let numero = 'não salvo';
     if (e.salvar) { // só com autorização explícita do vendedor
-      await botao(/^\s*Salvar\s*$/).click(); await pausa(3500);
+      await botao(/^\s*Salvar\s*$/i).click(); await pausa(3500);
       t = await pg.evaluate(() => document.body.innerText);
       numero = (t.match(/(?:Or[çc]amento|Proposta)\s*(?:n[ºo°.]*)?\s*[:#]?\s*(\d{4,})/i) || [])[1] || 'salvo (ver Meus Orçamentos)';
     }
@@ -164,7 +178,7 @@ async function passoInterno(etapa, e = {}) {
 /* Detalhes da estrutura dependem do tipo: rota extra para o sistema buscar */
 async function detalhes(tipo) {
   await listaCustom('Tipo de estrutura', tipo);
-  await pg.getByText('Detalhes da Estrutura', { exact: true }).locator('xpath=following-sibling::*[1]').click().catch(() => {}); await pausa(700);
+  await pg.getByText(exato('Detalhes da Estrutura')).locator('xpath=following-sibling::*[1]').click().catch(() => {}); await pausa(700);
   const t = await pg.evaluate(() => [...document.querySelectorAll('*')].filter((e) => e.children.length === 0 && /^Modelo /.test((e.innerText || '').trim())).map((e) => e.innerText.trim()));
   await pg.keyboard.press('Escape'); return [...new Set(t)];
 }

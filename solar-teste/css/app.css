@@ -130,7 +130,7 @@ body { padding-bottom: 84px; }
 .meses input { padding: 8px 6px; font-size: 14px; text-align: right; font-family: var(--f-num); }
 .ia-caixa { border: 1.5px dashed color-mix(in srgb, var(--sol) 45%, transparent); border-radius: 14px; padding: 16px; text-align: center; color: var(--texto-2); font-size: 13.5px; margin: 10px 0 12px; }
 .ops-v { display: grid; gap: 12px; }
-@media (min-width: 900px) { .ops-v { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 900px) { .ops-v { grid-template-columns: repeat(3, 1fr); } .ops-v.duas { grid-template-columns: repeat(2, 1fr); } }
 .op-v { cursor: pointer; text-align: left; background: var(--vidro); border: 1.5px solid var(--linha-forte); border-radius: 16px; padding: 16px; }
 .op-v.sel { border-color: var(--laranja); box-shadow: var(--brilho-laranja); }
 .op-v .preco { font: 800 24px var(--f-num); margin: 6px 0; }

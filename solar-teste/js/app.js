@@ -339,13 +339,13 @@
   }
 
   /* ---------- Passo 4: KIT FECHADO na Belenergy (mesmo caminho do portal) ---------- */
-  const NIVEIS_KIT = ['Inversor', 'Microinversor', 'Premium'];
+  const NIVEIS_KIT = ['Inversor', 'Microinversor']; // Premium saiu: o vendedor cota só estas duas
   const PRINCIPAL = 0; // a opção Inversor (string) é a principal e aparece em destaque
-  const TIPO_POR_OPCAO = ['INVERSOR STRING ON-GRID', 'MICROINVERSOR', 'INVERSOR STRING HÍBRIDO'];
-  const DICA_OPCAO = ['String on-grid: melhor preço por Wp. É a opção principal que o cliente vê em destaque.', 'Para telhado com sombra ou águas diferentes. Desliga placa por placa (mais seguro).', 'Híbrido com bateria ou equipamento de topo: energia mesmo quando a luz cai.'];
+  const TIPO_POR_OPCAO = ['INVERSOR STRING ON-GRID', 'MICROINVERSOR'];
+  const DICA_OPCAO = ['String on-grid: melhor preço por Wp. É a opção principal que o cliente vê em destaque.', 'Para telhado com sombra ou águas diferentes. Desliga placa por placa (mais seguro).'];
   let cot = null, cotSlot = 0, cotModo = null;
   function seletores(i) {
-    const sel = (orc.selKits = orc.selKits || [{}, {}, {}])[i];
+    const sel = (orc.selKits = orc.selKits || [{}, {}])[i];
     const P0 = Cotador.PORTAL, fabsMod = [...new Set(P0.modulos.map((m) => Cotador.fabModulo(m[1])))];
     const pots = [...new Set(P0.modulos.filter((m) => !sel.fabMod || Cotador.fabModulo(m[1]) === sel.fabMod).map((m) => m[2]))].sort((a, b) => a - b);
     const tipo = TIPO_POR_OPCAO[i], fabsInv = tipo === 'MICROINVERSOR' ? P0.fabricantesMicro : P0.fabricantes;
@@ -358,7 +358,7 @@
   }
   function passo4(el) {
     const p = P();
-    orc.kitsFechados = orc.kitsFechados || [null, null, null];
+    orc.kitsFechados = [0, 1].map((i) => (orc.kitsFechados || [])[i] || null);
     if (cot) return assistente(el);
     const est = C.opcoes({ ...orc, kitsFechados: null }, p)[1];
     const kwpSug = Math.max(est.dim.kwpNecessario, 0.5);
@@ -367,10 +367,10 @@
         <p style="margin:8px 0 4px">Monte cada opção no <b>Personalize seu Gerador</b>. O valor final do kit é o que entra no preço.</p>
         <p class="mini" id="cot-status">Verificando o robô no seu computador…</p>
         <div class="grade g2" style="margin-top:12px;align-items:end">
-          <label class="campo"><span>Frete (vale para as 3)</span><select id="a-frete">${Cotador.PORTAL.fretes.map((f) => `<option ${f === (orc.freteAuto || 'Cliente Retira') ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></label>
+          <label class="campo"><span>Frete (vale para as duas)</span><select id="a-frete">${Cotador.PORTAL.fretes.map((f) => `<option ${f === (orc.freteAuto || 'Cliente Retira') ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></label>
           <p class="mini" style="margin:0">Escolha em cada opção só o módulo e o inversor. Estrutura, componentes e confirmação seguem automáticos, como o portal sugere.</p></div>
-        <div class="linha-h" style="margin-top:12px"><button class="btn sol" id="a-cotar" ${orc.kitsFechados.filter(Boolean).length === 3 ? 'hidden' : ''}>⚡ Cotar ${orc.kitsFechados.filter(Boolean).length ? 'as que faltam' : 'as 3 de uma vez'}</button><span class="mini" id="a-prog"></span></div></div>
-      <div class="ops-v" style="margin-top:14px">${NIVEIS_KIT.map((nv, i) => { const k = orc.kitsFechados[i]; return `
+        <div class="linha-h" style="margin-top:12px"><button class="btn sol" id="a-cotar" ${orc.kitsFechados.filter(Boolean).length === NIVEIS_KIT.length ? 'hidden' : ''}>⚡ Cotar ${orc.kitsFechados.filter(Boolean).length ? 'a que falta' : 'as duas de uma vez'}</button><span class="mini" id="a-prog"></span></div></div>
+      <div class="ops-v duas" style="margin-top:14px">${NIVEIS_KIT.map((nv, i) => { const k = orc.kitsFechados[i]; return `
         <div class="op-v ${k ? 'sel' : ''}" style="cursor:default">
           <span class="rotulo" style="color:var(--sol)">${i === PRINCIPAL ? 'Principal' : 'Opcional'}</span><h3 style="margin:4px 0">${nv}</h3>
           ${k ? `<div class="preco">${brl(k.valorKit, 2)}</div><span class="mini">valor do kit · ${k.origem === 'simulado' ? 'SIMULADO' : 'Belenergy ' + esc(k.numeroBelenergy)}</span>
@@ -398,17 +398,20 @@
       const prog = $('#a-prog'), modo = cotModo || 'simulado', inicio = Date.now(), erros = [];
       const base = { kwp: +kwpSug.toFixed(2), ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[orc.ligacao], cidade: orc.cidade, frete: $('#a-frete').value,
         estruturaTipo: { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' }[orc.telhado] };
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < NIVEIS_KIT.length; i++) {
         if (orc.kitsFechados[i]) continue; // já cotada: use "Refazer" para cotar de novo
         try {
           const s = await Cotador.cotarAuto(modo, { ...base, ...(orc.selKits || [])[i], tipoInversor: TIPO_POR_OPCAO[i], nome: `${orc.id || 'NOVO'} ${orc.nome} ${NIVEIS_KIT[i]}`.trim() },
-            (etapa) => { if (prog) prog.textContent = `${NIVEIS_KIT[i]} (${i + 1}/3): ${etapa}… ${Math.round((Date.now() - inicio) / 1000)} s`; });
+            (etapa) => { if (prog) prog.textContent = `${NIVEIS_KIT[i]} (${i + 1}/${NIVEIS_KIT.length}): ${etapa}… ${Math.round((Date.now() - inicio) / 1000)} s`; });
           orc.kitsFechados[i] = Cotador.paraKit(s, NIVEIS_KIT[i]);
-        } catch (e) { erros.push(`${NIVEIS_KIT[i]}: ${e.message}`); }
+        } catch (e) {
+          erros.push(`${NIVEIS_KIT[i]}: ${e.message}`);
+          if (modo === 'conectado' && /etapa "(potência|módulo)"|sessão/.test(e.message)) { erros.push('A outra opção não foi tentada: o erro é no começo do portal e se repetiria.'); break; }
+        }
       }
       orc.opcaoEscolhida = orc.kitsFechados.filter(Boolean).findIndex((k) => k.nivel === NIVEIS_KIT[PRINCIPAL]);
       salvarR(); novo();
-      toast(erros.length ? `${3 - erros.length} de 3 cotadas` : `3 kits cotados em ${Math.round((Date.now() - inicio) / 1000)} s`);
+      toast(erros.length ? `${orc.kitsFechados.filter(Boolean).length} de ${NIVEIS_KIT.length} cotadas` : `${NIVEIS_KIT.length} kits cotados em ${Math.round((Date.now() - inicio) / 1000)} s`);
       if (erros.length) $('#corpo').insertAdjacentHTML('afterbegin', `<div class="aviso ruim" style="margin-bottom:12px">${erros.map(esc).join('<br>')}</div>`);
     };
   }

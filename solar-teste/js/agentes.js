@@ -40,7 +40,7 @@
   /* ---- 2. Roteirista (WhatsApp, áudio e ligação) ---- */
   function roteirista({ o, a, link }) {
     const nm = tratar(o.nome), rx = a.raioX, b = a.boleto;
-    const zap = `Oi ${nm}! Aqui é o Victor, da Chama Solar ☀️\n\nFiz um raio-x da sua conta de luz: nos últimos 12 meses foram ${brl(rx.pago12)} para a CPFL — e a tarifa subiu 9,25% este ano.\n\nMontei uma proposta só sua, com a simulação da troca da conta pela parcela. Leva 2 minutinhos:\n${link}\n\nQuando puder, me diz qual das 3 opções fez mais sentido pra você?`;
+    const zap = `Oi ${nm}! Aqui é o Victor, da Chama Solar ☀️\n\nFiz um raio-x da sua conta de luz: nos últimos 12 meses foram ${brl(rx.pago12)} para a CPFL — e a tarifa subiu 9,25% este ano.\n\nMontei uma proposta só sua, com a simulação da troca da conta pela parcela. Leva 2 minutinhos:\n${link}\n\nQuando puder, me diz qual das duas opções fez mais sentido pra você?`;
     const audio = `"Oi ${nm}, Victor da Chama Solar. Olhei sua conta com calma: você pagou ${brl(rx.pago12)} pra CPFL no último ano. A proposta que te mandei mostra como trocar isso por uma parcela de ${brl(b.parcela)} que acaba, e a conta cai pra perto de ${brl(b.contaDepois)}. Dá uma olhada no link e me fala o que achou. Abraço!"`;
     return {
       titulo: 'Mensagens prontas para enviar',

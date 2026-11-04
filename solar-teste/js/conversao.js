@@ -139,7 +139,7 @@
     if (conta('simulou') >= 2) return { prioridade: 4, icone: '💳', texto: 'Simulou parcelas várias vezes: dúvida é financeira. Mande a troca de boleto e ofereça ligar.', agente: 'objecoes' };
     if (t.aberturas >= 3) return { prioridade: 4, icone: '❓', texto: `Abriu ${t.aberturas} vezes sem responder. Ligue e pergunte o que falta para decidir.`, agente: 'objecoes' };
     if (t.horasParado > 48) return { prioridade: 3, icone: '⏰', texto: 'Parado há mais de 2 dias. Follow-up com pergunta sobre a parte que ele leu.', agente: 'followup' };
-    return { prioridade: 2, icone: '💬', texto: 'Viu a proposta. Pergunte qual das 3 opções fez mais sentido.', agente: 'followup' };
+    return { prioridade: 2, icone: '💬', texto: 'Viu a proposta. Pergunte qual das duas opções fez mais sentido.', agente: 'followup' };
   }
 
   /* ---------- Prova social real: usinas na mesma cidade ---------- */
