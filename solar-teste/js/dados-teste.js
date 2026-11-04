@@ -155,13 +155,14 @@
 
   // Irradiação média anual no plano inclinado (kWh/m²/dia) — APROXIMADA, trocar pela base pública
   const cidades = {
-    'Ribeirão Preto': { hsp: 5.30 },
-    'Sertãozinho': { hsp: 5.30 },
-    'Jardinópolis': { hsp: 5.32 },
-    'Cravinhos': { hsp: 5.28 },
-    'Franca': { hsp: 5.35 },
-    'Araraquara': { hsp: 5.25 },
-    'São Carlos': { hsp: 5.15 },
+    // km = distância aproximada da base (ida), editável no orçamento
+    'Ribeirão Preto': { hsp: 5.30, km: 12 }, 'Bonfim Paulista': { hsp: 5.30, km: 15 }, 'Sertãozinho': { hsp: 5.30, km: 25 },
+    'Jardinópolis': { hsp: 5.32, km: 22 }, 'Cravinhos': { hsp: 5.28, km: 24 }, 'Serrana': { hsp: 5.30, km: 25 }, 'Dumont': { hsp: 5.30, km: 25 },
+    'Brodowski': { hsp: 5.32, km: 27 }, 'Barrinha': { hsp: 5.30, km: 35 }, 'Pontal': { hsp: 5.30, km: 35 }, 'Pradópolis': { hsp: 5.28, km: 40 },
+    'Guatapará': { hsp: 5.28, km: 40 }, 'Batatais': { hsp: 5.33, km: 45 }, 'São Simão': { hsp: 5.28, km: 45 }, 'Santa Rosa de Viterbo': { hsp: 5.28, km: 55 },
+    'Luís Antônio': { hsp: 5.25, km: 55 }, 'Altinópolis': { hsp: 5.33, km: 60 }, 'Orlândia': { hsp: 5.35, km: 60 }, 'Jaboticabal': { hsp: 5.30, km: 60 },
+    'Morro Agudo': { hsp: 5.35, km: 75 }, 'Monte Alto': { hsp: 5.30, km: 80 }, 'Araraquara': { hsp: 5.25, km: 88 }, 'Franca': { hsp: 5.35, km: 90 },
+    'Bebedouro': { hsp: 5.35, km: 95 }, 'São Carlos': { hsp: 5.15, km: 105 },
   };
 
   // CEP simulado → cidade e distância da base (km). No oficial: API de CEP + rota.

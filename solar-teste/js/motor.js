@@ -14,16 +14,18 @@
   /* ---------- 1. Dimensionamento ---------- */
   // Alvo = consumo que dá para zerar (consumo − taxa mínima da CPFL) + margem de segurança
   // (a margem cobre a perda natural dos módulos com os anos e variação de clima).
-  function dimensionar({ consumoMedio, ligacao, hsp, orientacao, pr, potModuloW, margemGeracao = 0 }) {
+  // Padrão do mercado (e o seguro): dimensionar pelo consumo TOTAL, sem descontar a taxa mínima.
+  function dimensionar({ consumoMedio, ligacao, hsp, orientacao, pr, potModuloW, margemGeracao = 0, descontarDisponibilidade = false }) {
     const disp = DISPONIBILIDADE[ligacao] ?? 50;
     const hspEf = hsp * (FATOR_ORIENTACAO[orientacao] ?? 1);
-    const alvoKwh = Math.max(consumoMedio - disp, 0);
+    const descontado = descontarDisponibilidade ? disp : 0;
+    const alvoKwh = Math.max(consumoMedio - descontado, 0);
     const kwpNecessario = (alvoKwh * (1 + margemGeracao)) / (hspEf * 30 * pr);
     const placas = Math.max(Math.ceil((kwpNecessario * 1000) / potModuloW), 1);
     const kwpReal = (placas * potModuloW) / 1000;
     const geracaoMes = kwpReal * hspEf * 30 * pr;
     return {
-      disponibilidade: disp,
+      disponibilidade: disp, descontado,
       hspEfetivo: arred(hspEf, 2),
       alvoKwh: arred(alvoKwh, 0),
       kwpNecessario: arred(kwpNecessario, 2),
@@ -215,10 +217,10 @@
     const placas = k.modulo.qtd;
     const hspEf = orc.hsp * (FATOR_ORIENTACAO[orc.orientacao] ?? 1);
     const kwpReal = (placas * modulo.potenciaW) / 1000;
-    const disp = DISPONIBILIDADE[orc.ligacao] ?? 50;
-    const alvoKwh = Math.max(orc.consumoMedio - disp, 0);
+    const disp = DISPONIBILIDADE[orc.ligacao] ?? 50, descontado = p.descontarDisponibilidade ? disp : 0;
+    const alvoKwh = Math.max(orc.consumoMedio - descontado, 0);
     const geracaoMes = kwpReal * hspEf * 30 * p.pr;
-    const dim = { disponibilidade: disp, hspEfetivo: arred(hspEf, 2), alvoKwh: arred(alvoKwh, 0), kwpNecessario: arred((alvoKwh * (1 + (p.margemGeracao ?? 0))) / (hspEf * 30 * p.pr), 2), placas, kwpReal: arred(kwpReal, 2), geracaoMes: arred(geracaoMes, 0), cobertura: alvoKwh ? arred(geracaoMes / alvoKwh, 3) : 0 };
+    const dim = { disponibilidade: disp, descontado, hspEfetivo: arred(hspEf, 2), alvoKwh: arred(alvoKwh, 0), kwpNecessario: arred((alvoKwh * (1 + (p.margemGeracao ?? 0))) / (hspEf * 30 * p.pr), 2), placas, kwpReal: arred(kwpReal, 2), geracaoMes: arred(geracaoMes, 0), cobertura: alvoKwh ? arred(geracaoMes / alvoKwh, 3) : 0 };
     const inversor = { id: k.inversor.sku, nome: k.inversor.nome, fabricante: k.inversor.fabricante || '', qtd: k.inversor.qtd || 1, potenciaUnKw: k.inversor.potenciaUnKw || k.inversor.potenciaKw, tipo: k.inversor.tipo, potenciaKw: k.inversor.potenciaKw, hibrido: k.inversor.tipo === 'hibrido', vMaxDc: k.inversor.vMaxDc || 0 };
     const relacao = inversor.potenciaKw ? kwpReal / inversor.potenciaKw : 0;
     const preco = precificar({ ...orc, kit: k.valorKit, placas, kwp: kwpReal }, p);
@@ -237,7 +239,7 @@
     for (const nivel of catalogo.niveis) {
       const modulo = catalogo.modulos.find((m) => m.id === nivel.modulo);
       const invs = catalogo.inversores.filter((i) => nivel.inversores.includes(i.id));
-      const dim = dimensionar({ ...orc, potModuloW: modulo.potenciaW, pr: p.pr, margemGeracao: p.margemGeracao ?? 0 });
+      const dim = dimensionar({ ...orc, potModuloW: modulo.potenciaW, pr: p.pr, margemGeracao: p.margemGeracao ?? 0, descontarDisponibilidade: !!p.descontarDisponibilidade });
       const inv = escolherInversor(dim.kwpReal, invs, p.faixaDcAc);
       const str = conferirStrings(dim.placas, modulo, inv.inversor, p.tempMinima);
       const bateria = nivel.bateria ? catalogo.baterias.find((b) => b.id === nivel.bateria) : null;

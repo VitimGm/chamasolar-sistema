@@ -54,14 +54,14 @@
     pagamentos: ['Plano de Pagamento', 'Outras Formas de Pagamento'],
   };
 
-  function simInversores({ tipo, ligacao, fabricantes, kwp }) {
+  function simInversores({ tipo, ligacao, fabricantes, kwp, placas }) {
     const fabs = fabricantes && fabricantes.length ? fabricantes : PORTAL.fabricantes;
     const pots = tipo === 'MICROINVERSOR' ? [2.25] : [3, 4, 5, 6, 7.5, 8, 10, 12, 15];
     const lista = [];
     fabs.forEach((f) => pots.forEach((kw) => {
       if (ligacao === 'MONOFÁSICO' && kw > 10) return;
       if (ligacao === 'TRIFÁSICO' && kw < 5) return;
-      const qtd = tipo === 'MICROINVERSOR' ? Math.ceil(kwp / kw) : 1;
+      const qtd = tipo === 'MICROINVERSOR' ? (placas ? Math.ceil(placas / 4) : Math.ceil(kwp / kw)) : 1; // micro de 2,25 kW: 4 placas por unidade
       const over = (kwp / (kw * qtd) - 1) * 100;
       if (tipo !== 'MICROINVERSOR' && (over > 50 || over < -45)) return;
       const lig = ligacao.slice(0, 2);
@@ -123,7 +123,7 @@
       s.opcoes = { tipos: PORTAL.tipos, ligacoes: PORTAL.ligacoes, tensoes: PORTAL.tensoes, fabricantes: PORTAL.fabricantes, inversores: null };
       s.etapa = 2;
     } else if (s.etapa === 2 && entrada && entrada.filtrar) {
-      s.opcoes.inversores = simInversores({ tipo: e.tipoInversor || PORTAL.tipos[0], ligacao: e.ligacao, fabricantes: e.fabricantes, kwp: (e.modulo.qtd * e.modulo.potenciaW) / 1000 });
+      s.opcoes.inversores = simInversores({ tipo: e.tipoInversor || PORTAL.tipos[0], ligacao: e.ligacao, fabricantes: e.fabricantes, kwp: (e.modulo.qtd * e.modulo.potenciaW) / 1000, placas: e.modulo.qtd });
     } else if (s.etapa === 2) {
       e.inversor = s.opcoes.inversores.find((x) => x.sku === e.inversorSku);
       const placas = e.modulo.qtd, lin = placas > 12 ? 2 : 1;

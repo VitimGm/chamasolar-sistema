@@ -187,7 +187,7 @@
       modulo: `${op.dim.placas} placas ${marcaMod} de ${op.modulo.potenciaW} W`.replace(/\s+/g, ' '),
       moduloCurto: `${marcaMod} ${op.modulo.potenciaW} W`.trim(),
       inversor: `${qtdInv > 1 ? qtdInv + ' ' : ''}${nomeTipo} ${tituloMarca(fabInv)} de ${kw(potUn)} kW`.replace(/\s+/g, ' ').replace(/^./, (c) => c.toUpperCase()),
-      inversorCurto: `${tituloMarca(fabInv)} ${kw(potUn)} kW${qtdInv > 1 ? ' × ' + qtdInv : ''}`.trim(),
+      inversorCurto: tipo === 'micro' ? `${qtdInv} micro${qtdInv > 1 ? 's' : ''} ${tituloMarca(fabInv)} de ${kw(potUn)} kW` : `${tituloMarca(fabInv)} ${kw(potUn)} kW${qtdInv > 1 ? ' × ' + qtdInv : ''}`.trim(),
       marcaMod, fabInv: tituloMarca(fabInv), tipo,
     };
   }
