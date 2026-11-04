@@ -1,147 +1,165 @@
 // =====================================================================
 // Cotador de KIT FECHADO Belenergy — roda no PC do vendedor
-// Conduz o "Personalize seu Gerador → Convencional" no belenus.com.br com a
-// sessão do próprio vendedor (login feito à mão, NUNCA guarda senha) e
-// responde ao sistema da Chama Solar em http://127.0.0.1:8787.
-//
-// Fluxo (igual ao portal):
-//  0 potência → 1 módulo (ordem do portal: menor preço por Watt) → 2 inversor
-//  (tipo, ligação, tensão, fabricante) → 3 estrutura (tipo, detalhe, linhas,
-//  módulos por linha, orientação) → 4 componentes → 5 componentes elétricos
-//  → 6 orçamento (nome, frete, pagamento) → valor final do KIT.
-//
-// Uso:   node cotador.mjs            (deixa rodando enquanto orça)
-//        node cotador.mjs --mapear   (você clica; ele grava os campos de cada tela)
+// Conduz belenus.com.br → Personalize seu Gerador → Convencional com a
+// sessão do próprio vendedor (login à mão; NUNCA guarda senha) e responde
+// ao sistema da Chama Solar em http://127.0.0.1:8787.
+// Telas e seletores mapeados ao vivo em 04/11/2026:
+//  /energy/modulo      #inputPotencia → botão "navigate_next" → tabela (radio por linha), ordem "Menor Preço Por Watt"
+//  /energy/inversor    mat-select tipoInversor → tipoLigacao → tensaoNominal; fabricantes ng-multiselect-dropdown;
+//                      FILTRAR → tabela (checkbox por linha) com "% Overload utilizado"
+//  /energy/estrutura   Com/Sem Estrutura; arranjo: Tipo de estrutura, Detalhes, #numero-linhas, #modulos-linha,
+//                      #tipo-orientacao (Retrato/Paisagem) → CALCULAR ESTRUTURA → itens (+/−/delete)
+//  /energy/componentesCC, /energy/componentesCA   tabelas com + / − / delete
+//  /energy/confirmar   Nome da proposta, Estado, Cidade, Dados de frete, Forma de pagamento,
+//                      "Valor da proposta" · botões Baixar PDF / Salvar / Comprar Agora (NUNCA clicado)
+// Uso:  node cotador.mjs
 // =====================================================================
 import { chromium } from 'playwright';
 import http from 'node:http';
-import fs from 'node:fs';
 import path from 'node:path';
 
 const BASE = 'https://belenus.com.br';
 const PORTA = 8787;
-const ORIGENS_OK = [/^https:\/\/([a-z0-9-]+\.)*chamae\.[a-z.]+$/i, /^https:\/\/claude\.ai$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/, /^null$/];
+const ORIGENS_OK = [/^https:\/\/([a-z0-9-]+\.)*chamae\.[a-z.]+$/i, /^https:\/\/([a-z0-9-]+\.)*claude\.ai$/, /^https:\/\/([a-z0-9-]+\.)*claudeusercontent\.com$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/, /^null$/];
 const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
-const MAPEAR = process.argv.includes('--mapear');
+const num = (t) => +String(t || '').replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '') || 0;
 
-const ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), { headless: false, viewport: { width: 1280, height: 900 } });
+const ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), { headless: false, viewport: { width: 1450, height: 900 } });
 const pg = ctx.pages()[0] || (await ctx.newPage());
-const ultimas = {}; // últimas respostas JSON das chamadas do montador
-pg.on('response', async (r) => {
-  const m = r.url().match(/\/api\/catalogo\/KitPersonalizado\/(\w+)/);
-  if (m) { try { ultimas[m[1]] = await r.json(); } catch { /* */ } }
-});
 await pg.goto(BASE + '/');
-const logado = async () => (await pg.locator('text=/Meus Orçamentos|INSTALACOES/i').count()) > 0;
+const logado = async () => (await pg.locator('text=/Chama Solar Instala|Meus Orçamentos/i').count()) > 0;
 
-/* ---------- utilidades de tela (Angular Material) ---------- */
-async function clicarTexto(re) { const b = pg.locator('button, a').filter({ hasText: re }).first(); await b.click(); await pg.waitForLoadState('networkidle').catch(() => {}); await pausa(800); }
-async function escolherSelect(fc, texto) {
+/* ---------- utilidades ---------- */
+const botao = (texto) => pg.locator('button:visible').filter({ hasText: texto }).first();
+async function proximo() { await botao(/^\s*PRÓXIMO\s*$/).click(); await pg.waitForLoadState('networkidle').catch(() => {}); await pausa(1500); }
+async function matSelect(seletor, texto) {
   if (!texto) return;
-  const s = pg.locator(`mat-select[formcontrolname="${fc}"]`).first();
-  if (!(await s.count())) return;
-  await s.click(); await pausa(500);
-  const op = pg.locator('mat-option').filter({ hasText: new RegExp(texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }).first();
+  await pg.locator(seletor).first().click(); await pausa(600);
+  const op = pg.locator('mat-option').filter({ hasText: new RegExp('^\\s*' + texto.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&') + '\\s*$', 'i') }).first();
   if (await op.count()) await op.click(); else await pg.keyboard.press('Escape');
-  await pausa(900);
+  await pausa(1200);
 }
-async function lerCampos() { // descreve os campos da tela atual (para etapas ainda não mapeadas)
-  return pg.evaluate(async () => {
-    const campos = [];
-    for (const s of document.querySelectorAll('mat-select[formcontrolname]')) {
-      const fc = s.getAttribute('formcontrolname'); if (fc === 'site') continue;
-      const rot = s.closest('mat-form-field, div')?.innerText.split('\n')[0] || fc;
-      s.querySelector('.mat-select-trigger')?.click(); await new Promise((r) => setTimeout(r, 500));
-      const opcoes = [...document.querySelectorAll('mat-option')].map((o) => o.innerText.trim());
-      document.querySelector('.cdk-overlay-backdrop')?.click(); await new Promise((r) => setTimeout(r, 300));
-      campos.push({ fc, rotulo: rot.trim(), tipo: 'select', opcoes });
-    }
-    for (const i of document.querySelectorAll('input[formcontrolname]:not([type=hidden])')) {
-      campos.push({ fc: i.getAttribute('formcontrolname'), rotulo: i.closest('mat-form-field, label, div')?.innerText.split('\n')[0]?.trim() || i.getAttribute('formcontrolname'), tipo: i.type === 'number' ? 'numero' : 'texto', valor: i.value });
-    }
-    return campos;
-  });
+async function listaCustom(rotulo, texto) { // dropdowns próprios da tela de estrutura
+  await pg.getByText(rotulo, { exact: true }).locator('xpath=following-sibling::*[1]').click().catch(async () => { await pg.getByText(rotulo, { exact: true }).locator('..').click(); });
+  await pausa(600);
+  await pg.getByText(texto, { exact: true }).last().click(); await pausa(1200);
 }
-async function preencherCampos(valores) {
-  for (const [fc, v] of Object.entries(valores || {})) {
-    if (await pg.locator(`mat-select[formcontrolname="${fc}"]`).count()) await escolherSelect(fc, String(v));
-    else { const i = pg.locator(`input[formcontrolname="${fc}"]`).first(); if (await i.count()) { await i.fill(String(v)); await pausa(300); } }
+async function linhas(filtro) { // linhas das tabelas (módulos, inversores, itens)
+  return pg.evaluate((filtro) => [...document.querySelectorAll('tr')].map((r, i) => {
+    const t = r.innerText.replace(/\s+/g, ' ').trim(); if (!new RegExp(filtro, 'i').test(t)) return null;
+    const sku = (t.match(/Código:\s*(\S+)/) || [])[1]; const q = [...r.querySelectorAll('input')].find((x) => x.type !== 'radio' && x.type !== 'checkbox');
+    return { i, sku, nome: t.split(' Código:')[0], qtd: q ? +q.value || 0 : 0, qtdSugerida: +((t.match(/Qtd sugerida:\s*(\d+)/) || [])[1] || 0),
+      potencia: (t.match(/Detalhes\s+([\d.]+)\s/) || [])[1], overload: (t.match(/(-?[\d,]+)%\s*Overload/) || [])[1] };
+  }).filter((x) => x && x.sku), filtro);
+}
+async function ajustarQtd(skuAlvo, alvo) { // usa + / − da própria linha (o Angular registra o clique)
+  const linha = pg.locator('tr').filter({ hasText: 'Código: ' + skuAlvo }).first();
+  for (let k = 0; k < 300; k++) {
+    const atual = +(await linha.locator('input:not([type=radio]):not([type=checkbox])').first().inputValue().catch(() => '0')) || 0;
+    if (atual === alvo) return;
+    await linha.locator('button, mat-icon, span').filter({ hasText: atual < alvo ? /^add$/ : /^remove$/ }).last().click(); await pausa(120);
   }
 }
-async function lerCartoes() { // cartões "Cód: ..." da etapa atual, na ordem do portal
-  return pg.evaluate(() => [...document.querySelectorAll('*')].filter((e) => e.children.length === 0 && /^Cód:/.test(e.innerText || ''))
-    .map((e) => { let c = e; for (let k = 0; k < 8 && c && !c.querySelector('input'); k++) c = c.parentElement; const t = (c?.innerText || '').split('\n').map((x) => x.trim()).filter(Boolean);
-      const preco = (c?.innerText.match(/R\$\s*([\d.]+,\d{2})/) || [])[1]; const qtd = c?.querySelector('input[type=number], input:not([type=radio])')?.value;
-      return { sku: e.innerText.replace('Cód:', '').trim(), nome: t.find((x) => /MODULO|INVERSOR|MICRO/i.test(x)) || t[2] || '', potencia: (t.find((x) => /W[p]?$/i.test(x)) || ''), qtdSugerida: qtd ? +qtd : null, preco: preco ? +preco.replace(/\./g, '').replace(',', '.') : null }; }));
-}
-async function selecionarCartao(sku, qtd) {
-  await pg.evaluate(({ sku, qtd }) => {
-    const e = [...document.querySelectorAll('*')].find((x) => x.children.length === 0 && (x.innerText || '').trim() === 'Cód: ' + sku);
-    let c = e; for (let k = 0; k < 8 && c && !c.querySelector('input[type=radio], mat-radio-button'); k++) c = c.parentElement;
-    (c.querySelector('mat-radio-button label, input[type=radio]') || c).click();
-    if (qtd) { const i = [...c.querySelectorAll('input')].find((x) => x.type !== 'radio'); if (i) { i.value = qtd; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); } }
-  }, { sku, qtd });
-  await pausa(600);
-}
-async function lerItensTabela() { // componentes: linhas com descrição + quantidade
-  return pg.evaluate(() => [...document.querySelectorAll('tr, mat-row, .item, [class*=component]')].map((r, i) => {
-    const q = r.querySelector('input'); const t = r.innerText.replace(/\s+/g, ' ').trim(); if (!q || !t) return null;
-    const preco = (t.match(/R\$\s*([\d.]+,\d{2})/) || [])[1];
-    return { id: i, nome: t.slice(0, 90), qtd: +q.value || 0, precoUn: preco ? +preco.replace(/\./g, '').replace(',', '.') : null };
-  }).filter(Boolean));
-}
-async function ajustarItens(itens) {
-  await pg.evaluate((itens) => {
-    const linhas = [...document.querySelectorAll('tr, mat-row, .item, [class*=component]')];
-    for (const it of itens) { const q = linhas[it.id]?.querySelector('input'); if (q && +q.value !== it.qtd) { q.value = it.qtd; q.dispatchEvent(new Event('input', { bubbles: true })); q.dispatchEvent(new Event('change', { bubbles: true })); } }
-  }, itens || []);
-  await pausa(700);
-}
-async function lerFinal() {
-  const t = await pg.evaluate(() => document.body.innerText);
-  const valores = [...t.matchAll(/R\$\s*([\d.]+,\d{2})/g)].map((m) => +m[1].replace(/\./g, '').replace(',', '.'));
-  const total = t.match(/(TOTAL|Valor do kit|Valor total)[^\n]*?R\$\s*([\d.]+,\d{2})/i);
-  const num = t.match(/Or[çc]amento\s*(n[ºo°.]*)?\s*[:#]?\s*(\d{4,})/i);
-  return { valorKit: total ? +total[2].replace(/\./g, '').replace(',', '.') : Math.max(...valores), numero: num ? num[2] : 'ver em Meus Orçamentos' };
-}
+async function ajustarItens(itens) { for (const it of itens || []) if (it.sku) await ajustarQtd(it.sku, Math.max(+it.qtd || 0, 0)); }
 
-/* ---------- etapas ---------- */
-const sessao = { escolhas: {} };
+/* ---------- etapas (mesma numeração do sistema) ---------- */
 async function passo(etapa, e = {}) {
-  if (!(await logado())) throw new Error('Sessão da Belenergy expirou: faça login na janela do robô e tente de novo.');
-  Object.assign(sessao.escolhas, e);
+  if (!(await logado())) throw new Error('A sessão da Belenergy expirou: faça login na janela do robô e tente de novo.');
   if (etapa === 0) {
-    await pg.goto(BASE + '/energy/escolha-metodo'); await pausa(1200);
-    await clicarTexto(/ESCOLHER/); // Convencional (primeiro)
+    await pg.goto(BASE + '/energy/escolha-metodo'); await pausa(1500);
+    await botao(/ESCOLHER/).click(); await pausa(2000);
     await pg.locator('#inputPotencia').fill(String(e.kwp));
-    await pg.locator('button').filter({ hasText: 'navigate_next' }).first().click(); await pausa(2500);
-    const ord = pg.locator('select').filter({ hasText: /Menor Pre/ }).first(); if (await ord.count()) await ord.selectOption({ label: 'Menor Preço Por Watt' }).catch(() => {});
+    await pg.locator('button').filter({ hasText: 'navigate_next' }).first().click(); await pausa(3500);
+    await pg.locator('select').filter({ hasText: 'Menor Preço Por Watt' }).first().selectOption({ label: 'Menor Preço Por Watt' }).catch(() => {});
     await pausa(1200);
-    return { etapa: 1, opcoes: { modulos: await lerCartoes(), bruto: ultimas.Modulos ?? null } };
+    const mods = (await linhas('MODULO')).map((m) => ({ sku: m.sku, nome: m.nome.replace(/^MODULO\s*/i, ''), potenciaW: num(m.potencia) || num((m.nome.match(/(\d{3,4})W/) || [])[1]), qtdSugerida: m.qtdSugerida || m.qtd }));
+    return { etapa: 1, opcoes: { modulos: mods.map((m) => ({ ...m, kwp: Math.round(m.qtdSugerida * m.potenciaW / 10) / 100 })) } };
   }
   if (etapa === 1) {
-    await selecionarCartao(e.moduloSku, e.moduloQtd); await clicarTexto(/PRÓXIMO/); await pausa(1500);
-    return { etapa: 2, opcoes: { campos: await lerCampos(), inversores: null } };
+    const linha = pg.locator('tr').filter({ hasText: 'Código: ' + e.moduloSku }).first();
+    if (e.moduloQtd) await ajustarQtd(e.moduloSku, +e.moduloQtd);
+    await linha.locator('input[type=radio]').first().check({ force: true }); await pausa(600);
+    await proximo();
+    const opcoes = async (fc) => { await pg.locator(`mat-select[formcontrolname="${fc}"]`).click(); await pausa(700); const t = await pg.locator('mat-option').allInnerTexts(); await pg.keyboard.press('Escape'); await pausa(300); return t.map((x) => x.trim()); };
+    return { etapa: 2, opcoes: { tipos: await opcoes('tipoInversor'), ligacoes: ['MONOFÁSICO', 'BIFÁSICO', 'TRIFÁSICO'], tensoes: {}, fabricantes: (await pg.locator('ng-multiselect-dropdown li').allInnerTexts()).map((x) => x.trim()).filter((x) => x && !/Marcar Todos/i.test(x)), inversores: null } };
   }
   if (etapa === 2 && e.filtrar) {
-    await escolherSelect('tipoInversor', e.tipoInversor); await escolherSelect('tipoLigacao', e.ligacao);
-    await escolherSelect('tensaoNominal', e.tensao); await escolherSelect('fabricante', e.fabricante);
-    await clicarTexto(/FILTRAR/); await pausa(2000);
-    return { etapa: 2, opcoes: { campos: await lerCampos(), inversores: await lerCartoes(), bruto: ultimas.InversorFiltro ?? null } };
+    await matSelect('mat-select[formcontrolname="tipoInversor"]', e.tipoInversor);
+    await matSelect('mat-select[formcontrolname="tipoLigacao"]', e.ligacao);
+    await pg.locator('mat-select[formcontrolname="tensaoNominal"]').click(); await pausa(600);
+    const tensoes = (await pg.locator('mat-option').allInnerTexts()).map((x) => x.trim());
+    await pg.locator('mat-option').filter({ hasText: e.tensao && tensoes.includes(e.tensao) ? e.tensao : tensoes[0] }).first().click(); await pausa(1200);
+    if (e.fabricantes && e.fabricantes.length) {
+      await pg.locator('ng-multiselect-dropdown .dropdown-btn').click(); await pausa(500);
+      for (const f of e.fabricantes) await pg.locator('ng-multiselect-dropdown li').filter({ hasText: new RegExp('^\\s*' + f + '\\s*$') }).click();
+      await pg.locator('body').click({ position: { x: 5, y: 5 } }); await pausa(400);
+    }
+    await botao(/FILTRAR/).click(); await pausa(3500);
+    const invs = (await linhas('INVERSOR|MICRO')).map((v) => ({ sku: v.sku, nome: v.nome.replace(/^INVERSOR DE CORRENTE\s*/i, 'Inversor '), potenciaKw: num((v.nome.match(/(\d+(?:\.\d+)?)KW/i) || [])[1]), qtd: v.qtdSugerida || 1, overload: num(v.overload), tipo: /H[IÍ]BRID/i.test(v.nome) ? 'hibrido' : /MICRO/i.test(v.nome) ? 'micro' : 'string', fabricante: (v.nome.match(/(AUXSOL|DEYE|GROWATT|HUAWEI|SOLIS|SUNGROW|HOYMILES|TSUNESS|ENPHASE)/i) || [])[1] || '' }));
+    return { etapa: 2, opcoes: { tipos: [e.tipoInversor], ligacoes: [e.ligacao], tensoes: { [e.ligacao]: tensoes }, fabricantes: [], inversores: invs } };
   }
-  if (etapa === 2) { await selecionarCartao(e.inversorSku); await clicarTexto(/PRÓXIMO/); await pausa(1500); return { etapa: 3, opcoes: { campos: await lerCampos() } }; }
-  if (etapa === 3) { await preencherCampos(e.campos); await clicarTexto(/PRÓXIMO/); await pausa(1500); return { etapa: 4, opcoes: { componentes: await lerItensTabela() } }; }
-  if (etapa === 4) { await ajustarItens(e.componentes); await clicarTexto(/PRÓXIMO/); await pausa(1500); return { etapa: 5, opcoes: { eletricos: await lerItensTabela() } }; }
-  if (etapa === 5) { await ajustarItens(e.eletricos); await clicarTexto(/PRÓXIMO/); await pausa(1500); return { etapa: 6, opcoes: { campos: await lerCampos() } }; }
+  if (etapa === 2) {
+    await pg.locator('tr').filter({ hasText: 'Código: ' + e.inversorSku }).first().locator('input[type=checkbox]').check({ force: true }); await pausa(600);
+    await proximo();
+    const tipos = []; // lê as opções reais de tipo de estrutura
+    await pg.getByText('Tipo de estrutura', { exact: true }).locator('xpath=following-sibling::*[1]').click().catch(() => {}); await pausa(600);
+    for (const t of ['Colonial', 'Telha Fibrocimento', 'Telha Metálico', 'Telha Shingle', 'Laje', 'Solo']) if (await pg.getByText(t, { exact: true }).count()) tipos.push(t);
+    await pg.keyboard.press('Escape');
+    const estruturas = Object.fromEntries(tipos.map((t) => [t, []]));
+    return { etapa: 3, opcoes: { estruturas, orientacoes: ['Retrato', 'Paisagem'], sugestao: { linhas: 1, modulosPorLinha: 0 }, detalhesSobDemanda: true } };
+  }
+  if (etapa === 3) {
+    if (e.semEstrutura) { await pg.getByText('Sem Estrutura', { exact: true }).click(); await pausa(800); return { etapa: 4, opcoes: { itens: [] } }; }
+    await listaCustom('Tipo de estrutura', e.estruturaTipo);
+    if (e.estruturaDetalhe) await listaCustom('Detalhes da Estrutura', e.estruturaDetalhe);
+    await pg.locator('#numero-linhas').fill(String(e.linhas)); await pg.locator('#modulos-linha').fill(String(e.modulosPorLinha));
+    await matSelect('#tipo-orientacao', e.orientacao || 'Retrato');
+    await botao(/CALCULAR ESTRUTURA/).click(); await pausa(4000);
+    return { etapa: 4, opcoes: { itens: (await linhas('Código:')).map((x) => ({ sku: x.sku, nome: x.nome, qtd: x.qtd })) } };
+  }
+  if (etapa === 4 || etapa === 5) {
+    await ajustarItens(e.itens); await proximo();
+    return { etapa: etapa + 1, opcoes: { itens: (await linhas('Código:')).map((x) => ({ sku: x.sku, nome: x.nome, qtd: x.qtd })) } };
+  }
   if (etapa === 6) {
-    await preencherCampos(e.campos);
-    await clicarTexto(/FINALIZAR|GERAR OR[ÇC]AMENTO|SALVAR OR[ÇC]AMENTO/); await pausa(2500);
-    return { etapa: 7, final: await lerFinal() };
+    await ajustarItens(e.itens); await proximo();
+    const t = await pg.evaluate(() => document.body.innerText);
+    return { etapa: 7, opcoes: { fretes: ['Cliente Retira', 'Transportadora escolhida pelo cliente', 'Belenus Entrega no Cliente'], pagamentos: ['Plano de Pagamento', 'Outras Formas de Pagamento'], valorProdutos: num((t.match(/Valor dos produtos:\s*R\$\s*([\d.,]+)/) || [])[1]) } };
+  }
+  if (etapa === 7) {
+    const nome = pg.getByText('Nome da proposta:', { exact: false }).locator('xpath=following::input[1]');
+    if (e.nome) await nome.fill(e.nome).catch(() => {});
+    if (e.estadoEntrega) await pg.locator('select').filter({ hasText: 'SP' }).first().selectOption(e.estadoEntrega).catch(() => {});
+    await pausa(800);
+    if (e.cidadeEntrega) await pg.locator('select').filter({ hasText: 'Ribeirão Preto' }).first().selectOption({ label: e.cidadeEntrega }).catch(() => {});
+    if (e.frete) await pg.locator('select').filter({ hasText: 'Cliente Retira' }).first().selectOption({ label: e.frete }).catch(() => {});
+    await pausa(2500);
+    if (e.pagamento && /Outras/.test(e.pagamento)) await pg.getByText('Outras Formas de Pagamento').first().click().catch(() => {});
+    await pausa(1200);
+    let t = await pg.evaluate(() => document.body.innerText);
+    const valor = num((t.match(/Valor da proposta:\s*R\$\s*([\d.,]+)/) || [])[1]);
+    const produtos = num((t.match(/Valor dos produtos:\s*R\$\s*([\d.,]+)/) || [])[1]);
+    let numero = 'não salvo';
+    if (e.salvar) { // só com autorização explícita do vendedor
+      await botao(/^\s*Salvar\s*$/).click(); await pausa(3500);
+      t = await pg.evaluate(() => document.body.innerText);
+      numero = (t.match(/(?:Or[çc]amento|Proposta)\s*(?:n[ºo°.]*)?\s*[:#]?\s*(\d{4,})/i) || [])[1] || 'salvo (ver Meus Orçamentos)';
+    }
+    // "Comprar Agora" NUNCA é clicado por este robô.
+    return { etapa: 8, final: { valorKit: valor || produtos, valorProdutos: produtos, frete: Math.max((valor || produtos) - produtos, 0), numero } };
   }
   throw new Error('Etapa desconhecida: ' + etapa);
 }
 
-/* ---------- servidor local para o sistema ---------- */
+/* Detalhes da estrutura dependem do tipo: rota extra para o sistema buscar */
+async function detalhes(tipo) {
+  await listaCustom('Tipo de estrutura', tipo);
+  await pg.getByText('Detalhes da Estrutura', { exact: true }).locator('xpath=following-sibling::*[1]').click().catch(() => {}); await pausa(700);
+  const t = await pg.evaluate(() => [...document.querySelectorAll('*')].filter((e) => e.children.length === 0 && /^Modelo /.test((e.innerText || '').trim())).map((e) => e.innerText.trim()));
+  await pg.keyboard.press('Escape'); return [...new Set(t)];
+}
+
+/* ---------- servidor local ---------- */
 let fila = Promise.resolve();
 http.createServer((req, res) => {
   const origem = req.headers.origin || 'null';
@@ -152,27 +170,12 @@ http.createServer((req, res) => {
   res.setHeader('Content-Type', 'application/json');
   if (req.method === 'OPTIONS') return res.end();
   if (!ok) { res.statusCode = 403; return res.end(JSON.stringify({ erro: 'Origem não autorizada' })); }
-  let corpo = ''; req.on('data', (c) => { corpo += c; if (corpo.length > 1e5) req.destroy(); });
+  let corpo = ''; req.on('data', (c) => { corpo += c; if (corpo.length > 2e5) req.destroy(); });
   req.on('end', () => {
     if (req.url === '/status') return logado().then((l) => res.end(JSON.stringify({ ok: true, logado: l })));
-    if (req.url === '/passo' && req.method === 'POST') {
-      fila = fila.then(async () => { // uma etapa por vez
-        try { const { etapa, entrada } = JSON.parse(corpo || '{}'); res.end(JSON.stringify(await passo(+etapa, entrada))); }
-        catch (e) { res.statusCode = 500; res.end(JSON.stringify({ erro: String(e.message || e) })); }
-      });
-      return;
-    }
+    const rodar = (fn) => { fila = fila.then(async () => { try { res.end(JSON.stringify(await fn())); } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ erro: String(e.message || e) })); } }); };
+    if (req.url === '/passo' && req.method === 'POST') { const { etapa, entrada } = JSON.parse(corpo || '{}'); return rodar(() => passo(+etapa, entrada)); }
+    if (req.url === '/detalhes' && req.method === 'POST') { const { tipo } = JSON.parse(corpo || '{}'); return rodar(async () => ({ detalhes: await detalhes(tipo) })); }
     res.statusCode = 404; res.end('{}');
   });
 }).listen(PORTA, '127.0.0.1', () => console.log(`Cotador pronto em http://127.0.0.1:${PORTA}. Faça login na janela, se pedir.`));
-
-/* ---------- modo mapear: você navega, ele grava os campos de cada tela ---------- */
-if (MAPEAR) {
-  const mapa = []; let ultimaUrl = '';
-  console.log('MODO MAPEAR: faça um orçamento completo no Personalize seu Gerador. Eu gravo cada tela em mapa-telas.json.');
-  setInterval(async () => {
-    const u = pg.url(); if (u === ultimaUrl || !/\/energy\//.test(u)) return; ultimaUrl = u; await pausa(2500);
-    mapa.push({ url: u, campos: await lerCampos().catch(() => []), botoes: await pg.locator('button').allInnerTexts().catch(() => []), itens: await lerItensTabela().catch(() => []), respostas: Object.keys(ultimas) });
-    fs.writeFileSync('mapa-telas.json', JSON.stringify(mapa, null, 2)); console.log('  tela gravada:', u);
-  }, 1500);
-}
