@@ -198,6 +198,7 @@
       <button type="button" class="btn-g laranja" id="aceitar">Quero agendar a visita gratuita</button>
       <a class="btn-g verde" href="${zapVend()}" target="_blank" rel="noopener" id="zap">${Icone('conversa')} Conversar com o ${esc(vend)}</a>
       <a class="btn-g contorno" id="compartilhar" href="https://wa.me/?text=${encodeURIComponent(msgFam)}" target="_blank" rel="noopener">${Icone('pessoas')} Mandar para um familiar</a>
+      ${window.Documentos ? `<button class="btn-g contorno" id="baixarPdf" type="button">${Icone('documento')} Baixar em PDF</button>` : ''}
       <p class="mini-p">Preço do material garantido até ${validade.toLocaleDateString('pt-BR')}.</p>
       ${passos()}`;
   }
@@ -209,13 +210,14 @@
 
   /* ---------- Interações ---------- */
   raiz.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-prazo],[data-op],[data-hr],#aceitar,#compartilhar,#zap,#zap-fixo,#letra,#ouvir');
+    const t = ev.target.closest('[data-prazo],[data-op],[data-hr],#aceitar,#compartilhar,#baixarPdf,#zap,#zap-fixo,#letra,#ouvir');
     if (!t) return;
     if (t.dataset.prazo !== undefined) { est.prazo = +t.dataset.prazo; registrar('simulou', { prazo: est.prazo }); desenhar(); }
     else if (t.dataset.op !== undefined) { est.opcao = +t.dataset.op; registrar('escolheu', { opcao: est.opcao }); desenhar(); $('#t-sis').scrollIntoView({ behavior: 'smooth' }); }
     else if (t.dataset.hr) { est.hr = t.dataset.hr; document.querySelectorAll('[data-hr]').forEach((b) => b.setAttribute('aria-pressed', b === t)); }
     else if (t.id === 'zap' || t.id === 'zap-fixo') registrar('whatsapp', {});
     else if (t.id === 'compartilhar') registrar('compartilhou', { para: 'familiar' });
+    else if (t.id === 'baixarPdf') { registrar('viu', { secao: 'pdf' }); Documentos.proposta({ ...o, opcaoEscolhida: est.opcao }, p, location.href.replace(/&v=1/, '')); }
     else if (t.id === 'letra') { const on = document.documentElement.classList.toggle('maior'); t.setAttribute('aria-pressed', on); try { localStorage.setItem('sol2_letra', on ? '1' : ''); } catch { /* */ } }
     else if (t.id === 'ouvir') falar(t);
     else if (t.id === 'aceitar') {

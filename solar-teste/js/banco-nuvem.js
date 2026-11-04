@@ -70,7 +70,7 @@
   function paramsPublicos(p) {
     const z = json(p);
     Object.assign(z, { maoDeObraPorPlaca: 0, art: 0, materialCaBase: 0, materialCaPorKwp: 0, fretePadrao: 0, freteIncluso: true, custoKm: 0, trocaPadrao: 0,
-      reservaGarantia: 0, custoFixoMes: 0, obrasPrevistasMes: 1, impostoTotal: 0, impostoServico: 0, reservaNegociacao: 0 });
+      reservaGarantia: 0, custoFixoMes: 0, obrasPrevistasMes: 1, kwpPrevistosMes: 0, kitRefWp: 0, impostoTotal: 0, impostoServico: 0, reservaNegociacao: 0 });
     z.taxaPagamento = Object.fromEntries(Object.keys(p.taxaPagamento || {}).map((k) => [k, 0]));
     z.margens = (p.margens || []).map((m) => ({ ...m, margem: 0 }));
     z.engenharia = (p.engenharia || []).map((f) => ({ ...f, valor: 0 }));
@@ -114,7 +114,7 @@
 
     parametros() { return publico ? json(publico.parametros) : Object.assign(json(D.parametros), json(paramVigente)); },
     salvarParametros(p) {
-      paramVigente = json(p);
+      paramVigente = { ...paramVigente, ...json(p) };
       enfileirar(async () => {
         await api('sol_parametros?vigente=eq.true', { method: 'PATCH', body: JSON.stringify({ vigente: false }) });
         await api('sol_parametros', { method: 'POST', body: JSON.stringify({ vigente: true, dados: paramVigente }) });

@@ -36,6 +36,8 @@
     // Custo fixo rateado
     custoFixoMes: 6000,                 // TESTE — aguardando custos reais
     obrasPrevistasMes: 4,
+    kitRefWp: 1.35,                     // resposta rápida: kit médio por Wp (ajustar com as cotações)
+    moduloRefW: 685,
     kwpPrevistosMes: 0,                 // meta de kWp vendidos/mês; > 0 rateia o custo fixo por kWp
 
     // Percentuais sobre o preço

@@ -52,7 +52,7 @@
     app.innerHTML = `${cabCelular()}
       <div class="cab entra"><div><h1>${h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'}, ${esc(D.empresa.vendedor)}.</h1>
         <p class="sutil">${f.quentes ? `<b style="color:var(--sol)">${f.quentes} cliente(s) quente(s)</b> agora. Comece por ele(s).` : 'Nenhum cliente quente agora. Bom momento para follow-up.'}</p></div>
-        <a class="btn sol" href="#novo">＋ Novo orçamento</a></div>
+        <div class="linha-h"><button class="btn vidro" id="rapida">⚡ Resposta rápida</button><a class="btn sol" href="#novo">＋ Novo orçamento</a></div></div>
       <div class="kpis entra">
         <div class="kpi destaque"><span class="rotulo">Em negociação</span><b>${brl(ativos.reduce((s, x) => s + x.a.op.preco.precoFinal, 0))}</b><span class="sutil">${ativos.length} proposta(s) ativa(s)</span></div>
         <div class="kpi"><span class="rotulo">Quentes agora</span><b>${f.quentes}</b><span class="sutil">mexendo na proposta</span></div>
@@ -76,6 +76,66 @@
 
   /* ======================= FICHA DO LEAD ======================= */
   let agenteAtual = 'diagnostico', entradaAgente = { texto: '', conc: {} };
+  /* ======================= RESPOSTA RÁPIDA =======================
+     Lead chegou: em 1 minuto manda uma faixa de preço e a economia,
+     antes do orçamento completo. Quem responde primeiro vende mais. */
+  function estimativaRapida(dados) {
+    const p = P(), o = { cidade: dados.cidade || 'Ribeirão Preto', ligacao: dados.ligacao || 'bi', consumos: Array(12).fill(dados.kwh), orientacao: '?', tarifaKwh: p.tarifaKwh };
+    const e = C.entrada(o), disp = M.DISPONIBILIDADE[o.ligacao] ?? 50;
+    const alvo = Math.max(e.consumoMedio - disp, 0) * (1 + (p.margemGeracao || 0));
+    const wMod = p.moduloRefW || 685, placas = Math.max(Math.ceil((alvo / (e.hsp * 30 * p.pr)) * 1000 / wMod - 0.05), 2);
+    const kwp = (placas * wMod) / 1000, ger = kwp * e.hsp * 30 * p.pr;
+    const kit = (p.kitRefWp || 1.35) * kwp * 1000;
+    const pr = M.precificar({ ...e, kit, placas, kwp, formaPagamento: 'avista', comissaoParceria: 0, kitFaturadoDireto: false, descontoPct: 0 }, p);
+    const eco = M.economia({ ...e, geracaoMes: ger, investimento: pr.precoFinal, anoInicio: p.anoBase }, p);
+    const arred = (v) => Math.round(v / 100) * 100;
+    return { kwp, placas, ger, min: arred(pr.precoFinal * 0.95), max: arred(pr.precoFinal * 1.07), eco, parcela: M.parcelaPrice(pr.precoFinal, p.financiamento.jurosMes, p.financiamento.prazos[p.financiamento.prazos.length - 1]), prazo: p.financiamento.prazos[p.financiamento.prazos.length - 1] };
+  }
+  function respostaRapida() {
+    const p = P(), ov = document.createElement('div');
+    ov.className = 'modal-rapida';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:80;background:#0009;display:grid;place-items:center;padding:16px';
+    ov.innerHTML = `<div class="painel" style="max-width:520px;width:100%;max-height:92vh;overflow:auto">
+      <div class="entre"><span class="rotulo" style="color:var(--sol)">⚡ Resposta rápida</span><button class="link" data-fechar>fechar</button></div>
+      <p class="sutil" style="margin:6px 0 12px">Mande em 1 minuto uma faixa de preço e a economia. O orçamento completo vem depois da visita.</p>
+      <div class="grade g2"><label class="campo"><span>Nome</span><input id="rr-nome" type="text"></label><label class="campo"><span>WhatsApp</span><input id="rr-zap" type="tel" placeholder="16 99999-9999"></label>
+        <label class="campo"><span>Consumo médio (kWh) ou conta (R$)</span><input id="rr-kwh" type="number" placeholder="ex.: 450"></label>
+        <label class="campo"><span>É kWh ou R$?</span><select id="rr-unid"><option value="kwh">kWh por mês</option><option value="rs">R$ da conta</option></select></label>
+        <label class="campo"><span>Cidade</span><select id="rr-cid">${Object.keys(D.cidades).map((c) => `<option ${c === 'Ribeirão Preto' ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+        <label class="campo"><span>Ligação</span><select id="rr-lig"><option value="mono">Monofásica</option><option value="bi" selected>Bifásica</option><option value="tri">Trifásica</option></select></label></div>
+      <div id="rr-res" style="margin-top:12px" hidden><div class="numeros4" id="rr-num"></div>
+        <textarea id="rr-msg" rows="9" style="width:100%;margin-top:10px"></textarea>
+        <p class="mini" style="margin:6px 0 0">Estimativa com kit de referência de R$ ${n(p.kitRefWp || 1.35, 2)}/Wp (Parâmetros). O preço final sai do kit fechado da Belenergy.</p>
+        <div class="acoes-r" style="margin-top:10px"><button class="btn zap" id="rr-enviar">Enviar no WhatsApp e salvar lead</button><button class="btn vidro" id="rr-copiar">Copiar</button></div></div></div>`;
+    document.body.appendChild(ov);
+    const $o = (s) => ov.querySelector(s);
+    ov.onclick = (ev) => { if (ev.target === ov || ev.target.closest('[data-fechar]')) ov.remove(); };
+    const calc = () => {
+      let v = +$o('#rr-kwh').value; if (!v) { $o('#rr-res').hidden = true; ultimo = null; return; }
+      const kwh = $o('#rr-unid').value === 'rs' ? Math.round(v / p.tarifaKwh) : v;
+      const r = estimativaRapida({ kwh, cidade: $o('#rr-cid').value, ligacao: $o('#rr-lig').value });
+      const nome = ($o('#rr-nome').value.trim().split(' ')[0]) || '';
+      const msg = `Oi${nome ? ' ' + nome : ''}! Aqui é o ${D.empresa.vendedor}, da Chama Solar ☀️\n\nCom um consumo de ${n(kwh)} kWh por mês, o sistema ideal fica perto de ${n(r.kwp, 2)} kWp (${r.placas} placas), gerando cerca de ${n(r.ger)} kWh por mês.\n\n💰 Investimento: entre ${brl(r.min)} e ${brl(r.max)}\n📉 Sua conta cai de ${brl(r.eco.contaAtual)} para cerca de ${brl(r.eco.contaDepois)}\n🏦 Financiado: parcelas a partir de ${brl(r.parcela)} em ${r.prazo}x\n\nPara fechar o valor exato, preciso ver o telhado e a conta de luz. Posso passar aí amanhã? Leva 20 minutos.`;
+      ultimo = { kwh, r };
+      $o('#rr-res').hidden = false;
+      $o('#rr-num').innerHTML = `<div><span>Sistema</span><b>${n(r.kwp, 2)} kWp</b></div><div><span>Faixa de preço</span><b>${brl(r.min)} a ${brl(r.max)}</b></div><div><span>Conta hoje → depois</span><b>${brl(r.eco.contaAtual)} → ${brl(r.eco.contaDepois)}</b></div><div><span>Parcela ${r.prazo}x</span><b>${brl(r.parcela)}</b></div>`;
+      $o('#rr-msg').value = msg;
+    };
+    let ultimo = null;
+    $o('#rr-copiar').onclick = () => copiar($o('#rr-msg').value);
+    $o('#rr-enviar').onclick = () => {
+      if (!ultimo) { toast('Informe o consumo'); return; }
+      const { kwh, r } = ultimo, zap = $o('#rr-zap').value.replace(/\D/g, '');
+      if (!$o('#rr-nome').value.trim() || zap.length < 10) { toast('Preencha nome e WhatsApp'); return; }
+      const o = { ...novoOrc(), nome: $o('#rr-nome').value.trim(), whatsapp: $o('#rr-zap').value.trim(), cidade: $o('#rr-cid').value, ligacao: $o('#rr-lig').value, consumos: Array(12).fill(kwh), status: 'novo', origem: 'resposta rápida', estimativa: { min: r.min, max: r.max, kwp: r.kwp, em: new Date().toISOString() } };
+      B.salvar(o); B.interacao(o.id, 'whatsapp', 'Resposta rápida: faixa ' + brl(r.min) + ' a ' + brl(r.max));
+      window.open('https://wa.me/55' + zap.replace(/^55/, '') + '?text=' + encodeURIComponent($o('#rr-msg').value), '_blank', 'noopener');
+      ov.remove(); toast('Lead salvo. Agora marque a visita.'); render();
+    };
+    ov.querySelectorAll('input,select').forEach((x) => { x.oninput = calc; x.onchange = calc; });
+    $o('#rr-nome').focus();
+  }
+
   function ficha(id) {
     const o = B.obter(id);
     if (!o) { app.innerHTML = '<p>Orçamento não encontrado.</p>'; return; }
@@ -100,6 +160,19 @@
           <button class="btn vidro pequeno" id="copiarLink">Copiar link</button>
           <button class="btn vidro pequeno" id="editar">Editar orçamento</button>
         </div>
+      </div>
+      <div class="painel" style="margin-top:14px">
+        <div class="entre"><span class="rotulo">Documentos</span><span class="mini">${(() => { const f = Documentos.faltando(o, p); return f.length ? 'Falta: ' + esc(f.join(', ')) : 'Tudo pronto para contrato e procuração'; })()}</span></div>
+        <div class="acoes-r" style="margin-top:10px">
+          <button class="btn sol pequeno" id="docPdf">${Icone('documento')} Proposta em PDF</button>
+          <button class="btn vidro pequeno" id="docContrato">Contrato</button>
+          <button class="btn vidro pequeno" id="docProc">Procuração CPFL</button>
+        </div>
+        <details style="margin-top:10px"><summary class="link">Dados do cliente para contrato e procuração</summary>
+          <div class="grade g2" style="margin-top:10px">${[['documento', 'CPF ou CNPJ'], ['rg', 'RG'], ['estadoCivil', 'Estado civil'], ['profissao', 'Profissão'], ['endereco', 'Endereço completo (rua, nº, bairro, cidade, CEP)'], ['instalacao', 'Nº da instalação na CPFL'], ['condicao', 'Condição de pagamento (ex.: entrada + 60x)']]
+            .map(([c, r]) => `<label class="campo"><span>${r}</span><input type="text" data-ct="${c}" value="${esc((o.contrato || {})[c] || '')}"></label>`).join('')}</div>
+          <div class="acoes-r" style="margin-top:8px"><button class="btn sol pequeno" id="ctSalvar">Salvar dados</button></div>
+        </details>
       </div>
       <div class="ficha" style="margin-top:14px">
         <div>
@@ -150,6 +223,10 @@
     app.querySelectorAll('[data-ag]').forEach((b) => b.onclick = () => { agenteAtual = b.dataset.ag; app.querySelectorAll('[data-ag]').forEach((x) => x.classList.toggle('sel', x === b)); rodarAgente(); });
     rodarAgente();
     $('#copiarLink').onclick = () => copiar(link);
+    $('#docPdf').onclick = () => { Documentos.proposta(o, p, o.status !== 'novo' ? link : null); B.interacao(o.id, 'nota', 'Gerou a proposta em PDF'); };
+    $('#docContrato').onclick = () => Documentos.contrato(o, p);
+    $('#docProc').onclick = () => Documentos.procuracao(o, p);
+    $('#ctSalvar').onclick = () => { o.contrato = { ...(o.contrato || {}) }; app.querySelectorAll('[data-ct]').forEach((x) => { o.contrato[x.dataset.ct] = x.value.trim(); }); B.salvar(o); toast('Dados do contrato salvos'); ficha(o.id); };
     $('#abrirPV').onclick = () => { try { sessionStorage.setItem('sol2_abrir', JSON.stringify({ t: o.token, v: 1 })); } catch { /* sem armazenamento */ } };
     $('#enviarZap').onclick = () => { if (o.status === 'novo') { o.status = 'proposta'; o.enviadoEm = new Date().toISOString(); B.salvar(o); } B.interacao(o.id, 'whatsapp', 'Proposta enviada'); };
     $('#editar').onclick = () => { B.rascunho.gravar(o); B.rascunho.gravarEtapa(0); location.hash = '#novo'; };
@@ -588,6 +665,7 @@
   const CAMPOS = [
     ['Custo fixo', [['custoFixoMes', 'Custo fixo do mês (R$)', 1], ['kwpPrevistosMes', 'Meta de venda (kWp/mês)', 1], ['obrasPrevistasMes', 'Obras/mês (se meta = 0)', 1]]],
     ['Custos por obra', [['maoDeObraPorPlaca', 'Terceiro por placa (R$)', 1], ['art', 'ART (R$)', 1], ['materialCaBase', 'Material CA fixo (R$)', 1], ['materialCaPorKwp', 'Material CA/kWp (R$)', 1], ['custoKm', 'Custo por km (R$)', 1], ['visitasObra', 'Viagens por obra', 1], ['trocaPadrao', 'Troca de padrão (R$)', 1], ['reservaGarantia', 'Reserva garantia (% kit)', 100]]],
+    ['Resposta rápida', [['kitRefWp', 'Kit de referência (R$/Wp)', 1], ['moduloRefW', 'Placa de referência (W)', 1]]],
     ['Percentuais', [['impostoTotal', 'Imposto com kit (%)', 100], ['impostoServico', 'Imposto só serviço (%)', 100], ['reservaNegociacao', 'Reserva de negociação (%)', 100]]],
     ['Conversão e retorno', [['tarifaKwh', 'Tarifa padrão (R$/kWh)', 1], ['margemGeracao', 'Margem de geração (%)', 100], ['perdaOrientacao', 'Perda de segurança da orientação (%)', 100], ['reajusteAnual', 'Reajuste ao ano (%)', 100], ['simultaneidade', 'Simultaneidade (%)', 100], ['validadeDias', 'Validade da cotação (dias)', 1], ['manutencaoAnual', 'Manutenção/ano (R$)', 1], ['pr', 'PR (eficiência)', 1]]],
   ];
@@ -596,14 +674,15 @@
     app.innerHTML = `${cabCelular()}<div class="cab"><div><h1>Parâmetros</h1><p class="sutil">${B.nuvem ? 'Valores usados em todos os orçamentos. Cada vez que salvar, a versão anterior fica guardada.' : 'Valores de teste. Troque pelos reais quando tiver custo fixo, alíquota e preço do terceiro.'}</p></div></div>
       <div class="lado"><div>${CAMPOS.map(([t, cs]) => `<div class="painel"><span class="rotulo">${t}</span><div class="grade g2" style="margin-top:12px">${cs.map(([k, r, m]) => `<label class="campo"><span>${r}</span><input type="number" step="any" data-par="${k}" data-m="${m}" value="${+(p[k] * m).toFixed(4)}"></label>`).join('')}</div></div>`).join('')}</div>
       <div><div class="painel"><span class="rotulo">Margem por tamanho</span><table style="margin-top:8px">${p.margens.map((x, i) => `<tr><td>até ${x.ate >= 1e9 ? '∞' : x.ate} kWp</td><td class="v"><input type="number" step="0.5" data-mg="${i}" value="${+(x.margem * 100).toFixed(2)}" style="width:90px;padding:6px 8px;text-align:right"> %</td></tr>`).join('')}</table></div>
-        ${p.kwpPrevistosMes > 0 ? `<div class="painel"><span class="rotulo">Ponto de equilíbrio</span><p style="margin:8px 0 4px">Para pagar ${brl(p.custoFixoMes)} de custo fixo, a meta é vender <b>${n(p.kwpPrevistosMes)} kWp por mês</b>.</p><p class="sutil" style="margin:0">≈ ${Math.ceil(p.kwpPrevistosMes / 4.3)} obras de 4,3 kWp ou ${Math.ceil(p.kwpPrevistosMes / 10)} de 10 kWp. Vendendo menos, o custo fixo não fecha; vendendo mais, a margem vira lucro.</p></div>` : ''}<div class="painel"><span class="rotulo">Fórmula</span><p class="sutil" style="margin-top:8px">Preço = (custos diretos + taxa fixa) ÷ (1 − (impostos + taxa de pagamento + comissão + margem + reserva))</p></div>
-        <div class="acoes-r" style="margin-top:14px"><button class="btn sol" id="salvarP">Salvar</button><button class="btn vidro" id="resetP">Voltar ao teste</button></div></div></div>`;
+        ${p.kwpPrevistosMes > 0 ? `<div class="painel"><span class="rotulo">Ponto de equilíbrio</span><p style="margin:8px 0 4px">Para pagar ${brl(p.custoFixoMes)} de custo fixo, a meta é vender <b>${n(p.kwpPrevistosMes)} kWp por mês</b>.</p><p class="sutil" style="margin:0">≈ ${Math.ceil(p.kwpPrevistosMes / 4.3)} obras de 4,3 kWp ou ${Math.ceil(p.kwpPrevistosMes / 10)} de 10 kWp. Vendendo menos, o custo fixo não fecha; vendendo mais, a margem vira lucro.</p></div>` : ''}<div class="painel"><span class="rotulo">Dados da empresa para contrato e procuração</span><div class="grade g2" style="margin-top:10px">${[['razao', 'Razão social'], ['cnpj', 'CNPJ'], ['endereco', 'Endereço da sede'], ['cidadeForo', 'Foro (cidade/UF)'], ['respTecnico', 'Responsável técnico'], ['crea', 'CREA'], ['garantiaInstalacaoAnos', 'Garantia da instalação (anos)', 1], ['prazoInstalacaoDias', 'Prazo de instalação (dias)', 1]].map(([c, r, num]) => `<label class="campo"><span>${r}</span><input type="${num ? 'number' : 'text'}" data-emp="${c}" ${num ? 'data-num="1"' : ''} value="${esc(Documentos.empresaDe(p)[c] ?? '')}"></label>`).join('')}</div></div><div class="painel"><span class="rotulo">Fórmula</span><p class="sutil" style="margin-top:8px">Preço = (custos diretos + taxa fixa) ÷ (1 − (impostos + taxa de pagamento + comissão + margem + reserva))</p></div>
+        <div class="acoes-r" style="margin-top:14px"><button class="btn sol" id="salvarP">Salvar</button>${B.nuvem ? '' : '<button class="btn vidro" id="resetP">Voltar ao teste</button>'}</div></div></div>`;
     $('#salvarP').onclick = () => {
       const novoP = {}; app.querySelectorAll('[data-par]').forEach((i) => { novoP[i.dataset.par] = +i.value / +i.dataset.m; });
       novoP.margens = p.margens.map((x, i) => ({ ate: x.ate, margem: +app.querySelector(`[data-mg="${i}"]`).value / 100 }));
+      novoP.empresaDoc = { ...(p.empresaDoc || {}) }; app.querySelectorAll('[data-emp]').forEach((i) => { novoP.empresaDoc[i.dataset.emp] = i.dataset.num ? +i.value || 0 : i.value.trim(); });
       B.salvarParametros(novoP); toast('Parâmetros salvos');
     };
-    $('#resetP').onclick = () => { B.zerarParametros(); parametrosPag(); toast('Voltou aos valores de teste'); };
+    if ($('#resetP')) $('#resetP').onclick = () => { B.zerarParametros(); parametrosPag(); toast('Voltou aos valores de teste'); };
   }
 
 
@@ -666,6 +745,7 @@
   }
   $('#resetar').onclick = () => { B.zerarTudo(); B.semear(true); toast('Dados de teste recriados'); render(); };
   addEventListener('hashchange', render);
+  document.addEventListener('click', (e) => { if (e.target.closest('#rapida')) respostaRapida(); });
   // atualiza o painel/ficha quando o cliente mexe na proposta em outra aba
   addEventListener('storage', (e) => { if (e.key === 'sol2_eventos' && /^#(painel|lead)|^$/.test(location.hash)) render(); });
   render();
