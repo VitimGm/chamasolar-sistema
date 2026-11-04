@@ -48,7 +48,7 @@
     const enviados = info.filter((x) => x.o.status !== 'novo');
     const abertas = enviados.filter((x) => x.ev.some((e) => e.tipo === 'abriu')).length;
     const h = new Date().getHours();
-    const fazer = ativos.concat(info.filter((x) => x.o.status === 'ganho')).sort((a, b) => b.acao.prioridade - a.acao.prioridade || b.t.pontos - a.t.pontos).slice(0, 5);
+    const ag = Cadencia.agenda(lista, evDe, (id) => B.interacoes(id));
     app.innerHTML = `${cabCelular()}
       <div class="cab entra"><div><h1>${h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'}, ${esc(D.empresa.vendedor)}.</h1>
         <p class="sutil">${f.quentes ? `<b style="color:var(--sol)">${f.quentes} cliente(s) quente(s)</b> agora. Comece por ele(s).` : 'Nenhum cliente quente agora. Bom momento para follow-up.'}</p></div>
@@ -59,11 +59,12 @@
         <div class="kpi"><span class="rotulo">Propostas abertas</span><b>${enviados.length ? pct(abertas / enviados.length, 0) : '—'}</b><span class="sutil">${abertas} de ${enviados.length} enviadas</span></div>
         <div class="kpi"><span class="rotulo">Fechamento</span><b>${pct(f.taxa, 0)}</b><span class="sutil">${f.fechados} ganho(s) · ${f.perdidos} perdido(s) · Groner: 5,7%</span></div>
       </div>
-      <div class="secao-t"><h2>Fazer agora</h2><span class="sutil">ordenado pelo que mais aproxima do fechamento</span></div>
-      <div class="agora">${fazer.map((x) => `
-        <a class="acao p${x.acao.prioridade} entra" href="#lead-${x.o.id}"><div class="ic">${x.acao.icone}</div>
-          <div><b>${esc(x.o.nome)} <span class="temp ${x.t.nivel}">${x.t.rotulo}</span></b><p>${esc(x.acao.texto)}</p></div>
-          <span class="sutil">›</span></a>`).join('')}</div>
+      <div class="secao-t"><h2>Agenda de hoje</h2><span class="sutil">${ag.length ? ag.length + ' contato(s) · do mais quente para o resto' : 'nada vencido: bom momento para pedir indicação'} ${'Notification' in window && Notification.permission !== 'granted' ? '<button class="link" id="ativarAvisos">ativar avisos</button>' : ''}</span></div>
+      <div class="agora">${ag.slice(0, 12).map(({ o, passo }) => { const x = info.find((y) => y.o.id === o.id); return `
+        <div class="acao p${passo.quente ? 5 : passo.atrasoDias > 0 ? 4 : 3} entra" style="cursor:default"><div class="ic">${passo.quente ? '🔥' : passo.canal === 'ligacao' ? '📞' : '💬'}</div>
+          <div style="flex:1;min-width:0"><b><a href="#lead-${o.id}" style="color:inherit">${esc(o.nome)}</a> <span class="temp ${x ? x.t.nivel : ''}">${x ? x.t.rotulo : ''}</span></b>
+            <p>${passo.quente ? '<b>Está com a proposta aberta agora: ligue já.</b> ' : ''}<b>${esc(passo.id)} · ${esc(passo.titulo)}</b>${passo.atrasoDias > 0 ? ` <span style="color:var(--laranja)">(${passo.atrasoDias} dia(s) de atraso)</span>` : ''} — ${esc(passo.porque)}</p>
+            <div class="acoes-r" style="margin-top:6px"><button class="btn zap pequeno" data-cad="zap" data-id="${o.id}" data-passo="${passo.id}">WhatsApp</button><button class="btn vidro pequeno" data-cad="lig" data-id="${o.id}" data-passo="${passo.id}">Liguei</button><button class="link" data-cad="ok" data-id="${o.id}" data-passo="${passo.id}">pular</button></div></div></div>`; }).join('')}</div>
       <div class="secao-t"><h2>Funil</h2><span class="sutil">arraste para o lado no celular</span></div>
       <div class="funil">${STATUS.map(([s, rot]) => {
         const col = info.filter((x) => x.o.status === s).sort((a, b) => b.t.pontos - a.t.pontos);
@@ -746,6 +747,19 @@
   $('#resetar').onclick = () => { B.zerarTudo(); B.semear(true); toast('Dados de teste recriados'); render(); };
   addEventListener('hashchange', render);
   document.addEventListener('click', (e) => { if (e.target.closest('#rapida')) respostaRapida(); });
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#ativarAvisos')) { Notification.requestPermission().then(() => render()); return; }
+    const bt = e.target.closest('[data-cad]'); if (!bt) return;
+    const o = B.obter(bt.dataset.id); if (!o) return;
+    const passo = Object.values(Cadencia.PASSOS).flat().find((x) => x.id === bt.dataset.passo);
+    if (bt.dataset.cad === 'zap') {
+      const a = C.analisar(o, P()), txt = Cadencia.mensagem(passo, o, { a, link: linkProposta(o) });
+      window.open('https://wa.me/55' + String(o.whatsapp).replace(/\D/g, '').replace(/^55/, '') + '?text=' + encodeURIComponent(txt), '_blank', 'noopener');
+      B.interacao(o.id, 'whatsapp', `Cadência ${passo.id} · ${passo.titulo}`);
+      if (passo.id === 'P0' && o.status === 'novo') { o.status = 'proposta'; o.enviadoEm = new Date().toISOString(); B.salvar(o); }
+    } else B.interacao(o.id, bt.dataset.cad === 'lig' ? 'ligacao' : 'nota', `Cadência ${passo.id} · ${bt.dataset.cad === 'lig' ? passo.titulo : 'pulado'}`);
+    toast(bt.dataset.cad === 'ok' ? 'Passo pulado' : 'Registrado. Próximo passo agendado.'); render();
+  });
   // atualiza o painel/ficha quando o cliente mexe na proposta em outra aba
   addEventListener('storage', (e) => { if (e.key === 'sol2_eventos' && /^#(painel|lead)|^$/.test(location.hash)) render(); });
   render();

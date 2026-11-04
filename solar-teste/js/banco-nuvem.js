@@ -198,7 +198,18 @@
     if (!ehSolar) { document.body.innerHTML = '<div style="max-width:520px;margin:15vh auto;padding:24px;font:18px system-ui;color:#fff;text-align:center">Seu usuário ainda não tem acesso ao Chama Solar.<br><br><a style="color:#ffb066" href="' + LOGIN_CHAMAE + '">Voltar ao Chamae</a></div>'; throw new Error('sem-acesso'); }
     await Banco.carregar();
     // atualiza o painel quando o cliente mexe na proposta
-    setInterval(async () => { if (document.hidden || pendentes) return; try { const antes = eventos.length; await Banco.carregar(); if (eventos.length !== antes) dispatchEvent(new StorageEvent('storage', { key: 'sol2_eventos' })); } catch { /* */ } }, 60000);
+    setInterval(async () => { if (pendentes) return; try { const antes = eventos.length; await Banco.carregar(); if (eventos.length !== antes) { avisarNovos(eventos.slice(antes)); dispatchEvent(new StorageEvent('storage', { key: 'sol2_eventos' })); } } catch { /* */ } }, 60000);
+  }
+  /* aviso no computador/celular quando o cliente mexe na proposta (com a central aberta) */
+  const FRASE = { abriu: 'abriu a proposta agora', simulou: 'está simulando parcelas', compartilhou: 'mandou a proposta para a família', whatsapp: 'clicou para falar com você', aceite: 'ACEITOU a proposta', duvida: 'tem uma dúvida' };
+  function avisarNovos(novos) {
+    if (!('Notification' in raiz) || Notification.permission !== 'granted') return;
+    const vistos = new Set();
+    novos.filter((e) => FRASE[e.tipo]).forEach((e) => {
+      const chave = e.token + e.tipo; if (vistos.has(chave)) return; vistos.add(chave);
+      const o = orcs.find((x) => x.token === e.token); if (!o) return;
+      try { const nt = new Notification('Chama Solar · ' + o.nome, { body: o.nome.split(' ')[0] + ' ' + FRASE[e.tipo] + '. Toque para abrir a ficha.', tag: chave, icon: 'marca/logo-cor.webp' }); nt.onclick = () => { raiz.focus(); location.hash = '#lead-' + o.id; }; } catch { /* */ }
+    });
   }
   Banco.pronto = raiz.SOLAR_SEM_INICIO ? Promise.resolve() : iniciar();
   Banco.vitrineDe = vitrineDe;
