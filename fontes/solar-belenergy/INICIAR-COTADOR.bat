@@ -15,13 +15,14 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist "node_modules\playwright" (
-  echo Instalando o robo pela primeira vez. Leva uns minutos...
-  call npm install --no-audit --no-fund || goto erro
-)
-rem confere sempre o navegador do robo (rapido quando ja esta instalado)
-node -e "const fs=require('fs');process.exit(fs.existsSync(require('playwright').chromium.executablePath())?0:1)" >nul 2>nul
-if errorlevel 1 (
+echo Conferindo o robo (na primeira vez leva uns minutos)...
+call npm install --no-audit --no-fund --loglevel=error || goto erro
+rem usa o Google Chrome instalado; so baixa navegador proprio se nao houver Chrome
+set "TEMCHROME="
+if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set TEMCHROME=1
+if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" set TEMCHROME=1
+if exist "%LocalAppData%\Google\Chrome\Application\chrome.exe" set TEMCHROME=1
+if not defined TEMCHROME (
   echo Baixando o navegador do robo. Leva uns minutos...
   call npx playwright install chromium || goto erro
 )

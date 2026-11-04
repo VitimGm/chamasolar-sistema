@@ -25,7 +25,11 @@ const exato = (t) => new RegExp('^\\s*' + String(t).replace(/[.*+?^${}()|[\]\\/]
 const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
 const num = (t) => +String(t || '').replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '') || 0;
 
-const ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), { headless: false, viewport: { width: 1450, height: 900 } });
+// usa o Google Chrome já instalado no computador (não precisa baixar navegador); sem Chrome, usa o do Playwright
+const OPC = { headless: false, viewport: { width: 1450, height: 900 } };
+let ctx;
+try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), { ...OPC, channel: 'chrome' }); }
+catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
 await pg.goto(BASE + '/');
