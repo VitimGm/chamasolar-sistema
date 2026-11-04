@@ -147,7 +147,7 @@
       s.opcoes = { fretes: PORTAL.fretes, pagamentos: PORTAL.pagamentos, valorProdutos };
       s.etapa = 7;
     } else if (s.etapa === 7) {
-      const frete = /Entrega no Cliente/.test(e.frete) ? r2(s.opcoes.valorProdutos * 0.03) : 0;
+      const frete = /Entrega no Cliente/.test(e.frete) ? r2(s.opcoes.valorProdutos * 0.0761) : 0; /* real: R$ 521,11 sobre R$ 6.848,21 até Ribeirão Preto */
       s.final = { valorKit: r2(s.opcoes.valorProdutos + frete), valorProdutos: s.opcoes.valorProdutos, frete, numero: 'SIMULADO' };
       s.etapa = 8;
     }

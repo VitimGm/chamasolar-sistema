@@ -13,7 +13,8 @@
 | 5 | Componentes elétricos CA | Opcional |
 | 6 | Confirmação | Nome da proposta, estado e cidade de entrega, frete (Cliente Retira / Transportadora escolhida pelo cliente / Belenus Entrega no Cliente), forma de pagamento → **Valor da proposta** |
 
-Kit real de referência: 7 × Astronergy 615 W + Huawei 4 kW + estrutura colonial = **R$ 6.848,21** (≈ R$ 1,59/Wp).
+Kit real de referência (cotado 2× em 04/11, mesmo resultado): 7 × Astronergy 615 W + Huawei 4 kW + estrutura colonial = **R$ 6.848,21** (≈ R$ 1,59/Wp) com Cliente Retira; **R$ 7.369,32** com "Belenus Entrega no Cliente" até Ribeirão Preto (frete R$ 521,11).
+Campos da confirmação: `#nomeOrcamento`, `#selectEstado`, `#selectCidade`, `#selectFrete` (entrega já vem SP / Ribeirão Preto).
 O robô **nunca** clica em "Comprar Agora". "Salvar" só com a opção marcada pelo vendedor.
 
 No sistema: Novo orçamento → passo 4 "Kit Belenergy". Dá para montar até 3 kits (Econômica, Recomendada, Premium). A Recomendada é obrigatória.

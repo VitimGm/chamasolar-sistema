@@ -1,0 +1,8 @@
+{
+  "name": "chamasolar-cotador-belenergy",
+  "private": true,
+  "type": "module",
+  "description": "Robô local que cota kit fechado no Personalize seu Gerador (Belenergy) para o sistema da Chama Solar",
+  "scripts": { "cotador": "node cotador.mjs" },
+  "dependencies": { "playwright": "1.49.1" }
+}

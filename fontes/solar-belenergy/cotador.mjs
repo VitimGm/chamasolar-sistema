@@ -20,7 +20,7 @@ import path from 'node:path';
 
 const BASE = 'https://belenus.com.br';
 const PORTA = 8787;
-const ORIGENS_OK = [/^https:\/\/([a-z0-9-]+\.)*chamae\.[a-z.]+$/i, /^https:\/\/([a-z0-9-]+\.)*claude\.ai$/, /^https:\/\/([a-z0-9-]+\.)*claudeusercontent\.com$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/, /^null$/];
+const ORIGENS_OK = [/^https:\/\/([a-z0-9-]+\.)*chamae\.[a-z.]+$/i, /^https:\/\/([a-z0-9-]+\.)*claude\.ai$/, /^https:\/\/([a-z0-9-]+\.)*claudeusercontent\.com$/, /^https:\/\/vitimgm\.github\.io$/i, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/, /^null$/];
 const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
 const num = (t) => +String(t || '').replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '') || 0;
 
