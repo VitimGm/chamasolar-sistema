@@ -18,6 +18,11 @@ if errorlevel 1 (
 if not exist "node_modules\playwright" (
   echo Instalando o robo pela primeira vez. Leva uns minutos...
   call npm install --no-audit --no-fund || goto erro
+)
+rem confere sempre o navegador do robo (rapido quando ja esta instalado)
+node -e "const fs=require('fs');process.exit(fs.existsSync(require('playwright').chromium.executablePath())?0:1)" >nul 2>nul
+if errorlevel 1 (
+  echo Baixando o navegador do robo. Leva uns minutos...
   call npx playwright install chromium || goto erro
 )
 
