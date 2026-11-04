@@ -11,6 +11,7 @@
 
     // Dimensionamento
     pr: 0.776,                          // = perdas 22,4% (mesmo conservadorismo do Groner)
+    margemGeracao: 0.05,                // gera 5% acima do consumo compensável (perda dos módulos, clima)
     faixaDcAc: { min: 1.10, max: 1.35 },
     tempMinima: 5,                      // °C, para tensão de string no frio
 
@@ -95,17 +96,17 @@
   const leadsExemplo = [
     { nome: 'Mariana Alves', whatsapp: '16 99123-4567', cep: '14025-000', ligacao: 'bi', origem: 'Instagram',
       consumos: [480, 455, 510, 540, 520, 470, 430, 445, 495, 530, 560, 545], status: 'negociando', criadoH: 74,
-      eventos: [['abriu', 70], ['viu', 69.9, { secao: 'dor' }], ['viu', 69.8, { secao: 'boleto' }], ['simulou', 69.7, { prazo: 84 }], ['abriu', 26], ['simulou', 25.9, { prazo: 60 }], ['simulou', 25.8, { prazo: 84 }], ['compartilhou', 25.5], ['abriu', 3], ['viu', 2.9, { secao: 'duvidas' }]] },
+      eventos: [['abriu', 70], ['viu', 69.9, { secao: 'conta' }], ['viu', 69.8, { secao: 'pagamento' }], ['simulou', 69.7, { prazo: 84 }], ['abriu', 26], ['simulou', 25.9, { prazo: 60 }], ['simulou', 25.8, { prazo: 84 }], ['compartilhou', 25.5], ['abriu', 3], ['viu', 2.9, { secao: 'duvidas' }]] },
     { nome: 'Padaria Pão Dourado', whatsapp: '16 98877-1122', cep: '14160-000', ligacao: 'tri', origem: 'Indicação',
       consumos: [1820, 1760, 1900, 1950, 1880, 1700, 1650, 1690, 1800, 1920, 2010, 1980], status: 'visualizou', criadoH: 30,
-      eventos: [['abriu', 20], ['viu', 19.9, { secao: 'dor' }], ['viu', 19.8, { secao: 'opcoes' }], ['escolheu', 19.7, { opcao: 0 }]] },
+      eventos: [['abriu', 20], ['viu', 19.9, { secao: 'conta' }], ['viu', 19.8, { secao: 'sistema' }], ['escolheu', 19.7, { opcao: 0 }]] },
     { nome: 'Carlos Menezes', whatsapp: '16 99234-8899', cep: '14096-000', ligacao: 'bi', origem: 'Site',
       consumos: [720, 690, 750, 800, 760, 700, 650, 640, 710, 780, 820, 810], status: 'proposta', criadoH: 52, eventos: [] },
     { nome: 'Dona Lúcia Prado', whatsapp: '16 99701-3344', cep: '14400-000', ligacao: 'mono', origem: 'Indicação',
       consumos: [310, 295, 330, 350, 340, 300, 280, 285, 320, 345, 360, 355], status: 'novo', criadoH: 1.5, eventos: [] },
     { nome: 'Auto Peças Rodovia', whatsapp: '16 98123-0045', cep: '14170-000', ligacao: 'tri', origem: 'Google',
       consumos: [2600, 2550, 2700, 2800, 2750, 2500, 2400, 2450, 2600, 2750, 2900, 2850], status: 'visualizou', criadoH: 100,
-      eventos: [['abriu', 96], ['viu', 95.9, { secao: 'dor' }]] },
+      eventos: [['abriu', 96], ['viu', 95.9, { secao: 'conta' }]] },
     { nome: 'Rafael e Júlia Torres', whatsapp: '16 99654-7788', cep: '14026-000', ligacao: 'bi', origem: 'Instagram',
       consumos: [600, 580, 640, 690, 660, 590, 550, 560, 610, 670, 700, 690], status: 'ganho', criadoH: 260,
       eventos: [['abriu', 240], ['simulou', 239, { prazo: 60 }], ['compartilhou', 238], ['abriu', 200], ['aceite', 199, { opcao: 1, pagamento: 'financiamento' }]] },

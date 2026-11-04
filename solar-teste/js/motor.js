@@ -12,11 +12,13 @@
   const arred = (v, c = 2) => Math.round(v * 10 ** c) / 10 ** c;
 
   /* ---------- 1. Dimensionamento ---------- */
-  function dimensionar({ consumoMedio, ligacao, hsp, orientacao, pr, potModuloW }) {
+  // Alvo = consumo que dá para zerar (consumo − taxa mínima da CPFL) + margem de segurança
+  // (a margem cobre a perda natural dos módulos com os anos e variação de clima).
+  function dimensionar({ consumoMedio, ligacao, hsp, orientacao, pr, potModuloW, margemGeracao = 0 }) {
     const disp = DISPONIBILIDADE[ligacao] ?? 50;
     const hspEf = hsp * (FATOR_ORIENTACAO[orientacao] ?? 1);
     const alvoKwh = Math.max(consumoMedio - disp, 0);
-    const kwpNecessario = alvoKwh / (hspEf * 30 * pr);
+    const kwpNecessario = (alvoKwh * (1 + margemGeracao)) / (hspEf * 30 * pr);
     const placas = Math.max(Math.ceil((kwpNecessario * 1000) / potModuloW), 1);
     const kwpReal = (placas * potModuloW) / 1000;
     const geracaoMes = kwpReal * hspEf * 30 * pr;
@@ -210,7 +212,7 @@
     for (const nivel of catalogo.niveis) {
       const modulo = catalogo.modulos.find((m) => m.id === nivel.modulo);
       const invs = catalogo.inversores.filter((i) => nivel.inversores.includes(i.id));
-      const dim = dimensionar({ ...orc, potModuloW: modulo.potenciaW, pr: p.pr });
+      const dim = dimensionar({ ...orc, potModuloW: modulo.potenciaW, pr: p.pr, margemGeracao: p.margemGeracao ?? 0 });
       const inv = escolherInversor(dim.kwpReal, invs, p.faixaDcAc);
       const str = conferirStrings(dim.placas, modulo, inv.inversor, p.tempMinima);
       const bateria = nivel.bateria ? catalogo.baterias.find((b) => b.id === nivel.bateria) : null;

@@ -26,7 +26,7 @@
 
   function opcoes(o, p) {
     const pp = { ...p, tarifaKwh: Number(o.tarifaKwh) || p.tarifaKwh };
-    const ops = M.montarOpcoes(entrada(o), D.catalogo, pp);
+    const ops = M.montarOpcoes(entrada(o), raiz.Catalogo ? raiz.Catalogo.paraMotor() : D.catalogo, pp);
     ops.forEach((x) => { if (x.bateria) x.preco.semaforo = 'neutro'; });
     return ops;
   }

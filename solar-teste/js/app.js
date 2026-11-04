@@ -14,7 +14,7 @@
   const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
   const STATUS = [['novo', 'Novo lead'], ['proposta', 'Proposta enviada'], ['visualizou', 'Cliente viu'], ['negociando', 'Negociando'], ['ganho', 'Fechado'], ['perdido', 'Perdido']];
   const NOME_SEMAFORO = { verde: 'Dentro do mercado', amarelo: 'Acima da média', vermelho: 'Caro para o mercado', neutro: 'Com bateria' };
-  const SECOES = { dor: 'raio-x da conta', futuro: '25 anos sem solar', relogio: 'relógio da conta', solucao: 'a solução', boleto: 'troca de boleto', opcoes: 'as 3 opções', vizinhos: 'usinas vizinhas', duvidas: 'dúvidas', decidir: 'próximo passo' };
+  const SECOES = { resumo: 'resumo em 3 números', conta: 'conta do último ano', espera: 'custo de esperar', pagamento: 'como fica o pagamento', sistema: 'o que vamos instalar', vizinhos: 'clientes vizinhos', duvidas: 'dúvidas', decidir: 'próximo passo', ouviu: 'ouviu a proposta em áudio', dor: 'conta do último ano', boleto: 'como fica o pagamento', opcoes: 'o que vamos instalar' };
 
   B.semear();
   const P = () => B.parametros();
@@ -182,7 +182,7 @@
   }
 
   /* ======================= NOVO ORÇAMENTO (6 passos) ======================= */
-  const novoOrc = () => ({ nome: '', whatsapp: '', cep: '', cidade: '', distanciaKm: 0, ligacao: 'bi', consumos: Array(12).fill(''), tarifaKwh: P().tarifaKwh, lidoPorIA: false, telhado: 'ceramico', orientacao: 'N', areaDisponivel: '', trocaPadrao: false, opcaoEscolhida: 1, formaPagamento: 'financiamento', comissaoParceria: 0, kitFaturadoDireto: false, descontoPct: 0, origem: 'WhatsApp', status: 'novo' });
+  const novoOrc = () => ({ nome: '', whatsapp: '', cep: '', cidade: '', distanciaKm: 0, ligacao: 'bi', consumos: Array(12).fill(''), tarifaKwh: P().tarifaKwh, lidoPorIA: false, modo: 'pdf', telhado: 'ceramico', orientacao: 'N', areaDisponivel: '', trocaPadrao: false, opcaoEscolhida: 1, formaPagamento: 'financiamento', comissaoParceria: 0, kitFaturadoDireto: false, descontoPct: 0, origem: 'WhatsApp', status: 'novo' });
   let orc = B.rascunho.ler() || novoOrc();
   let etapa = B.rascunho.etapa();
   const salvarR = () => { B.rascunho.gravar(orc); B.rascunho.gravarEtapa(etapa); };
@@ -219,12 +219,26 @@
     location.hash = '#lead-' + salvo.id;
   };
 
+  const MODOS = [['pdf', '📄', 'Anexar conta (PDF)'], ['meses', '✏️', 'Digitar 12 meses'], ['media', '≈', 'Só a média'], ['geracao', '☀️', 'Geração desejada']];
   function passo1(el) {
-    const media = C.consumoMedio(orc);
+    const media = C.consumoMedio(orc), modo = orc.modo || 'pdf', disp = M.DISPONIBILIDADE[orc.ligacao] ?? 50;
+    const unico = orc.consumos.every((x) => x === orc.consumos[0]) && orc.consumos[0] !== '';
+    const blocoModo = {
+      pdf: `<label class="ia-caixa" id="soltar" for="f-pdf" style="display:block;cursor:pointer">
+          <b style="font-size:16px;color:var(--texto)">📄 Toque para anexar a conta da CPFL em PDF</b><br>ou arraste o arquivo aqui · lemos nome, CEP, ligação, 12 meses e tarifa
+          <input type="file" id="f-pdf" accept="application/pdf,.pdf" hidden></label>
+        <div id="pdf-status">${orc.leitura ? `<div class="aviso ok">✓ Conta lida: ${esc(orc.leitura)}</div>` : ''}</div>
+        <div class="mini" style="margin-top:8px">Sem PDF à mão? Teste com: ${D.contasExemplo.map((c, i) => `<button class="link" data-conta="${i}">${esc(c.nome)}</button>`).join(' · ')}</div>`,
+      meses: '<p class="mini" style="margin:0">Preencha os meses ao lado, como estão no histórico da conta.</p>',
+      media: `<label class="campo"><span>Consumo médio do cliente (kWh por mês)</span><input type="number" id="f-media" placeholder="ex.: 500" value="${unico ? orc.consumos[0] : ''}" inputmode="numeric"></label>
+        <p class="mini" style="margin:6px 0 0">Usado nos 12 meses. A proposta mostra o mesmo valor todo mês.</p>`,
+      geracao: `<label class="campo"><span>Geração desejada (kWh por mês)</span><input type="number" id="f-ger" placeholder="ex.: 500" value="${unico ? Math.max(+orc.consumos[0] - disp, 0) : ''}" inputmode="numeric"></label>
+        <p class="mini" style="margin:6px 0 0">O sistema é dimensionado para gerar isso. Somamos a taxa mínima da ligação (${disp} kWh) para montar o consumo.</p>`,
+    }[modo];
     el.innerHTML = `<div class="lado"><div>
-      <div class="painel brilha"><span class="rotulo" style="color:var(--sol)">✦ Leitura da conta com IA</span>
-        <div class="ia-caixa">📄 Arraste o PDF da CPFL ou tire foto da conta<br><span class="mini">(no teste, escolha uma conta de exemplo)</span></div>
-        <div class="chips">${D.contasExemplo.map((c, i) => `<button class="chip" data-conta="${i}">${esc(c.nome)}</button>`).join('')}</div></div>
+      <div class="painel brilha"><span class="rotulo" style="color:var(--sol)">Como você tem o consumo?</span>
+        <div class="chips" style="margin:12px 0">${MODOS.map(([v, ic, t]) => `<button class="chip ${modo === v ? 'sel' : ''}" data-modo="${v}">${ic} ${t}</button>`).join('')}</div>
+        ${blocoModo}</div>
       <div class="painel grade">
         <label class="campo"><span>Nome do cliente</span><input type="text" id="f-nome" value="${esc(orc.nome)}"></label>
         <div class="grade g2"><label class="campo"><span>WhatsApp</span><input type="tel" id="f-zap" value="${esc(orc.whatsapp)}"></label>
@@ -236,21 +250,52 @@
       <div class="painel"><span class="rotulo">Consumo dos últimos 12 meses (kWh)</span>
         <div class="meses" style="margin-top:12px">${MESES.map((m, i) => `<label>${m}<input type="number" min="0" data-mes="${i}" value="${orc.consumos[i]}"></label>`).join('')}</div>
         <div class="numeros4" style="margin-top:12px"><div><span>Média</span><b id="media">${n(media)} kWh</b></div><div><span>Tarifa (R$/kWh)</span><b><input type="number" step="0.01" id="f-tar" value="${orc.tarifaKwh}" style="padding:4px 8px;font-size:17px"></b></div>
-        <div style="grid-column:1/-1"><span>Pagou nos últimos 12 meses</span><b id="pago" class="grad">${brl(media * 12 * orc.tarifaKwh)}</b></div></div>
-        ${orc.lidoPorIA ? '<div class="aviso ok">✓ Lido da conta (simulado). Confira antes de seguir.</div>' : ''}</div></div>`;
+        <div style="grid-column:1/-1"><span>Pagou nos últimos 12 meses (estimado)</span><b id="pago" class="grad">${brl(media * 12 * orc.tarifaKwh)}</b></div></div>
+        ${orc.avisosLeitura ? orc.avisosLeitura.map((a) => `<div class="aviso">${esc(a)}</div>`).join('') : ''}</div></div>`;
     const atual = () => { const m = C.consumoMedio(orc); $('#media').textContent = n(m) + ' kWh'; $('#pago').textContent = brl(orc.consumos.map(Number).filter(Boolean).reduce((s, x) => s + x, 0) * orc.tarifaKwh); salvarR(); barra(); };
+    const preencher = (v) => { orc.consumos = Array(12).fill(v > 0 ? Math.round(v) : ''); el.querySelectorAll('[data-mes]').forEach((i) => { i.value = orc.consumos[+i.dataset.mes]; }); atual(); };
     $('#f-nome').oninput = (e) => { orc.nome = e.target.value; salvarR(); barra(); };
     $('#f-zap').oninput = (e) => { orc.whatsapp = e.target.value; salvarR(); };
     $('#f-cep').oninput = (e) => { orc.cep = e.target.value; const c = B.cepInfo(orc.cep); orc.cidade = c?.cidade || ''; orc.distanciaKm = c?.km || 0; $('#cep-info').textContent = c ? `📍 ${c.cidade} · ${c.km} km da base` : 'CEP fora da tabela de teste'; salvarR(); };
     $('#f-tar').oninput = (e) => { orc.tarifaKwh = +e.target.value || 0; atual(); };
     el.querySelectorAll('[data-mes]').forEach((i) => i.oninput = () => { orc.consumos[+i.dataset.mes] = i.value; atual(); });
-    el.querySelectorAll('[data-lig]').forEach((b) => b.onclick = () => { orc.ligacao = b.dataset.lig; salvarR(); novo(); });
+    el.querySelectorAll('[data-modo]').forEach((b) => b.onclick = () => { orc.modo = b.dataset.modo; salvarR(); novo(); });
+    el.querySelectorAll('[data-lig]').forEach((b) => b.onclick = () => {
+      const antes = M.DISPONIBILIDADE[orc.ligacao] ?? 50; orc.ligacao = b.dataset.lig;
+      if (modo === 'geracao' && unico) orc.consumos = orc.consumos.map((x) => +x - antes + (M.DISPONIBILIDADE[orc.ligacao] ?? 50));
+      salvarR(); novo();
+    });
     el.querySelectorAll('[data-orig]').forEach((b) => b.onclick = () => { orc.origem = b.dataset.orig; salvarR(); novo(); });
+    const fm = $('#f-media'); if (fm) fm.oninput = () => preencher(+fm.value);
+    const fg = $('#f-ger'); if (fg) fg.oninput = () => preencher(+fg.value ? +fg.value + disp : 0);
     el.querySelectorAll('[data-conta]').forEach((b) => b.onclick = () => {
       const c = D.contasExemplo[+b.dataset.conta], cep = B.cepInfo(c.cep);
-      Object.assign(orc, { nome: c.nome, whatsapp: c.whatsapp, cep: c.cep, ligacao: c.ligacao, consumos: [...c.consumos], tarifaKwh: c.tarifaKwh, cidade: cep.cidade, distanciaKm: cep.km, lidoPorIA: true });
-      salvarR(); novo(); toast('Conta lida (simulação)');
+      Object.assign(orc, { nome: c.nome, whatsapp: c.whatsapp, cep: c.cep, ligacao: c.ligacao, consumos: [...c.consumos], tarifaKwh: c.tarifaKwh, cidade: cep.cidade, distanciaKm: cep.km, lidoPorIA: true, leitura: 'conta de exemplo', avisosLeitura: null });
+      salvarR(); novo(); toast('Conta de exemplo carregada');
     });
+    const arquivo = $('#f-pdf'), zona = $('#soltar');
+    const lerPdf = async (f) => {
+      if (!f) return;
+      $('#pdf-status').innerHTML = '<div class="aviso">Lendo a conta…</div>';
+      try {
+        const r = await window.LeitorConta.lerArquivo(f);
+        if (!r.ok && !r.mesesLidos) { $('#pdf-status').innerHTML = r.avisos.map((a) => `<div class="aviso ruim">${esc(a)}</div>`).join(''); return; }
+        const cep = r.cep ? B.cepInfo(r.cep) : null;
+        Object.assign(orc, {
+          nome: r.nome || orc.nome, cep: r.cep || orc.cep, cidade: cep?.cidade || r.cidade || orc.cidade, distanciaKm: cep?.km ?? (orc.distanciaKm || 15),
+          ligacao: r.ligacao || orc.ligacao, consumos: r.consumos.map((x, i) => x || orc.consumos[i] || ''), tarifaKwh: r.tarifaKwh || orc.tarifaKwh,
+          instalacao: r.instalacao, lidoPorIA: true, avisosLeitura: r.avisos.length ? r.avisos : null,
+          leitura: `${r.mesesLidos} meses${r.referencia ? `, ref. ${r.referencia}` : ''}${r.valorTotal ? `, conta de ${brl(r.valorTotal, 2)}` : ''}${r.classe ? ` · ${r.classe}` : ''}`,
+        });
+        salvarR(); novo(); toast('Conta lida');
+      } catch (e) { $('#pdf-status').innerHTML = `<div class="aviso ruim">${esc(e.message || 'Não consegui ler este PDF.')}</div>`; }
+    };
+    if (arquivo) arquivo.onchange = () => lerPdf(arquivo.files[0]);
+    if (zona) {
+      zona.addEventListener('dragover', (e) => { e.preventDefault(); zona.style.borderColor = 'var(--laranja)'; });
+      zona.addEventListener('dragleave', () => { zona.style.borderColor = ''; });
+      zona.addEventListener('drop', (e) => { e.preventDefault(); zona.style.borderColor = ''; lerPdf(e.dataTransfer.files[0]); });
+    }
   }
 
   function passo2(el) {
@@ -347,7 +392,7 @@
     ['Custo fixo', [['custoFixoMes', 'Custo fixo do mês (R$)', 1], ['obrasPrevistasMes', 'Obras previstas/mês', 1]]],
     ['Custos por obra', [['maoDeObraPorPlaca', 'Terceiro por placa (R$)', 1], ['art', 'ART (R$)', 1], ['materialCaBase', 'Material CA fixo (R$)', 1], ['materialCaPorKwp', 'Material CA/kWp (R$)', 1], ['custoKm', 'Custo por km (R$)', 1], ['visitasObra', 'Viagens por obra', 1], ['trocaPadrao', 'Troca de padrão (R$)', 1], ['reservaGarantia', 'Reserva garantia (% kit)', 100]]],
     ['Percentuais', [['impostoTotal', 'Imposto com kit (%)', 100], ['impostoServico', 'Imposto só serviço (%)', 100], ['reservaNegociacao', 'Reserva de negociação (%)', 100]]],
-    ['Conversão e retorno', [['tarifaKwh', 'Tarifa padrão (R$/kWh)', 1], ['reajusteAnual', 'Reajuste ao ano (%)', 100], ['simultaneidade', 'Simultaneidade (%)', 100], ['validadeDias', 'Validade da cotação (dias)', 1], ['manutencaoAnual', 'Manutenção/ano (R$)', 1], ['pr', 'PR (eficiência)', 1]]],
+    ['Conversão e retorno', [['tarifaKwh', 'Tarifa padrão (R$/kWh)', 1], ['margemGeracao', 'Margem de geração (%)', 100], ['reajusteAnual', 'Reajuste ao ano (%)', 100], ['simultaneidade', 'Simultaneidade (%)', 100], ['validadeDias', 'Validade da cotação (dias)', 1], ['manutencaoAnual', 'Manutenção/ano (R$)', 1], ['pr', 'PR (eficiência)', 1]]],
   ];
   function parametrosPag() {
     const p = P();
@@ -364,13 +409,58 @@
     $('#resetP').onclick = () => { B.zerarParametros(); parametrosPag(); toast('Voltou aos valores de teste'); };
   }
 
+
+  /* ======================= CATÁLOGO ======================= */
+  let filtroCat = 'modulo';
+  function catalogoPag() {
+    const K = window.Catalogo, c = K.ler();
+    const itens = c.itens.filter((i) => i.tipo === filtroCat).sort((a, b) => (b.usar - a.usar) || (a.preco / (a.potenciaW || 1)) - (b.preco / (b.potenciaW || 1)));
+    const usados = c.itens.filter((i) => i.usar);
+    const nv = ['Econômica', 'Recomendada', 'Premium'];
+    app.innerHTML = `${cabCelular()}<div class="cab"><div><h1>Catálogo</h1><p class="sutil">Fonte: ${esc(c.origem)} · atualizado em ${new Date(c.atualizadoEm).toLocaleString('pt-BR')}. ${usados.length} produto(s) marcados para orçamento.</p></div>
+        <label class="btn sol" for="f-imp" style="cursor:pointer">⬆ Importar arquivo do robô<input type="file" id="f-imp" accept=".json,.csv" hidden></label></div>
+      <div class="painel"><div class="filtros">${[['modulo', 'Módulos'], ['inversor', 'Inversores'], ['bateria', 'Baterias']].map(([v, t]) => `<button class="chip ${filtroCat === v ? 'sel' : ''}" data-fc="${v}">${t} <small>${c.itens.filter((i) => i.tipo === v).length}</small></button>`).join('')}
+        <span class="mini" style="margin-left:auto">Marque o que pode entrar nos orçamentos${filtroCat === 'modulo' ? ' e o nível de cada módulo' : ''}.</span></div>
+        <div class="tabela-cat"><table><tr><th>Usar</th><th>Produto</th><th class="v">Preço</th>${filtroCat === 'modulo' ? '<th class="v">R$/Wp</th><th>Nível</th>' : '<th class="v">Potência</th><th>Linha</th>'}<th class="v">Estoque</th></tr>
+        ${itens.map((i) => `<tr><td><input type="checkbox" class="marcar" data-usar="${esc(i.sku)}" ${i.usar ? 'checked' : ''} aria-label="Usar ${esc(i.descricao)}"></td>
+          <td><b>${esc(i.marca || '')} ${i.potenciaW && i.tipo === 'modulo' ? i.potenciaW + ' W' : ''}</b><div class="desc">${esc(i.descricao)} · <span class="mono">${esc(i.sku)}</span></div></td>
+          <td class="v">${brl(i.preco, 2)}${i.precoAnterior ? `<div class="${i.preco > i.precoAnterior ? 'sobe' : 'desce'}">${i.preco > i.precoAnterior ? '▲' : '▼'} era ${brl(i.precoAnterior, 2)}</div>` : ''}</td>
+          ${i.tipo === 'modulo' ? `<td class="v">R$ ${n(i.preco / i.potenciaW, 2)}</td><td><select data-nivel="${esc(i.sku)}"><option value="">—</option>${nv.map((t, k) => `<option value="${k}" ${i.nivel === k ? 'selected' : ''}>${t}</option>`).join('')}</select></td>`
+            : `<td class="v">${i.tipo === 'bateria' ? n(i.kwh, 1) + ' kWh' : n((i.potenciaW || 0) / 1000, 1) + ' kW'}</td><td>${i.tipo === 'inversor' ? `<select data-linha="${esc(i.sku)}"><option value="">${i.hibrido ? 'Híbrido' : 'Padrão'}</option><option value="p" ${i.premium ? 'selected' : ''}>Premium (Recomendada)</option></select>` : '—'}</td>`}
+          <td class="v">${i.estoque != null ? n(i.estoque) : '—'}${i.disponivelSP === false ? '<div class="sobe">sem estoque SP</div>' : ''}${i.fora ? '<div class="sobe">fora da última leitura</div>' : ''}</td></tr>`).join('')}</table></div>
+        <div class="acoes-r" style="margin-top:14px"><button class="btn vidro pequeno" id="zerarCat">Voltar à amostra</button></div></div>
+      <div class="painel"><span class="rotulo">Como o catálogo vira proposta</span>
+        <ul class="tempo" style="margin-top:8px">
+          <li><span>1</span><span><b>Econômica</b>: o módulo marcado como Econômica (ou o mais barato por Wp) + inversores padrão.</span><em></em></li>
+          <li><span>2</span><span><b>Recomendada</b>: o módulo marcado como Recomendada + inversores marcados como Premium.</span><em></em></li>
+          <li><span>3</span><span><b>Premium</b>: o módulo Premium + inversor híbrido + a bateria marcada.</span><em></em></li>
+          <li><span>!</span><span>Preços dos módulos são reais (lidos no portal em 03/11). Inversores e baterias ainda são de teste até rodar o robô. Ficha elétrica dos módulos estimada pela potência: confira antes de fechar o projeto.</span><em></em></li>
+        </ul></div>`;
+    const salvar = (fn) => { const cc = K.ler(); fn(cc); K.gravar(cc); };
+    app.querySelectorAll('[data-fc]').forEach((b) => b.onclick = () => { filtroCat = b.dataset.fc; catalogoPag(); });
+    app.querySelectorAll('[data-usar]').forEach((x) => x.onchange = () => salvar((cc) => { cc.itens.find((i) => i.sku === x.dataset.usar).usar = x.checked; }));
+    app.querySelectorAll('[data-nivel]').forEach((x) => x.onchange = () => salvar((cc) => {
+      const v = x.value === '' ? null : +x.value;
+      cc.itens.forEach((i) => { if (i.tipo === 'modulo' && v !== null && i.nivel === v) i.nivel = null; });
+      const it = cc.itens.find((i) => i.sku === x.dataset.nivel); it.nivel = v; if (v !== null) it.usar = true;
+      catalogoPag();
+    }));
+    app.querySelectorAll('[data-linha]').forEach((x) => x.onchange = () => salvar((cc) => { cc.itens.find((i) => i.sku === x.dataset.linha).premium = x.value === 'p'; }));
+    $('#zerarCat').onclick = () => { K.zerar(); catalogoPag(); toast('Catálogo de amostra restaurado'); };
+    $('#f-imp').onchange = async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      try { const r = K.importar(await f.text()); toast(`${r.total} produtos importados · ${r.mudouPreco} mudaram de preço`); catalogoPag(); }
+      catch (err) { toast(err.message); }
+    };
+  }
+
   /* ======================= ROTAS ======================= */
   function render() {
     const h = location.hash.slice(1) || 'painel';
     const [rota, arg] = h.startsWith('lead-') ? ['lead', h.slice(5)] : [h, null];
     document.querySelectorAll('[data-rota]').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === (rota === 'lead' ? 'painel' : rota)));
     if (rota !== 'novo') { document.body.classList.remove('com-barra'); $('#barra').hidden = true; }
-    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'parametros') parametrosPag(); else painel(); };
+    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'parametros') parametrosPag(); else painel(); };
     if (document.startViewTransition) {
       const t = document.startViewTransition(ir);
       [t.ready, t.finished, t.updateCallbackDone].forEach((pr) => pr && pr.catch(() => {})); // navegação rápida cancela a animação, sem problema

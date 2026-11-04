@@ -99,7 +99,7 @@
     const envio = new Date(o.enviadoEm || o.criadoEm);
     const dia = (d) => new Date(+envio + d * 864e5).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
     const validade = (raiz.Banco ? raiz.Banco.parametros().validadeDias : D.parametros.validadeDias) || 7;
-    const viuBoleto = eventos.some((e) => e.dados?.secao === 'boleto' || e.tipo === 'simulou');
+    const viuBoleto = eventos.some((e) => ['boleto', 'pagamento'].includes(e.dados?.secao) || e.tipo === 'simulou');
     const cad = [
       { d: 0, canal: 'WhatsApp', t: 'Envio com a dor na 1ª linha', msg: 'Usar a mensagem do Roteirista.' },
       { d: 1, canal: 'Áudio', t: 'Áudio curto pessoal', msg: `"${nm}, conseguiu ver? Qualquer dúvida me chama."` },
