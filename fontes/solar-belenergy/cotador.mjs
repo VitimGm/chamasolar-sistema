@@ -173,17 +173,22 @@ async function passoInterno(etapa, e = {}) {
     return { etapa: 7, opcoes: { fretes: ['Cliente Retira', 'Transportadora escolhida pelo cliente', 'Belenus Entrega no Cliente'], pagamentos: ['Plano de Pagamento', 'Outras Formas de Pagamento'], valorProdutos: num((t.match(/Valor dos produtos:\s*R\$\s*([\d.,]+)/) || [])[1]) } };
   }
   if (etapa === 7) {
+    // cada campo com espera curta: o que não existir na tela é pulado na hora (antes esperava 30 s por campo)
+    const escolher = async (texto) => {
+      if (!texto) return;
+      const sel = pg.locator('select').filter({ has: pg.locator('option', { hasText: rx(texto) }) }).first();
+      if (!(await sel.count())) { console.log('Sem a opção "' + texto + '" na confirmação: mantido o padrão do portal.'); return; }
+      const rot = (await sel.locator('option', { hasText: rx(texto) }).first().textContent({ timeout: 3000 }) || '').trim();
+      await sel.selectOption({ label: rot }, { timeout: 5000 }).catch(() => {}); await pausa(1200);
+    };
     const nome = pg.getByText('Nome da proposta:', { exact: false }).locator('xpath=following::input[1]');
-    if (e.nome) await nome.fill(e.nome).catch(() => {});
-    if (e.estadoEntrega) await pg.locator('select').filter({ hasText: 'SP' }).first().selectOption(e.estadoEntrega).catch(() => {});
+    if (e.nome && (await nome.count())) await nome.fill(e.nome, { timeout: 3000 }).catch(() => {});
+    await escolher(e.estadoEntrega); await escolher(e.cidadeEntrega); await escolher(e.frete);
+    await pg.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {}); await pausa(1200);
+    if (e.pagamento && /Outras/.test(e.pagamento)) await pg.getByText('Outras Formas de Pagamento').first().click({ timeout: 3000 }).catch(() => {});
     await pausa(800);
-    if (e.cidadeEntrega) await pg.locator('select').filter({ hasText: 'Ribeirão Preto' }).first().selectOption({ label: e.cidadeEntrega }).catch(() => {});
-    if (e.frete) await pg.locator('select').filter({ hasText: 'Cliente Retira' }).first().selectOption({ label: e.frete }).catch(() => {});
-    await pausa(2500);
-    if (e.pagamento && /Outras/.test(e.pagamento)) await pg.getByText('Outras Formas de Pagamento').first().click().catch(() => {});
-    await pausa(1200);
     let t = await pg.evaluate(() => document.body.innerText);
-    const valor = num((t.match(/Valor da proposta:\s*R\$\s*([\d.,]+)/) || [])[1]);
+    const valor = num((t.match(/Valor da proposta:\s*R\$\s*([\d.,]+)/) || t.match(/(?:Valor total|Total da proposta|Total geral)[^R]{0,20}R\$\s*([\d.,]+)/i) || [])[1]);
     const produtos = num((t.match(/Valor dos produtos:\s*R\$\s*([\d.,]+)/) || [])[1]);
     let numero = 'não salvo';
     if (e.salvar) { // só com autorização explícita do vendedor
@@ -192,6 +197,7 @@ async function passoInterno(etapa, e = {}) {
       numero = (t.match(/(?:Or[çc]amento|Proposta)\s*(?:n[ºo°.]*)?\s*[:#]?\s*(\d{4,})/i) || [])[1] || 'salvo (ver Meus Orçamentos)';
     }
     // "Comprar Agora" NUNCA é clicado por este robô.
+    if (!(valor || produtos)) { const f = await printErro('confirmacao'); throw new Error('Não achei o valor do kit na tela de confirmação' + (f ? ' · print salvo em ' + f : '')); }
     return { etapa: 8, final: { valorKit: valor || produtos, valorProdutos: produtos, frete: Math.max((valor || produtos) - produtos, 0), numero } };
   }
   throw new Error('Etapa desconhecida: ' + etapa);
