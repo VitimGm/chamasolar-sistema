@@ -173,6 +173,15 @@
     },
 
     modelo(chave) { return modelos[chave] || null; },
+    /* erro do robô: fica gravado com print e tela para análise */
+    async registrarErroRobo(r) {
+      const d = r.diag || {}; const print = d.print || null; delete d.print;
+      await api('sol_robo_erros', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ orcamento: r.orcamento || null, opcao: r.opcao || null, etapa: d.nomeEtapa || null, mensagem: r.mensagem, diagnostico: d, print_jpg: print }) });
+    },
+    async anexar(orcamento, nome, base64, tipo = 'application/pdf') { await api('sol_anexos', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ orcamento, nome, tipo, conteudo_b64: base64 }) }); aviso('PDF da Belenergy anexado ✓'); },
+    async anexos(orcamento) { return api('sol_anexos?select=id,nome,tipo,em&orcamento=eq.' + encodeURIComponent(orcamento) + '&order=em.desc'); },
+    async anexo(id) { const r = await api('sol_anexos?select=nome,tipo,conteudo_b64&id=eq.' + id); return r[0] || null; },
+    async execucoes() { return api("sol_monitoramento_execucoes?select=marca,ok,erro,resumo,em&marca=not.like.*-teste&order=em.desc&limit=10"); },
     /* lê agora as plataformas dos fabricantes (mesma rotina das 6h30) */
     async atualizarMonitoramento() {
       const t = await token(); if (!t) throw new Error('sem-login');

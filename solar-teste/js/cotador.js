@@ -17,7 +17,7 @@
   async function chamar(rota, corpo) {
     const r = await fetch(URL_ROBO + rota, { method: corpo ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json' }, body: corpo ? JSON.stringify(corpo) : undefined });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.erro || `O robô respondeu ${r.status}`);
+    if (!r.ok) { const x = new Error(j.erro || `O robô respondeu ${r.status}`); x.diag = j.diag || null; throw x; }
     return j;
   }
   async function conectado() {
@@ -203,17 +203,19 @@
     if (placas % linhas) { /* número ímpar em 2 linhas: usa 1 linha */ }
     const lin = placas % linhas ? 1 : linhas;
     aviso('estrutura'); await avancar(s, { semEstrutura: !!base.semEstrutura, estruturaTipo: tipo, estruturaDetalhe: det[0], linhas: lin, modulosPorLinha: placas / lin, orientacao: 'Retrato' });
-    aviso('componentes'); await avancar(s, { itens: s.opcoes.itens });
-    await avancar(s, { itens: s.opcoes.itens });
-    await avancar(s, { itens: s.opcoes.itens });
-    aviso('confirmação'); await avancar(s, { nome: base.nome, estadoEntrega: 'SP', cidadeEntrega: base.cidade || 'Ribeirão Preto', frete: base.frete || 'Cliente Retira', pagamento: (s.opcoes.pagamentos || [])[0], salvar: false });
+    // automático: não mexe nas quantidades do portal (mandar a lista de volta podia zerar o MC4 lido antes da tela carregar)
+    const manter = () => ({ itens: s.modo === 'conectado' ? [] : s.opcoes.itens });
+    aviso('componentes'); await avancar(s, manter());
+    await avancar(s, manter());
+    await avancar(s, manter());
+    aviso('confirmação'); await avancar(s, { nome: base.nome, estadoEntrega: 'SP', cidadeEntrega: base.cidade || 'Ribeirão Preto', frete: base.frete || 'Cliente Retira', pagamento: (s.opcoes.pagamentos || [])[0], salvar: base.salvar !== false });
     return s;
   }
 
   function paraKit(s, nivel) {
     const e = s.escolhas, f = s.final, ficha = raiz.Catalogo ? raiz.Catalogo.fichaModulo(e.modulo.potenciaW) : {};
     return {
-      nivel, origem: s.modo, numeroBelenergy: f.numero, nomeOrcamento: e.nome, frete: e.frete, pagamento: e.pagamento, entrega: `${e.cidadeEntrega || ''}/${e.estadoEntrega || ''}`, cotadoEm: new Date().toISOString(),
+      nivel, origem: s.modo, numeroBelenergy: f.numero, pdfBelenergy: f.pdf ? f.pdf.nome : null, nomeOrcamento: e.nome, frete: e.frete, pagamento: e.pagamento, entrega: `${e.cidadeEntrega || ''}/${e.estadoEntrega || ''}`, cotadoEm: new Date().toISOString(),
       valorKit: f.valorKit, valorProdutos: f.valorProdutos, valorFrete: f.frete,
       modulo: { sku: e.modulo.sku, nome: e.modulo.nome, marca: fabModulo(e.modulo.nome), potenciaW: e.modulo.potenciaW, qtd: e.modulo.qtd, ...ficha },
       inversor: { sku: e.inversor.sku, qtd: e.inversor.qtd || 1, potenciaUnKw: (e.inversor.potenciaKw || 0) / (e.inversor.qtd || 1), nome: e.inversor.nome + (e.inversor.qtd > 1 ? ` (${e.inversor.qtd} un.)` : ''), potenciaKw: e.inversor.potenciaKw, tipo: e.inversor.tipo, fabricante: e.inversor.fabricante, overload: e.inversor.overload },

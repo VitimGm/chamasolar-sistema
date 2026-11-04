@@ -44,26 +44,52 @@ async function avisoPortal() {
     .filter((e) => e.offsetParent !== null).map((e) => e.innerText.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' | ')).catch(() => '');
 }
 async function fecharAvisos() { for (const t of [/^\s*OK\s*$/i, /^\s*Fechar\s*$/i, /^\s*Entendi\s*$/i]) { const b = pg.locator('button:visible').filter({ hasText: t }).first(); if (await b.count()) await b.click({ timeout: 2000 }).catch(() => {}); } await pg.keyboard.press('Escape').catch(() => {}); }
+/* Espera o portal terminar de carregar: sem spinner/overlay, rede parada e a tela sem mudar por ~1 s */
+async function aguardarPortal(maxMs = 25000) {
+  const fim = Date.now() + maxMs; let antes = '', iguais = 0;
+  while (Date.now() < fim) {
+    await pg.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {});
+    const r = await pg.evaluate(() => {
+      const carregando = [...document.querySelectorAll('mat-spinner, mat-progress-spinner, mat-progress-bar, .spinner, .spinner-border, .loading, .loader, ngx-spinner, .ngx-spinner-overlay, .la-ball-fall, [class*="carregando"], [class*="loading"]')].some((e) => e.offsetParent !== null);
+      return { carregando, assinatura: document.body.innerText.length + ':' + document.querySelectorAll('tr').length + ':' + location.pathname };
+    }).catch(() => ({ carregando: false, assinatura: '' }));
+    if (!r.carregando && r.assinatura === antes) { if (++iguais >= 2) return true; } else iguais = 0;
+    antes = r.assinatura; await pausa(500);
+  }
+  return false;
+}
 /* Correções automáticas para bloqueios conhecidos do portal */
 async function corrigirBloqueio(msg) {
   if (/MC4|conector/i.test(msg)) { // conector MC4 zerado ou faltando: põe a quantidade sugerida (mínimo 2 pares)
+    await aguardarPortal();
     const rows = await linhas('MC4|CONECTOR');
-    for (const r of rows) if (!r.qtd) await ajustarQtd(r.sku, Math.max(r.qtdSugerida || 0, 2));
+    let mexi = false;
+    for (const r of rows) if (!r.qtd) { await ajustarQtd(r.sku, Math.max(r.qtdSugerida || 0, 2)); mexi = true; }
+    if (rows.length && !mexi) console.log('MC4 já estava na cotação: o aviso foi do carregamento, vou esperar e tentar de novo.');
+    await aguardarPortal();
     if (!rows.length) { const add = pg.locator('button:visible, a:visible').filter({ hasText: /adicionar|incluir/i }).first(); if (await add.count()) await add.click({ timeout: 3000 }).catch(() => {}); }
     return rows.length > 0;
   }
   return false;
 }
+let ultimoAviso = '';
 async function proximo() {
   const antes = pg.url();
-  for (let tentativa = 0; tentativa < 2; tentativa++) {
-    await botao(/^\s*PRÓXIMO\s*$/i).click(); await pg.waitForLoadState('networkidle').catch(() => {}); await pausa(1200);
+  await aguardarPortal(); // nunca clica com a tela ainda carregando
+  for (let tentativa = 0; tentativa < 3; tentativa++) {
+    const b = botao(/^\s*PRÓXIMO\s*$/i);
+    await b.waitFor({ state: 'visible', timeout: 20000 });
+    for (let k = 0; k < 20 && (await b.isDisabled().catch(() => false)); k++) await pausa(500); // espera o botão liberar
+    await b.click(); // UM clique; depois espera o portal responder antes de qualquer outra coisa
+    await pg.waitForURL((u) => u.toString() !== antes, { timeout: 15000 }).catch(() => {});
+    await aguardarPortal();
     if (pg.url() !== antes) return;
     const msg = await avisoPortal();
     if (!msg) return; // mesma URL mas sem aviso: telas da mesma página
     console.log('Portal avisou: ' + msg);
-    await fecharAvisos();
-    if (tentativa === 0 && (await corrigirBloqueio(msg))) { console.log('Corrigi e vou tentar de novo.'); continue; }
+    ultimoAviso = msg;
+    await fecharAvisos(); await pausa(1500);
+    if (tentativa < 2 && (await corrigirBloqueio(msg))) { console.log('Tentando de novo com calma.'); await pausa(2000); continue; }
     const f = await printErro('bloqueio');
     throw new Error('O portal não deixou avançar: ' + msg.slice(0, 160) + (f ? ' · print salvo em ' + f : ''));
   }
@@ -130,8 +156,27 @@ async function ajustarItens(itens) { for (const it of itens || []) if (it.sku) a
 /* ---------- etapas (mesma numeração do sistema) ---------- */
 const NOMES = ['potência', 'módulo', 'inversor', 'estrutura', 'itens da estrutura', 'elétricos CC', 'elétricos CA', 'confirmação'];
 async function passo(etapa, e = {}) {
+  ultimoAviso = '';
   try { return await passoInterno(etapa, e); }
-  catch (err) { console.error(err); const f = await printErro('etapa-' + etapa); throw new Error(`Robô parou na etapa "${NOMES[etapa] || etapa}" do portal: ${String(err.message || err).split('\n')[0].replace(/\u001b\[\d+m/g, '').slice(0, 140)}${f ? ' · print salvo em ' + f : ''}`); }
+  catch (err) {
+    console.error(err);
+    const f = await printErro('etapa-' + etapa);
+    const msg = String(err.message || err).split('\n')[0].replace(/\u001b\[\d+m/g, '').slice(0, 220);
+    const x = new Error(`Robô parou na etapa "${NOMES[etapa] || etapa}" do portal: ${msg}${f ? ' · print salvo em ' + f : ''}`);
+    x.diag = await diagnostico(etapa, e, msg);
+    throw x;
+  }
+}
+/* Tudo o que ajuda a entender o erro sem estar olhando a tela (vai para o sistema e fica em erros/ultimo-erro.json) */
+async function diagnostico(etapa, entrada, msg) {
+  const d = { etapa, nomeEtapa: NOMES[etapa] || String(etapa), mensagem: msg, aviso: ultimoAviso, url: pg.url(), em: new Date().toISOString(), entrada };
+  try { d.avisosNaTela = await avisoPortal(); } catch { /* */ }
+  try { d.linhas = (await linhas('Código:')).slice(0, 40).map((r) => ({ sku: r.sku, nome: r.nome.slice(0, 80), qtd: r.qtd, sugerida: r.qtdSugerida })); } catch { /* */ }
+  try { d.botoes = (await pg.locator('button:visible').allInnerTexts()).map((x) => x.trim()).filter(Boolean).slice(0, 30); } catch { /* */ }
+  try { d.tela = (await pg.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ').slice(0, 2500); } catch { /* */ }
+  try { d.print = (await pg.screenshot({ type: 'jpeg', quality: 45 })).toString('base64'); } catch { /* */ }
+  try { const fs = await import('node:fs'); fs.mkdirSync(path.resolve('erros'), { recursive: true }); fs.writeFileSync(path.resolve('erros', 'ultimo-erro.json'), JSON.stringify({ ...d, print: undefined }, null, 2)); } catch { /* */ }
+  return d;
 }
 async function passoInterno(etapa, e = {}) {
   if (!(await logado())) throw new Error('A sessão da Belenergy expirou: faça login na janela do robô e tente de novo.');
@@ -193,11 +238,13 @@ async function passoInterno(etapa, e = {}) {
     return { etapa: 4, opcoes: { itens: (await linhas('Código:')).map((x) => ({ sku: x.sku, nome: x.nome, qtd: x.qtd })) } };
   }
   if (etapa === 4 || etapa === 5) {
-    await ajustarItens(e.itens); await proximo();
+    await aguardarPortal(); await ajustarItens(e.itens); await proximo();
+    await esperarLinhas('.', 20000).catch(() => {});
     return { etapa: etapa + 1, opcoes: { itens: (await linhas('Código:')).map((x) => ({ sku: x.sku, nome: x.nome, qtd: x.qtd })) } };
   }
   if (etapa === 6) {
-    await ajustarItens(e.itens); await proximo();
+    await aguardarPortal(); await ajustarItens(e.itens); await proximo();
+    await aguardarPortal();
     const t = await pg.evaluate(() => document.body.innerText);
     return { etapa: 7, opcoes: { fretes: ['Cliente Retira', 'Transportadora escolhida pelo cliente', 'Belenus Entrega no Cliente'], pagamentos: ['Plano de Pagamento', 'Outras Formas de Pagamento'], valorProdutos: num((t.match(/Valor dos produtos:\s*R\$\s*([\d.,]+)/) || [])[1]) } };
   }
@@ -219,15 +266,32 @@ async function passoInterno(etapa, e = {}) {
     let t = await pg.evaluate(() => document.body.innerText);
     const valor = num((t.match(/Valor da proposta:\s*R\$\s*([\d.,]+)/) || t.match(/(?:Valor total|Total da proposta|Total geral)[^R]{0,20}R\$\s*([\d.,]+)/i) || [])[1]);
     const produtos = num((t.match(/Valor dos produtos:\s*R\$\s*([\d.,]+)/) || [])[1]);
-    let numero = 'não salvo';
-    if (e.salvar) { // só com autorização explícita do vendedor
-      await botao(/^\s*Salvar\s*$/i).click(); await pausa(3500);
-      t = await pg.evaluate(() => document.body.innerText);
-      numero = (t.match(/(?:Or[çc]amento|Proposta)\s*(?:n[ºo°.]*)?\s*[:#]?\s*(\d{4,})/i) || [])[1] || 'salvo (ver Meus Orçamentos)';
+    let numero = 'não salvo', pdf = null;
+    if (e.salvar) { // só com a caixa "Salvar na Belenergy" marcada pelo vendedor
+      await botao(/^\s*Salvar\s*$/i).click(); await aguardarPortal(20000); await pausa(1500);
+      t = await pg.evaluate(() => document.body.innerText) + ' ' + (await avisoPortal());
+      const w = t.match(/\bWEB\s*[-:#nº°]*\s*(\d{3,})/i) || t.match(/(?:Or[çc]amento|Proposta|Pedido)\s*(?:n[ºo°.]*)?\s*[:#]?\s*(\d{4,})/i);
+      numero = w ? 'WEB ' + w[1] : 'salvo (ver Meus Orçamentos)';
+      await fecharAvisos();
+      // PDF da Belenergy: baixa e devolve para anexar no orçamento
+      try {
+        const bp = botao(/Baixar PDF/i);
+        if (await bp.count()) {
+          const [d] = await Promise.all([pg.waitForEvent('download', { timeout: 45000 }), bp.click()]);
+          const fs = await import('node:fs');
+          fs.mkdirSync(path.resolve('propostas-belenergy'), { recursive: true });
+          const nomeArq = (numero.startsWith('WEB') ? numero.replace(' ', '-') : 'cotacao-' + Date.now()) + '.pdf';
+          const destino = path.resolve('propostas-belenergy', nomeArq);
+          await d.saveAs(destino);
+          const buf = fs.readFileSync(destino);
+          if (buf.length < 4e6) pdf = { nome: nomeArq, base64: buf.toString('base64') };
+          console.log('PDF salvo em ' + destino);
+        }
+      } catch (err) { console.log('Não consegui baixar o PDF: ' + String(err.message || err).slice(0, 120)); }
     }
     // "Comprar Agora" NUNCA é clicado por este robô.
     if (!(valor || produtos)) { const f = await printErro('confirmacao'); throw new Error('Não achei o valor do kit na tela de confirmação' + (f ? ' · print salvo em ' + f : '')); }
-    return { etapa: 8, final: { valorKit: valor || produtos, valorProdutos: produtos, frete: Math.max((valor || produtos) - produtos, 0), numero } };
+    return { etapa: 8, final: { valorKit: valor || produtos, valorProdutos: produtos, frete: Math.max((valor || produtos) - produtos, 0), numero, pdf } };
   }
   throw new Error('Etapa desconhecida: ' + etapa);
 }
@@ -257,7 +321,7 @@ http.createServer((req, res) => {
   let corpo = ''; req.on('data', (c) => { corpo += c; if (corpo.length > 2e5) req.destroy(); });
   req.on('end', () => {
     if (req.url === '/status') return logado().then((l) => res.end(JSON.stringify({ ok: true, logado: l })));
-    const rodar = (fn) => { fila = fila.then(async () => { try { res.end(JSON.stringify(await fn())); } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ erro: String(e.message || e) })); } }); };
+    const rodar = (fn) => { fila = fila.then(async () => { try { res.end(JSON.stringify(await fn())); } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ erro: String(e.message || e), diag: e.diag || null })); } }); };
     if (req.url === '/passo' && req.method === 'POST') { const { etapa, entrada } = JSON.parse(corpo || '{}'); return rodar(() => passo(+etapa, entrada)); }
     if (req.url === '/detalhes' && req.method === 'POST') { const { tipo } = JSON.parse(corpo || '{}'); return rodar(async () => ({ detalhes: await detalhes(tipo) })); }
     res.statusCode = 404; res.end('{}');

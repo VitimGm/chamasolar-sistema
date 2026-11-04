@@ -107,6 +107,12 @@
     async gravarGeracao(id, linhas) { const g = ler('geracao', {}); const m = Object.fromEntries((g[id] || []).map((l) => [l.dia, l])); linhas.forEach((l) => { m[l.dia] = { dia: l.dia, kwh: l.kwh }; }); g[id] = Object.values(m).sort((a, b) => a.dia.localeCompare(b.dia)); gravar('geracao', g); return linhas.length; },
 
     modelo() { return null; }, // teste: usa os modelos genéricos
+    async execucoes() { return []; },
+    async registrarErroRobo() { /* teste: só no console */ },
+    _anexos: [],
+    async anexar(orcamento, nome, base64, tipo = 'application/pdf') { this._anexos.push({ id: this._anexos.length + 1, orcamento, nome, tipo, conteudo_b64: base64, em: new Date().toISOString() }); },
+    async anexos(orcamento) { return this._anexos.filter((a) => a.orcamento === orcamento); },
+    async anexo(id) { return this._anexos.find((a) => a.id === +id) || null; },
     async atualizarMonitoramento() { throw new Error('No teste não há leitura das plataformas. Use a versão no Chamae.'); },
     async guardarCredencial() { throw new Error('No teste os acessos não são guardados. Use a versão no Chamae.'); },
     async credenciaisStatus() { return []; },

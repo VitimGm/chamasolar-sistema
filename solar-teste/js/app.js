@@ -168,6 +168,8 @@
           <button class="btn sol pequeno" id="docPdf">${Icone('documento')} Proposta em PDF</button>
           <button class="btn vidro pequeno" id="docContrato">Contrato</button>
           <button class="btn vidro pequeno" id="docProc">Procuração CPFL</button>
+          <span id="anexosBel"></span>
+          ${(o.kitsFechados || []).filter((k) => k && /WEB/.test(k.numeroBelenergy || '')).map((k) => `<span class="chip">${esc(k.nivel)}: ${esc(k.numeroBelenergy)}</span>`).join(' ')}
           ${o.status === 'ganho' ? '<button class="btn vidro pequeno" id="virarUsina">Cadastrar usina</button>' : ''}
         </div>
         <details style="margin-top:10px"><summary class="link">Dados do cliente para contrato e procuração</summary>
@@ -225,6 +227,8 @@
     app.querySelectorAll('[data-ag]').forEach((b) => b.onclick = () => { agenteAtual = b.dataset.ag; app.querySelectorAll('[data-ag]').forEach((x) => x.classList.toggle('sel', x === b)); rodarAgente(); });
     rodarAgente();
     $('#copiarLink').onclick = () => copiar(link);
+    B.anexos(o.id).then((l) => { const el = $('#anexosBel'); if (!el || !l || !l.length) return; el.innerHTML = l.map((a) => `<button class="btn vidro pequeno" data-anexo="${a.id}">📎 ${esc(a.nome)}</button>`).join(' ');
+      el.querySelectorAll('[data-anexo]').forEach((b) => b.onclick = async () => { const a = await B.anexo(b.dataset.anexo); if (!a) return toast('Anexo não encontrado'); const bin = atob(a.conteudo_b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); window.open(URL.createObjectURL(new Blob([u8], { type: a.tipo })), '_blank'); }); }).catch(() => {});
     $('#docPdf').onclick = () => { Documentos.proposta(o, p, o.status !== 'novo' ? link : null); B.interacao(o.id, 'nota', 'Gerou a proposta em PDF'); };
     $('#docContrato').onclick = () => Documentos.contrato(o, p);
     $('#docProc').onclick = () => Documentos.procuracao(o, p);
@@ -267,6 +271,7 @@
   const novoOrc = () => ({ nome: '', whatsapp: '', cep: '', cidade: '', distanciaKm: 0, ligacao: 'bi', consumos: Array(12).fill(''), tarifaKwh: P().tarifaKwh, lidoPorIA: false, modo: 'pdf', telhado: 'ceramico', orientacao: '?', areaDisponivel: '', trocaPadrao: false, opcaoEscolhida: 1, formaPagamento: 'financiamento', comissaoParceria: 0, kitFaturadoDireto: false, descontoPct: 0, origem: 'WhatsApp', status: 'novo' });
   let orc = B.rascunho.ler() || novoOrc();
   let etapa = B.rascunho.etapa();
+  const PDFS_PENDENTES = {}; // PDF da Belenergy de cada opção, anexado quando o orçamento ganha número
   const salvarR = () => { B.rascunho.gravar(orc); B.rascunho.gravarEtapa(etapa); };
   const ETAPAS = [
     ['Cliente e conta', passo1, () => (orc.nome.trim() && C.consumoMedio(orc) > 0 && orc.cidade) ? '' : 'Preencha nome, cidade e o consumo.'],
@@ -298,6 +303,8 @@
     const novoLead = !orc.id;
     if (novoLead) { orc.status = 'proposta'; orc.enviadoEm = new Date().toISOString(); }
     const salvo = B.salvar(orc);
+    const escolhidos = (orc.kitsFechados || []).filter(Boolean).map((k) => k.nivel);
+    Object.entries(PDFS_PENDENTES).forEach(([nv, f]) => { if (escolhidos.includes(nv)) B.anexar(salvo.id, f.nome, f.base64).catch((e) => toast('PDF não anexado: ' + e.message)); delete PDFS_PENDENTES[nv]; });
     orc = novoOrc(); etapa = 0; salvarR();
     toast(novoLead ? 'Proposta Viva criada' : 'Orçamento atualizado');
     location.hash = '#lead-' + salvo.id;
@@ -454,7 +461,8 @@
         <div class="grade g2" style="margin-top:12px;align-items:end">
           <label class="campo"><span>Frete (vale para as duas)</span><select id="a-frete">${Cotador.PORTAL.fretes.map((f) => `<option ${f === (orc.freteAuto || 'Cliente Retira') ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></label>
           <p class="mini" style="margin:0">Escolha em cada opção só o módulo e o inversor. Estrutura, componentes e confirmação seguem automáticos, como o portal sugere.</p></div>
-        <div class="linha-h" style="margin-top:12px"><button class="btn sol" id="a-cotar" ${orc.kitsFechados.filter(Boolean).length === NIVEIS_KIT.length ? 'hidden' : ''}>⚡ Cotar ${orc.kitsFechados.filter(Boolean).length ? 'a que falta' : 'as duas de uma vez'}</button><span class="mini" id="a-prog"></span></div></div>
+        <div class="linha-h" style="margin-top:12px"><label class="alternar" style="margin:10px 0 0"><span><b>Salvar na Belenergy e anexar o WEB e o PDF</b><br><span class="sutil">fica em "Meus Orçamentos". O robô nunca clica em "Comprar agora".</span></span><input type="checkbox" id="a-salvar" ${orc.salvarBel === false ? '' : 'checked'}></label>
+        <button class="btn sol" id="a-cotar" ${orc.kitsFechados.filter(Boolean).length === NIVEIS_KIT.length ? 'hidden' : ''}>⚡ Cotar ${orc.kitsFechados.filter(Boolean).length ? 'a que falta' : 'as duas de uma vez'}</button><span class="mini" id="a-prog"></span></div></div>
       <div class="ops-v duas" style="margin-top:14px">${NIVEIS_KIT.map((nv, i) => { const k = orc.kitsFechados[i]; return `
         <div class="op-v ${k ? 'sel' : ''}" style="cursor:default">
           <span class="rotulo" style="color:var(--sol)">${i === PRINCIPAL ? 'Principal' : 'Opcional'}</span><h3 style="margin:4px 0">${nv}</h3>
@@ -481,7 +489,8 @@
     $('#a-cotar').onclick = async (ev) => {
       const btn = ev.target; btn.disabled = true;
       const prog = $('#a-prog'), modo = cotModo || 'simulado', inicio = Date.now(), erros = [];
-      const base = { kwp: +kwpSug.toFixed(2), ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[orc.ligacao], cidade: orc.cidade, frete: $('#a-frete').value,
+      orc.salvarBel = !!($('#a-salvar') && $('#a-salvar').checked);
+      const base = { salvar: orc.salvarBel, kwp: +kwpSug.toFixed(2), ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[orc.ligacao], cidade: orc.cidade, frete: $('#a-frete').value,
         estruturaTipo: { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' }[orc.telhado] };
       for (let i = 0; i < NIVEIS_KIT.length; i++) {
         if (orc.kitsFechados[i]) continue; // já cotada: use "Refazer" para cotar de novo
@@ -490,14 +499,17 @@
           // mesma potência, mesmas escolhas e mesmo frete nas últimas 24 h: usa a cotação guardada (instantâneo)
           const chave = 'k:' + modo + ':' + JSON.stringify([pedido.kwp, pedido.ligacao, pedido.frete, pedido.estruturaTipo, pedido.tipoInversor, pedido.fabMod || '', pedido.potMod || '', pedido.fabInv || '', pedido.potInv || '']);
           let cache = {}; try { cache = JSON.parse(localStorage.getItem('sol_cache_kits') || '{}'); } catch { /* */ }
-          const guardado = cache[chave] && Date.now() - cache[chave].em < 24 * 3600e3 ? cache[chave].kit : null;
+          const guardado = cache[chave] && Date.now() - cache[chave].em < 24 * 3600e3 && cache[chave].kit && cache[chave].kit.valorKit > 0 ? cache[chave].kit : null;
           if (guardado) { orc.kitsFechados[i] = { ...guardado, nivel: NIVEIS_KIT[i] }; if (prog) prog.textContent = `${NIVEIS_KIT[i]}: cotação de hoje reaproveitada`; continue; }
           const s = await Cotador.cotarAuto(modo, { ...pedido, nome: `${orc.id || 'NOVO'} ${orc.nome} ${NIVEIS_KIT[i]}`.trim() },
             (etapa) => { if (prog) prog.textContent = `${NIVEIS_KIT[i]} (${i + 1}/${NIVEIS_KIT.length}): ${etapa}… ${Math.round((Date.now() - inicio) / 1000)} s`; });
           orc.kitsFechados[i] = Cotador.paraKit(s, NIVEIS_KIT[i]);
+          if (!(orc.kitsFechados[i].valorKit > 0)) { orc.kitsFechados[i] = null; throw new Error('o portal devolveu valor R$ 0,00; tente de novo'); }
+          if (s.final && s.final.pdf) PDFS_PENDENTES[NIVEIS_KIT[i]] = s.final.pdf;
           if (modo === 'conectado') { cache[chave] = { em: Date.now(), kit: orc.kitsFechados[i] }; Object.keys(cache).forEach((k) => { if (Date.now() - cache[k].em > 48 * 3600e3) delete cache[k]; }); try { localStorage.setItem('sol_cache_kits', JSON.stringify(cache)); } catch { /* */ } }
         } catch (e) {
           erros.push(`${NIVEIS_KIT[i]}: ${e.message}`);
+          if (e.diag) B.registrarErroRobo({ orcamento: orc.id || null, opcao: NIVEIS_KIT[i], mensagem: e.message, diag: e.diag }).then(() => toast('Erro enviado para análise ✓')).catch(() => {});
           if (modo === 'conectado' && /etapa "(potência|módulo)"|sessão/.test(e.message)) { erros.push('A outra opção não foi tentada: o erro é no começo do portal e se repetiria.'); break; }
         }
       }
@@ -519,6 +531,7 @@
     try { await Cotador.avancar(cot, entrada); clearInterval(timer); novo(); }
     catch (e) {
       clearInterval(timer);
+      if (e.diag) B.registrarErroRobo({ orcamento: orc.id || null, opcao: 'passo a passo', mensagem: e.message, diag: e.diag }).catch(() => {});
       if (alvo) {
         alvo.style.pointerEvents = '';
         $('#cot-espera').outerHTML = `<div class="aviso ruim"><b>Não deu certo:</b> ${esc(e.message)}<div class="acoes-r" style="margin-top:10px"><button class="btn vidro pequeno" id="c-tentar">Tentar de novo</button><button class="btn vidro pequeno" id="c-simular">Continuar no simulado</button></div></div>`;
@@ -584,7 +597,7 @@
         <label class="campo"><span>Cidade de entrega</span><input type="text" id="c-cid" value="${esc(e.cidadeEntrega || orc.cidade || 'Ribeirão Preto')}"></label>
         <label class="campo"><span>Dados de frete</span><select id="c-frete">${o.fretes.map((x) => `<option ${x === (e.frete || 'Cliente Retira') ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
         <label class="campo"><span>Forma de pagamento</span><select id="c-pg">${o.pagamentos.map((x) => `<option>${esc(x)}</option>`).join('')}</select></label></div></div>
-        <label class="alternar" style="margin-top:12px"><span><b>Salvar a proposta na Belenergy</b><br><span class="sutil">fica em "Meus Orçamentos". O robô nunca clica em "Comprar agora".</span></span><input type="checkbox" id="c-salvar" ${cot.modo === 'conectado' ? '' : 'disabled'}></label>
+        <label class="alternar" style="margin-top:12px"><span><b>Salvar a proposta na Belenergy</b><br><span class="sutil">fica em "Meus Orçamentos". O robô nunca clica em "Comprar agora".</span></span><input type="checkbox" id="c-salvar" ${cot.modo === 'conectado' ? 'checked' : 'disabled'}></label>
         <button class="btn sol" id="c-ok" style="margin-top:12px">Pegar o valor da proposta</button>`;
     } else if (et === 8) {
       const f = cot.final;
@@ -734,6 +747,7 @@
         <div class="kpi"><span class="rotulo">Precisam de atenção</span><b style="color:${alertas.length ? 'var(--laranja)' : 'inherit'}">${alertas.length}</b><span class="sutil">ligar antes do cliente perceber</span></div>
         <div class="kpi"><span class="rotulo">Relatórios do mês</span><b>${info.filter((x) => x.s.total).length}</b><span class="sutil">prontos para mandar</span></div></div>
       ${alertas.length ? `<div class="secao-t"><h2>Atenção</h2><span class="sutil">ligue para o cliente ou abra a plataforma do fabricante</span></div><div class="agora">${alertas.map(({ u, s }) => `<div class="acao p5"><div class="ic">⚠️</div><div><b>${esc(u.cliente_nome)}</b> <span class="sutil">${esc(u.marca)} · ${n(u.kwp, 2)} kWp</span><p>${esc(s.alerta)}</p></div></div>`).join('')}</div>` : ''}
+      <div class="painel" id="usStatus"><span class="rotulo">Leitura das plataformas</span><p class="sutil" style="margin:6px 0 0">carregando…</p></div>
       <div class="secao-t"><h2>Todas as usinas</h2><span class="sutil">este mês, proporcional aos dias com leitura</span></div>
       <div class="ops-v duas">${info.map(({ u, s }) => `<div class="op-v" style="cursor:default">
           <div class="entre"><b style="font-size:17px">${esc(u.cliente_nome)}</b><span class="mini">${esc(u.marca)}${u.plataforma_id ? ' · ' + esc(u.plataforma_id) : ''}</span></div>
@@ -746,6 +760,12 @@
     let alvo = null;
     const arq = $('#usArq');
     arq.onchange = async () => { const f = arq.files[0]; arq.value = ''; if (!f || !alvo) return; const linhas = U.lerPlanilha(await f.text()); if (!linhas.length) { toast('Não achei datas e kWh nesse arquivo. Exporte em CSV com data e energia.'); return; } await B.gravarGeracao(alvo, linhas); toast(linhas.length + ' dia(s) importados'); usinasPag(); };
+    B.execucoes().then((ex) => {
+      const el = $('#usStatus'); if (!el) return;
+      const ult = {}; ex.forEach((x) => { if (!ult[x.marca]) ult[x.marca] = x; });
+      const linhas = Object.values(ult).map((x) => `<tr><td><b>${esc(x.marca)}</b></td><td>${x.ok ? (x.resumo && x.resumo.usinas ? '✅ ' + x.resumo.usinas + ' usina(s), ' + x.resumo.dias + ' dia(s) lidos' : '⚠️ conectou, mas a plataforma não devolveu usinas') : '❌ ' + esc(x.erro || 'erro')}</td><td class="mini">${new Date(x.em).toLocaleString('pt-BR')}</td></tr>`).join('');
+      el.innerHTML = `<div class="entre"><span class="rotulo">Leitura das plataformas</span><a class="link" href="#parametros">editar acessos ›</a></div>${linhas ? `<table style="margin-top:8px">${linhas}</table>` : '<p class="sutil" style="margin:6px 0 0">Nenhuma leitura ainda. Guarde o acesso em Parâmetros e toque em Atualizar agora.</p>'}<p class="mini" style="margin:6px 0 0">Lê sozinho todo dia às 6h30.</p>`;
+    }).catch(() => { const el = $('#usStatus'); if (el) el.remove(); });
     $('#usNova').onclick = () => formUsina({});
     $('#usAtu').onclick = async (ev) => {
       const b = ev.target; b.disabled = true; b.textContent = 'Lendo as plataformas… (até 2 min)';
