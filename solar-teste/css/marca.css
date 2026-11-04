@@ -1,0 +1,177 @@
+/* =====================================================================
+   Chama Solar — base visual (cores, tipos e componentes comuns)
+   Cores tiradas do site e do logo: marinho #1D283E, laranja #FF6700,
+   sol #E85018 → #F8B818. Fontes do site: Albert Sans (texto) e Exo (títulos).
+   ===================================================================== */
+@property --brilho { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+
+:root {
+  --marinho: #1d283e;
+  --marinho-2: #243250;
+  --noite: #0d1322;
+  --noite-2: #121a2d;
+  --laranja: #ff6700;
+  --brasa: #e85018;
+  --sol: #f8b818;
+  --sol-2: #ffd36b;
+  --grad-sol: linear-gradient(120deg, var(--brasa), var(--laranja) 45%, var(--sol));
+  --verde: #39a935;            /* verde do site */
+  --verde-claro: #5fd35a;
+  --vermelho: #ff4d6d;
+  --amarelo: #ffc53d;
+
+  /* tema escuro (app do vendedor) */
+  --fundo: var(--noite);
+  --vidro: color-mix(in srgb, #1b2540 72%, transparent);
+  --vidro-2: color-mix(in srgb, #24314f 70%, transparent);
+  --linha: color-mix(in srgb, #ffffff 9%, transparent);
+  --linha-forte: color-mix(in srgb, #ffffff 16%, transparent);
+  --texto: #eef2fb;
+  --texto-2: #9aa7c2;
+  --texto-3: #6b7896;
+
+  --raio: 18px;
+  --raio-p: 12px;
+  --sombra: 0 10px 40px -12px rgba(0, 0, 0, .55);
+  --brilho-laranja: 0 0 0 1px color-mix(in srgb, var(--laranja) 55%, transparent), 0 8px 30px -6px color-mix(in srgb, var(--laranja) 55%, transparent);
+  --f-texto: 'Albert Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --f-titulo: 'Exo', 'Albert Sans', system-ui, sans-serif;
+  --f-num: 'Exo', 'Albert Sans', system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0; min-height: 100dvh; color: var(--texto); background: var(--fundo);
+  font: 15px/1.55 var(--f-texto); -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; display: block; }
+a { color: inherit; }
+h1, h2, h3, h4 { font-family: var(--f-titulo); line-height: 1.15; margin: 0 0 .4em; letter-spacing: -.01em; text-wrap: balance; }
+p { margin: 0 0 .8em; text-wrap: pretty; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--sol); outline-offset: 2px; }
+
+/* Fundo "espacial" com brilho de sol */
+.ceu {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(60vmax 40vmax at 85% -10%, color-mix(in srgb, var(--laranja) 22%, transparent), transparent 60%),
+    radial-gradient(50vmax 35vmax at -10% 110%, color-mix(in srgb, #3b5cff 14%, transparent), transparent 60%),
+    linear-gradient(180deg, var(--noite) 0%, #0a0f1c 100%);
+}
+.ceu::after {
+  content: ''; position: absolute; inset: 0; opacity: .35;
+  background-image: radial-gradient(rgba(255,255,255,.35) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(180deg, rgba(0,0,0,.6), transparent 70%);
+}
+
+/* Utilitários */
+.num { font-family: var(--f-num); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.sutil { color: var(--texto-2); font-size: 13px; }
+.mini { font-size: 12px; color: var(--texto-3); }
+.grad { background: var(--grad-sol); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.rotulo { font: 700 11px/1 var(--f-texto); letter-spacing: .14em; text-transform: uppercase; color: var(--texto-3); }
+.escondido { display: none !important; }
+.linha-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.entre { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* Vidro */
+.painel {
+  background: var(--vidro); border: 1px solid var(--linha); border-radius: var(--raio);
+  backdrop-filter: blur(16px) saturate(140%); -webkit-backdrop-filter: blur(16px) saturate(140%);
+  padding: 18px; box-shadow: var(--sombra);
+}
+.painel + .painel { margin-top: 14px; }
+.painel.brilha { position: relative; isolation: isolate; }
+.painel.brilha::before {
+  content: ''; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; z-index: -1;
+  background: conic-gradient(from var(--brilho), transparent 0 60%, var(--laranja), var(--sol), transparent 85%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: girar 6s linear infinite;
+}
+@keyframes girar { to { --brilho: 360deg; } }
+
+/* Botões */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; text-decoration: none;
+  font: 700 15px/1 var(--f-texto); border: 1px solid transparent; border-radius: 999px; padding: 14px 22px;
+  transition: transform .15s, box-shadow .2s, background .2s;
+}
+.btn:active { transform: scale(.97); }
+.btn.sol { background: var(--grad-sol); color: #1a1205; box-shadow: var(--brilho-laranja); }
+.btn.sol:hover { box-shadow: 0 0 0 1px var(--sol), 0 10px 40px -4px color-mix(in srgb, var(--laranja) 70%, transparent); }
+.btn.vidro { background: var(--vidro-2); border-color: var(--linha-forte); color: var(--texto); }
+.btn.zap { background: #1fae56; color: #fff; }
+.btn.pequeno { padding: 9px 14px; font-size: 13px; }
+.btn.bloco { width: 100%; }
+.btn[disabled] { opacity: .45; pointer-events: none; }
+
+/* Chips e campos */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  cursor: pointer; border: 1px solid var(--linha-forte); background: transparent; border-radius: 999px;
+  padding: 9px 14px; font-size: 14px; font-weight: 600; color: var(--texto); transition: all .15s;
+}
+.chip small { color: var(--texto-3); font-weight: 500; margin-left: 4px; }
+.chip:hover { border-color: color-mix(in srgb, var(--laranja) 60%, transparent); }
+.chip.sel { background: color-mix(in srgb, var(--laranja) 18%, transparent); border-color: var(--laranja); color: #fff; }
+.chip.sel small { color: var(--sol-2); }
+
+.campo { display: grid; gap: 6px; }
+.campo > span { font-size: 12.5px; font-weight: 700; color: var(--texto-2); }
+input[type=text], input[type=tel], input[type=number], input[type=search], select, textarea {
+  width: 100%; font: 500 16px/1.3 var(--f-texto); color: var(--texto);
+  background: color-mix(in srgb, #0a1020 60%, transparent); border: 1px solid var(--linha-forte); border-radius: var(--raio-p);
+  padding: 12px 14px; transition: border-color .15s, box-shadow .15s;
+}
+textarea { min-height: 90px; resize: vertical; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--laranja); box-shadow: 0 0 0 3px color-mix(in srgb, var(--laranja) 25%, transparent); }
+input[type=range] { width: 100%; accent-color: var(--laranja); }
+
+.alternar { display: flex; align-items: center; justify-content: space-between; gap: 14px; cursor: pointer; }
+.alternar input { appearance: none; width: 48px; height: 28px; border-radius: 99px; background: var(--linha-forte); position: relative; cursor: pointer; flex: none; transition: background .2s; }
+.alternar input::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: left .2s; }
+.alternar input:checked { background: var(--laranja); }
+.alternar input:checked::after { left: 23px; }
+
+/* Temperatura do lead */
+.temp { display: inline-flex; align-items: center; gap: 5px; font: 700 12px/1 var(--f-texto); padding: 5px 9px; border-radius: 99px; white-space: nowrap; }
+.temp.quente { background: color-mix(in srgb, var(--laranja) 22%, transparent); color: #ffb27a; }
+.temp.morno { background: color-mix(in srgb, var(--amarelo) 16%, transparent); color: var(--amarelo); }
+.temp.frio { background: color-mix(in srgb, #5b8cff 18%, transparent); color: #9cb8ff; }
+.temp.ganho { background: color-mix(in srgb, var(--verde) 22%, transparent); color: var(--verde-claro); }
+.temp.perdido { background: var(--linha); color: var(--texto-3); }
+
+.semaforo { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; padding: 4px 10px 4px 8px; border-radius: 99px; }
+.semaforo::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; }
+.semaforo.verde { color: var(--verde-claro); background: color-mix(in srgb, var(--verde) 16%, transparent); }
+.semaforo.amarelo { color: var(--amarelo); background: color-mix(in srgb, var(--amarelo) 14%, transparent); }
+.semaforo.vermelho { color: var(--vermelho); background: color-mix(in srgb, var(--vermelho) 14%, transparent); }
+.semaforo.neutro { color: var(--texto-2); background: var(--linha); }
+
+.aviso { font-size: 13px; padding: 10px 12px; border-radius: var(--raio-p); background: color-mix(in srgb, var(--amarelo) 12%, transparent); color: #ffe0a0; margin-top: 10px; }
+.aviso.ok { background: color-mix(in srgb, var(--verde) 14%, transparent); color: #b9f0b6; }
+.aviso.ruim { background: color-mix(in srgb, var(--vermelho) 14%, transparent); color: #ffb3c1; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+td, th { padding: 9px 0; border-top: 1px solid var(--linha); text-align: left; vertical-align: top; }
+th { font-size: 12px; color: var(--texto-3); font-weight: 700; }
+td.v, th.v { text-align: right; font-family: var(--f-num); white-space: nowrap; padding-left: 10px; }
+tr.total td { font-weight: 800; font-size: 16px; border-top: 1px solid var(--linha-forte); }
+tr.sub td { color: var(--texto-2); }
+
+.toast {
+  position: fixed; left: 50%; bottom: 96px; translate: -50% 0; z-index: 90;
+  background: var(--marinho-2); border: 1px solid var(--linha-forte); color: #fff; padding: 12px 18px; border-radius: 14px;
+  font-weight: 600; font-size: 14px; box-shadow: var(--sombra); animation: subir .25s ease-out;
+}
+@keyframes subir { from { opacity: 0; translate: -50% 10px; } }
+@keyframes entrar { from { opacity: 0; transform: translateY(12px); } }
+.entra { animation: entrar .45s cubic-bezier(.2,.7,.2,1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
