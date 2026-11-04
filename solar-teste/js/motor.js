@@ -210,7 +210,7 @@
   /* Opção a partir de um KIT FECHADO cotado no "Personalize seu Gerador" da Belenergy.
      O valor final do kit (já com estrutura e componentes) é o custo do kit. */
   function opcaoKitFechado(orc, k, p) {
-    const modulo = { id: k.modulo.sku, nome: k.modulo.nome, potenciaW: k.modulo.potenciaW, preco: 0, areaM2: k.modulo.areaM2 || k.modulo.potenciaW / 222, voc: k.modulo.voc, vmp: k.modulo.vmp, isc: k.modulo.isc };
+    const modulo = { id: k.modulo.sku, nome: k.modulo.nome, marca: k.modulo.marca || (k.modulo.nome.match(/^(JA Solar|\S+)/) || [])[1], potenciaW: k.modulo.potenciaW, preco: 0, areaM2: k.modulo.areaM2 || k.modulo.potenciaW / 222, voc: k.modulo.voc, vmp: k.modulo.vmp, isc: k.modulo.isc };
     const placas = k.modulo.qtd;
     const hspEf = orc.hsp * (FATOR_ORIENTACAO[orc.orientacao] ?? 1);
     const kwpReal = (placas * modulo.potenciaW) / 1000;
@@ -218,7 +218,7 @@
     const alvoKwh = Math.max(orc.consumoMedio - disp, 0);
     const geracaoMes = kwpReal * hspEf * 30 * p.pr;
     const dim = { disponibilidade: disp, hspEfetivo: arred(hspEf, 2), alvoKwh: arred(alvoKwh, 0), kwpNecessario: arred((alvoKwh * (1 + (p.margemGeracao ?? 0))) / (hspEf * 30 * p.pr), 2), placas, kwpReal: arred(kwpReal, 2), geracaoMes: arred(geracaoMes, 0), cobertura: alvoKwh ? arred(geracaoMes / alvoKwh, 3) : 0 };
-    const inversor = { id: k.inversor.sku, nome: k.inversor.nome, potenciaKw: k.inversor.potenciaKw, hibrido: k.inversor.tipo === 'hibrido', vMaxDc: k.inversor.vMaxDc || 0 };
+    const inversor = { id: k.inversor.sku, nome: k.inversor.nome, fabricante: k.inversor.fabricante || '', qtd: k.inversor.qtd || 1, potenciaUnKw: k.inversor.potenciaUnKw || k.inversor.potenciaKw, tipo: k.inversor.tipo, potenciaKw: k.inversor.potenciaKw, hibrido: k.inversor.tipo === 'hibrido', vMaxDc: k.inversor.vMaxDc || 0 };
     const relacao = inversor.potenciaKw ? kwpReal / inversor.potenciaKw : 0;
     const preco = precificar({ ...orc, kit: k.valorKit, placas, kwp: kwpReal }, p);
     const eco = economia({ ...orc, geracaoMes, investimento: preco.precoFinal, anoInicio: p.anoBase }, p);

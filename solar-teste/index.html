@@ -11,17 +11,18 @@
   <link href="https://fonts.googleapis.com/css2?family=Albert+Sans:wght@400;500;600;700;800&family=Exo:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/marca.css">
   <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/icones.css">
 </head>
 <body>
   <div class="ceu" aria-hidden="true"></div>
   <aside class="lateral">
     <a class="logo" href="#painel"><img src="marca/logo-branco.webp" alt="Chama Solar" width="120" height="51"></a>
     <nav class="nav" aria-label="Principal">
-      <a href="#painel" data-rota="painel"><span>◎</span>Painel</a>
-      <a href="#novo" data-rota="novo"><span>＋</span>Novo orçamento</a>
-      <a href="#catalogo" data-rota="catalogo"><span>▦</span>Catálogo</a>
-      <a href="#agentes" data-rota="agentes"><span>✦</span>Agentes</a>
-      <a href="#parametros" data-rota="parametros"><span>⚙</span>Parâmetros</a>
+      <a href="#painel" data-rota="painel"><span><i data-ico="painelControle"></i></span>Painel</a>
+      <a href="#novo" data-rota="novo"><span><i data-ico="mais"></i></span>Novo orçamento</a>
+      <a href="#catalogo" data-rota="catalogo"><span><i data-ico="catalogo"></i></span>Catálogo</a>
+      <a href="#agentes" data-rota="agentes"><span><i data-ico="agentes"></i></span>Agentes</a>
+      <a href="#parametros" data-rota="parametros"><span><i data-ico="ajustes"></i></span>Parâmetros</a>
     </nav>
     <div class="selo-teste">TESTE · dados simulados<br><button type="button" id="resetar" class="link">recomeçar dados</button></div>
   </aside>
@@ -33,6 +34,7 @@
       <button class="btn sol" id="btnAvancar" type="button">Continuar</button>
     </div>
   </footer>
+  <script src="js/icones.js"></script>
   <script src="js/dados-teste.js"></script>
   <script src="js/motor.js"></script>
   <script src="js/banco.js"></script>

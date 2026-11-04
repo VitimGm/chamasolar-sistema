@@ -43,8 +43,8 @@
     <header class="topo"><div class="pv">
       <img src="marca/logo-cor.webp" alt="Chama Solar" width="123" height="52">
       <div class="ferramentas">
-        <button type="button" id="ouvir" aria-pressed="false">🔊 Ouvir</button>
-        <button type="button" id="letra" aria-pressed="false">A+ Letra</button>
+        <button type="button" id="ouvir" aria-pressed="false">${Icone('som')} <span>Ouvir</span></button>
+        <button type="button" id="letra" aria-pressed="false">${Icone('letra')} <span>Letra</span></button>
       </div>
     </div></header>
     <main class="pv">
@@ -59,52 +59,52 @@
       </section>
 
       <section class="bloco" data-secao="resumo" aria-labelledby="t-resumo">
-        <h2 id="t-resumo">Resumo em três números</h2>
+        <h2 id="t-resumo"><i class="bolha">${Icone('grafico')}</i>Resumo em três números</h2>
         <div class="tres" id="tres"></div>
       </section>
 
       <section class="bloco" data-secao="conta" aria-labelledby="t-conta">
-        <h2 id="t-conta">Quanto você pagou de luz no último ano?</h2>
+        <h2 id="t-conta"><i class="bolha">${Icone('conta')}</i>Quanto você pagou de luz no último ano?</h2>
         <p class="apoio">Cada barra é um mês da sua conta. A mais escura foi a mais cara.</p>
         <div class="barras" id="barras" aria-hidden="true"></div>
         <p class="frase" id="frase-conta"></p>
       </section>
 
       <section class="bloco" data-secao="espera" aria-labelledby="t-espera">
-        <h2 id="t-espera">E se deixar para depois?</h2>
+        <h2 id="t-espera"><i class="bolha">${Icone('relogio')}</i>E se deixar para depois?</h2>
         <p class="apoio">Enquanto o sistema não é instalado, a conta continua chegando.</p>
         <div class="duas" id="espera"></div>
       </section>
 
       <section class="bloco" data-secao="pagamento" aria-labelledby="t-pag">
-        <h2 id="t-pag">Como fica o pagamento?</h2>
+        <h2 id="t-pag"><i class="bolha">${Icone('cofre')}</i>Como fica o pagamento?</h2>
         <p class="apoio">Toque para ver em quantas vezes:</p>
         <div class="opcoes-g" id="prazos" role="group" aria-label="Prazo"></div>
         <div id="comparar"></div>
       </section>
 
       <section class="bloco" data-secao="sistema" aria-labelledby="t-sis">
-        <h2 id="t-sis">O que vamos instalar?</h2>
+        <h2 id="t-sis"><i class="bolha">${Icone('painel')}</i>O que vamos instalar?</h2>
         <div id="sistema"></div>
       </section>
 
       <section class="bloco" data-secao="vizinhos" aria-labelledby="t-viz">
-        <h2 id="t-viz">Quem já tem perto de você?</h2>
+        <h2 id="t-viz"><i class="bolha">${Icone('casa')}</i>Quem já tem perto de você?</h2>
         <p class="apoio">Contas reais de clientes Chama Solar${a.vizinhos.mesmaCidade ? ' em ' + esc(o.cidade) : ' na região'}. <em>(Teste: dados simulados.)</em></p>
         ${a.vizinhos.usinas.slice(0, 3).map((u) => `<div class="viz"><b>Bairro ${esc(u.bairro)}</b><div class="de-para"><s>${brl(u.contaAntes)}</s><span>${brl(u.contaMes)}</span></div><small>Pagava ${brl(u.contaAntes)} por mês. Hoje paga ${brl(u.contaMes)}. Instalado em ${u.desde}.</small></div>`).join('')}
         <div class="selos">
-          <div>🏆 ${D.empresa.anos} anos na região</div><div>⭐ ${esc(D.empresa.selo)}</div>
-          <div>📄 Papelada da CPFL por nossa conta</div><div>📡 Acompanhamos sua usina todo mês</div>
+          <div>${Icone('medalha')} ${D.empresa.anos} anos na região</div><div>${Icone('estrela')} ${esc(D.empresa.selo)}</div>
+          <div>${Icone('documento')} Papelada da CPFL por nossa conta</div><div>${Icone('monitor')} Acompanhamos sua usina todo mês</div>
         </div>
       </section>
 
       <section class="bloco" data-secao="duvidas" aria-labelledby="t-duv">
-        <h2 id="t-duv">Dúvidas mais comuns</h2>
+        <h2 id="t-duv"><i class="bolha">${Icone('conversa')}</i>Dúvidas mais comuns</h2>
         <div id="duvidas"></div>
       </section>
 
       <section class="bloco" id="s-decidir" data-secao="decidir" aria-labelledby="t-dec">
-        <h2 id="t-dec">Vamos para o próximo passo?</h2>
+        <h2 id="t-dec"><i class="bolha">${Icone('seta')}</i>Vamos para o próximo passo?</h2>
         <div id="decidir"></div>
       </section>
 
@@ -115,9 +115,12 @@
       </footer>
     </main>
     <div class="cta-fixo" id="cta"><div class="pv">
-      <a class="btn-g verde" id="zap-fixo" href="${zapVend()}" target="_blank" rel="noopener" aria-label="Falar com ${esc(vend)} no WhatsApp">💬</a>
+      <a class="btn-g verde" id="zap-fixo" href="${zapVend()}" target="_blank" rel="noopener" aria-label="Falar com ${esc(vend)} no WhatsApp">${Icone('conversa')}</a>
       <a class="btn-g laranja" href="#s-decidir">Quero minha usina</a>
     </div></div>`;
+
+  /* Item tocável: ícone + título; ao tocar, abre a explicação */
+  const item = (ic, titulo, sub, explica, extra = '') => `<details class="item"><summary><i class="bolha">${Icone(ic)}</i><span class="txt"><b>${titulo}</b><span>${sub}</span></span><span class="abrir" aria-hidden="true">${Icone('mais')}</span></summary><div class="explica">${explica}${extra}</div></details>`;
 
   /* ---------- Partes que mudam com as escolhas ---------- */
   function desenhar() {
@@ -126,9 +129,9 @@
     const sobra = eco.contaAtual - eco.contaDepois;
 
     $('#tres').innerHTML = `
-      <div class="num-card hoje"><span>Hoje você paga</span><b>${brl(eco.contaAtual)}</b><small>por mês, em média</small></div>
-      <div class="num-card depois"><span>Com energia solar</span><b>${brl(eco.contaDepois)}</b><small>por mês (taxa mínima da CPFL)</small></div>
-      <div class="num-card sobra"><span>Sobra no seu bolso</span><b>${brl(sobra)}</b><small>por mês, depois de pago o sistema</small></div>`;
+      <div class="num-card hoje"><i class="bolha">${Icone('conta')}</i><span>Hoje você paga</span><b>${brl(eco.contaAtual)}</b><small>por mês, em média</small></div>
+      <div class="num-card depois"><i class="bolha">${Icone('sol')}</i><span>Com energia solar</span><b>${brl(eco.contaDepois)}</b><small>por mês (taxa mínima da CPFL)</small></div>
+      <div class="num-card sobra"><i class="bolha">${Icone('cofre')}</i><span>Sobra no seu bolso</span><b>${brl(sobra)}</b><small>por mês, depois de pago o sistema</small></div>`;
 
     const v = a.raioX.mensal, max = Math.max(...v), iMax = v.indexOf(max);
     $('#barras').innerHTML = v.map((x, i) => `<div class="b ${i === iMax ? 'max' : ''}"><i style="height:${Math.max((x / max) * 100, 4)}%"></i><em>${MESES[i]}</em></div>`).join('');
@@ -156,18 +159,19 @@
       <p class="frase" style="font-size:1rem">${b.parcela ? `Depois de ${b.prazo / 12} anos as parcelas acabam e você passa a pagar só ${brl(b.contaDepois)} de luz.` : `Desde o primeiro mês você paga só ${brl(b.contaDepois)} de luz.`}</p>`;
 
     const consumoZerar = Math.max(C.consumoMedio(o) - op.dim.disponibilidade, 0);
+    const eq = C.equipamentos(op);
     $('#sistema').innerHTML = `
       <p class="apoio">A opção que recomendamos para a sua casa:</p>
-      <ul class="itens">
-        <li><div class="ic">☀️</div><div><b>${op.dim.placas} placas solares de ${op.modulo.potenciaW} W</b><span>Ocupam cerca de ${n(op.areaM2)} m² do telhado</span></div></li>
-        <li><div class="ic">⚡</div><div><b>${esc(op.inversor.nome.replace(/\s*\(.*\)/, ''))}</b><span>Transforma a energia do sol na energia da sua casa</span></div></li>
-        ${op.bateria ? `<li><div class="ic">🔋</div><div><b>Bateria de ${n(op.bateria.kwh, 1)} kWh</b><span>Mantém o essencial ligado se faltar luz</span></div></li>` : ''}
-        <li><div class="ic">📈</div><div><b>Gera ${n(op.dim.geracaoMes)} kWh por mês</b><span>Você usa ${n(C.consumoMedio(o))} kWh. Desses, ${n(consumoZerar)} kWh dá para zerar: os outros ${op.dim.disponibilidade} kWh são a taxa mínima que a CPFL cobra de todo mundo.</span></div></li>
-        <li><div class="ic">🛠️</div><div><b>Instalação, projeto e papelada da CPFL</b><span>Tudo incluído no preço</span></div></li>
-      </ul>
+      <div class="itens">
+        ${item('painel', esc(eq.modulo), `Ocupam cerca de ${n(op.areaM2)} m² do telhado`, `As placas transformam a luz do sol em energia. As placas ${esc(eq.marcaMod)} têm garantia de fábrica do produto e de rendimento. Os prazos de cada modelo vêm na ficha técnica que entregamos com o contrato.`)}
+        ${item(eq.tipo === 'micro' ? 'micro' : 'inversor', esc(eq.inversor), eq.tipo === 'micro' ? 'Um para cada grupo de placas' : eq.tipo === 'hibrido' ? 'Converte a energia e carrega a bateria' : 'O "cérebro" do sistema', eq.tipo === 'micro' ? 'Cada microinversor cuida de poucas placas. Se uma placa pegar sombra, as outras continuam gerando normalmente, e o sistema é desligado placa por placa, o que é mais seguro.' : eq.tipo === 'hibrido' ? 'Além de transformar a energia do sol, ele guarda energia na bateria e mantém o essencial ligado quando a luz da rua cai.' : 'Transforma a energia das placas na energia da tomada da sua casa e manda o que sobrar para a CPFL, que vira crédito na sua conta.')}
+        ${op.bateria ? item('bateria', `Bateria de ${n(op.bateria.kwh, 1)} kWh`, 'Energia guardada para quando faltar luz', 'Mantém geladeira, luzes e internet ligadas durante uma queda de energia.') : ''}
+        ${item('grafico', `Gera ${n(op.dim.geracaoMes)} kWh por mês`, `Você usa ${n(C.consumoMedio(o))} kWh por mês`, `Desses ${n(C.consumoMedio(o))} kWh, ${n(consumoZerar)} kWh dá para zerar. Os outros ${op.dim.disponibilidade} kWh são a taxa mínima que a CPFL cobra de todo mundo, mesmo de quem tem energia solar. A conta mostra a média do ano, com dias de sol e de chuva.`, `<div class="trilho" style="margin-top:10px"><i style="width:${Math.min(op.dim.geracaoMes / Math.max(consumoZerar, 1), 1) * 100}%;background:var(--bom)"></i></div><p class="mini-p" style="text-align:left">${n(Math.min(op.dim.geracaoMes / Math.max(consumoZerar, 1), 1) * 100)}% do que dá para zerar</p>`)}
+        ${item('ferramenta', 'Instalação, projeto e papelada da CPFL', 'Tudo incluído no preço', 'Fazemos a visita técnica, o projeto, a aprovação na CPFL, a instalação e a troca do medidor. Você não precisa ir a lugar nenhum.')}
+      </div>
       <div class="preco-sis"><span>Investimento</span><b>${brl(op.preco.precoFinal)}</b></div>
       <details class="outras"><summary>Ver as outras opções (microinversor ou premium)</summary>
-        ${a.opcoes.map((x, i) => i === est.opcao ? '' : `<div class="op-mini"><span><b style="font-family:inherit">${esc(x.nivel)}</b></span><b>${brl(x.preco.precoFinal)}</b><p>${esc(x.descricao)} ${x.dim.placas} placas, gera ${n(x.dim.geracaoMes)} kWh/mês.</p><button type="button" data-op="${i}">Escolher esta opção</button></div>`).join('')}
+        ${a.opcoes.map((x, i) => i === est.opcao ? '' : `<div class="op-mini"><span><b style="font-family:inherit">${esc(x.nivel)}</b></span><b>${brl(x.preco.precoFinal)}</b><p>${esc(C.equipamentos(x).modulo)} + ${esc(C.equipamentos(x).inversor.replace(/^./, (c) => c.toLowerCase()))}. Gera ${n(x.dim.geracaoMes)} kWh/mês. ${esc(x.descricao)}</p><button type="button" data-op="${i}">Escolher esta opção</button></div>`).join('')}
       </details>`;
 
     const perguntas = [
@@ -192,8 +196,8 @@
       <p style="font-weight:700;margin:0 0 8px">Qual o melhor horário para a visita?</p>
       <div class="opcoes-g" id="horarios">${['Manhã', 'Tarde', 'Sábado', 'Me liguem'].map((h) => `<button type="button" data-hr="${h}" aria-pressed="${est.hr === h}">${h}</button>`).join('')}</div>
       <button type="button" class="btn-g laranja" id="aceitar">Quero agendar a visita gratuita</button>
-      <a class="btn-g verde" href="${zapVend()}" target="_blank" rel="noopener" id="zap">💬 Conversar com o ${esc(vend)}</a>
-      <a class="btn-g contorno" id="compartilhar" href="https://wa.me/?text=${encodeURIComponent(msgFam)}" target="_blank" rel="noopener">👨‍👩‍👧 Mandar para um familiar</a>
+      <a class="btn-g verde" href="${zapVend()}" target="_blank" rel="noopener" id="zap">${Icone('conversa')} Conversar com o ${esc(vend)}</a>
+      <a class="btn-g contorno" id="compartilhar" href="https://wa.me/?text=${encodeURIComponent(msgFam)}" target="_blank" rel="noopener">${Icone('pessoas')} Mandar para um familiar</a>
       <p class="mini-p">Preço do material garantido até ${validade.toLocaleDateString('pt-BR')}.</p>
       ${passos()}`;
   }
@@ -220,13 +224,14 @@
       est.aceito = true; decidir(); $('#s-decidir').scrollIntoView({ behavior: 'smooth' });
     }
   });
+  $('#sistema').addEventListener('toggle', (ev) => { if (ev.target.open && ev.target.classList.contains('item')) registrar('viu', { secao: 'item:' + ev.target.querySelector('b').textContent.slice(0, 30) }); }, true);
   $('#duvidas').addEventListener('toggle', (ev) => { if (ev.target.open) registrar('duvida', { tema: ev.target.dataset.duvida }); }, true);
 
   /* ---------- Ouvir a proposta (voz do próprio aparelho) ---------- */
   function falar(botao) {
     const voz = window.speechSynthesis;
-    if (!voz) { botao.textContent = '🔊 Indisponível'; return; }
-    if (voz.speaking) { voz.cancel(); botao.textContent = '🔊 Ouvir'; botao.setAttribute('aria-pressed', 'false'); return; }
+    if (!voz) { botao.innerHTML = `${Icone('som')} <span>Indisponível</span>`; return; }
+    if (voz.speaking) { voz.cancel(); botao.innerHTML = `${Icone('som')} <span>Ouvir</span>`; botao.setAttribute('aria-pressed', 'false'); return; }
     const op = a.op, b = C.boleto(op, p, est.prazo);
     const texto = `Olá ${nomeCurto}. Aqui é a Chama Solar. Hoje você paga, em média, ${n(op.eco.contaAtual)} reais de luz por mês. ` +
       `No último ano foram ${n(a.raioX.pago12)} reais. Com energia solar, a sua conta cai para cerca de ${n(op.eco.contaDepois)} reais por mês. ` +
@@ -235,8 +240,8 @@
       `O próximo passo é uma visita técnica gratuita. Se tiver qualquer dúvida, fale com o ${vend} pelo WhatsApp.`;
     const u = new SpeechSynthesisUtterance(texto); u.lang = 'pt-BR'; u.rate = 0.92;
     const pt = voz.getVoices().find((x) => /pt(-|_)BR/i.test(x.lang)); if (pt) u.voice = pt;
-    u.onend = () => { botao.textContent = '🔊 Ouvir'; botao.setAttribute('aria-pressed', 'false'); };
-    voz.speak(u); botao.textContent = '⏹ Parar'; botao.setAttribute('aria-pressed', 'true');
+    u.onend = () => { botao.innerHTML = `${Icone('som')} <span>Ouvir</span>`; botao.setAttribute('aria-pressed', 'false'); };
+    voz.speak(u); botao.innerHTML = '<span>■ Parar</span>'; botao.setAttribute('aria-pressed', 'true');
     registrar('viu', { secao: 'ouviu' });
   }
 

@@ -161,3 +161,11 @@ body.com-barra { padding-bottom: 150px; }
 .sobe { color: var(--vermelho); font-size: 11px; font-weight: 700; }
 .desce { color: var(--verde-claro); font-size: 11px; font-weight: 700; }
 .marcar { width: 22px; height: 22px; accent-color: var(--laranja); }
+
+/* ícones da central */
+.nav a span .ico { width: 22px; height: 22px; }
+.nav a { transition: color .2s, background .2s, transform .15s; }
+.nav a:active { transform: scale(.96); }
+.nav a.ativo span .ico { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--laranja) 70%, transparent)); }
+.chip .ico { width: 18px; height: 18px; vertical-align: -4px; margin-right: 2px; }
+@media (min-width: 900px) { .nav a span { width: 22px; } }

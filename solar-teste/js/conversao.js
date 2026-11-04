@@ -172,7 +172,27 @@
     };
   }
 
+
+  /* Equipamento por extenso, com marca e potência escolhidas */
+  const MARCAS = ['AUXSOL', 'DEYE', 'GROWATT', 'HUAWEI', 'SOLIS', 'SUNGROW', 'HOYMILES', 'TSUNESS', 'ENPHASE', 'FOX', 'GOODWE'];
+  const tituloMarca = (m) => (m ? (m.length <= 4 ? m.toUpperCase() : m[0] + m.slice(1).toLowerCase()) : '');
+  function equipamentos(op) {
+    const kw = (v) => fmt(v, v % 1 ? 2 : 0).replace(/,?0+$/, (z) => (z.startsWith(',') ? '' : z));
+    const marcaMod = op.modulo.marca || (op.modulo.nome.match(/^(JA Solar|\S+)/) || [])[1] || '';
+    const fabInv = op.inversor.fabricante || (op.inversor.nome.toUpperCase().match(new RegExp('\\b(' + MARCAS.join('|') + ')\\b')) || [])[1] || '';
+    const qtdInv = op.inversor.qtd || 1, potUn = op.inversor.potenciaUnKw || op.inversor.potenciaKw / qtdInv;
+    const tipo = op.inversor.tipo === 'micro' || /micro/i.test(op.inversor.nome) ? 'micro' : op.inversor.hibrido || op.inversor.tipo === 'hibrido' ? 'hibrido' : 'string';
+    const nomeTipo = { micro: qtdInv > 1 ? 'microinversores' : 'microinversor', hibrido: 'inversor híbrido', string: 'inversor' }[tipo];
+    return {
+      modulo: `${op.dim.placas} placas ${marcaMod} de ${op.modulo.potenciaW} W`.replace(/\s+/g, ' '),
+      moduloCurto: `${marcaMod} ${op.modulo.potenciaW} W`.trim(),
+      inversor: `${qtdInv > 1 ? qtdInv + ' ' : ''}${nomeTipo} ${tituloMarca(fabInv)} de ${kw(potUn)} kW`.replace(/\s+/g, ' ').replace(/^./, (c) => c.toUpperCase()),
+      inversorCurto: `${tituloMarca(fabInv)} ${kw(potUn)} kW${qtdInv > 1 ? ' × ' + qtdInv : ''}`.trim(),
+      marcaMod, fabInv: tituloMarca(fabInv), tipo,
+    };
+  }
+
   function fmt(v, c = 0) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: c, maximumFractionDigits: c }); }
 
-  raiz.Conversao = { indiceOpcao, consumoMedio, entrada, opcoes, raioX, espera, custoEnergia, boleto, perfil, temperatura, proximaAcao, vizinhos, analisar, funil, fmt };
+  raiz.Conversao = { equipamentos, indiceOpcao, consumoMedio, entrada, opcoes, raioX, espera, custoEnergia, boleto, perfil, temperatura, proximaAcao, vizinhos, analisar, funil, fmt };
 })(window);

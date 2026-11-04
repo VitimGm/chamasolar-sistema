@@ -42,6 +42,8 @@
     ligacoes: ['MONOFÁSICO', 'BIFÁSICO', 'TRIFÁSICO'],
     tensoes: { 'MONOFÁSICO': ['127/220V'], 'BIFÁSICO': ['127/220V', '220/380V'], 'TRIFÁSICO': ['127/220V', '220/380V'] },
     fabricantes: ['AUXSOL', 'DEYE', 'GROWATT', 'HUAWEI', 'SOLIS', 'SUNGROW'],
+    fabricantesMicro: ['DEYE', 'HOYMILES', 'TSUNESS', 'ENPHASE'], // a confirmar no portal
+    potInversor: { 'INVERSOR STRING ON-GRID': [3, 4, 5, 6, 7.5, 8, 10, 12, 15], 'MICROINVERSOR': [1.6, 2.25], 'INVERSOR STRING HÍBRIDO': [3, 3.6, 5, 6, 8, 10, 12] },
     estruturas: {
       'Colonial': ['Modelo Belenergy em alumínio com ajuste vertical, indicado para telhas cerâmicas em geral', 'Modelo Belenergy em alumínio com ajuste horizontal, não indicado em telhas tégula e capa canal', 'Modelo SSM em alumínio com ajuste vertical, indicado para telhas cerâmicas em geral', 'Modelo Belenergy em aço galvanizado a fogo, com ajuste horizontal, não indicado para telhas do tipo tégula e capa canal'],
       'Telha Fibrocimento': ['Parafuso estrutural (detalhe a confirmar no portal)'], 'Telha Metálico': ['Mini trilho (detalhe a confirmar no portal)'],
@@ -154,17 +156,60 @@
     return s;
   }
 
+
+  /* ---------- Cotação automática de uma opção (mesmas telas, escolhas por regra) ---------- */
+  const REGRAS = { overloadMin: 0, overloadMax: 35 };
+  const fabModulo = (nome) => (nome.match(/^(JA Solar|\S+)/) || [])[1];
+  function escolherInversor(lista, tipo, potKw) {
+    if (!lista || !lista.length) return null;
+    if (potKw) { const exato = lista.filter((v) => Math.abs(v.potenciaKw / (v.qtd || 1) - potKw) < 0.01); if (exato.length) lista = exato; else return null; }
+    if (tipo === 'MICROINVERSOR') return lista[0];
+    return lista.find((v) => v.overload >= REGRAS.overloadMin && v.overload <= REGRAS.overloadMax) || [...lista].sort((a, b) => Math.abs(a.overload - 15) - Math.abs(b.overload - 15))[0];
+  }
+  async function cotarAuto(modo, base, aviso = () => {}) {
+    const s = novaSessao(modo);
+    Object.assign(s.escolhas, { kwp: base.kwp, ligacao: base.ligacao, nome: base.nome });
+    aviso('potência'); await avancar(s, { kwp: base.kwp });
+    const mods = s.opcoes.modulos || [];
+    const daSel = mods.filter((m) => (!base.fabMod || (fabModulo(m.nome) || '').toLowerCase() === base.fabMod.toLowerCase()) && (!base.potMod || m.potenciaW === +base.potMod));
+    const mod = daSel.find((m) => m.sku === base.moduloSku) || daSel[0] || (!base.fabMod && !base.potMod ? (mods.find((m) => m.kwp + 0.001 >= base.kwp) || mods[0]) : null);
+    if (!mod && (base.fabMod || base.potMod)) throw new Error(`O portal não tem módulo ${base.fabMod || ''} ${base.potMod ? base.potMod + ' W' : ''} hoje.`);
+    if (!mod) throw new Error('O portal não devolveu módulos.');
+    aviso('módulo'); await avancar(s, { moduloSku: mod.sku, moduloQtd: Math.max(mod.qtdSugerida, Math.ceil((base.kwp * 1000) / mod.potenciaW - 0.05)) });
+    const lig = (s.opcoes.ligacoes || []).includes(base.ligacao) ? base.ligacao : (s.opcoes.ligacoes || [])[0];
+    const ten = ((s.opcoes.tensoes || {})[lig] || [])[0];
+    const fabs = base.fabInv ? [base.fabInv] : [];
+    aviso('inversor'); await avancar(s, { filtrar: true, tipoInversor: base.tipoInversor, ligacao: lig, tensao: ten, fabricantes: fabs });
+    let inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0);
+    if (!inv && lig !== 'MONOFÁSICO') { await avancar(s, { filtrar: true, tipoInversor: base.tipoInversor, ligacao: 'MONOFÁSICO', tensao: '127/220V', fabricantes: fabs }); inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0); }
+    if (!inv) throw new Error(`O portal não tem ${base.tipoInversor.toLowerCase()}${base.fabInv ? ' ' + base.fabInv : ''}${base.potInv ? ' de ' + base.potInv + ' kW' : ''} para ${base.kwp} kWp nessa ligação.`);
+    await avancar(s, { inversorSku: inv.sku });
+    const tipos = Object.keys(s.opcoes.estruturas || {});
+    const tipo = tipos.includes(base.estruturaTipo) ? base.estruturaTipo : tipos[0];
+    let det = (s.opcoes.estruturas || {})[tipo] || [];
+    if (!det.length) det = await detalhes(s, tipo);
+    const placas = s.escolhas.modulo.qtd, linhas = placas > 12 ? 2 : 1;
+    if (placas % linhas) { /* número ímpar em 2 linhas: usa 1 linha */ }
+    const lin = placas % linhas ? 1 : linhas;
+    aviso('estrutura'); await avancar(s, { semEstrutura: !!base.semEstrutura, estruturaTipo: tipo, estruturaDetalhe: det[0], linhas: lin, modulosPorLinha: placas / lin, orientacao: 'Retrato' });
+    aviso('componentes'); await avancar(s, { itens: s.opcoes.itens });
+    await avancar(s, { itens: s.opcoes.itens });
+    await avancar(s, { itens: s.opcoes.itens });
+    aviso('confirmação'); await avancar(s, { nome: base.nome, estadoEntrega: 'SP', cidadeEntrega: base.cidade || 'Ribeirão Preto', frete: base.frete || 'Cliente Retira', pagamento: (s.opcoes.pagamentos || [])[0], salvar: false });
+    return s;
+  }
+
   function paraKit(s, nivel) {
     const e = s.escolhas, f = s.final, ficha = raiz.Catalogo ? raiz.Catalogo.fichaModulo(e.modulo.potenciaW) : {};
     return {
       nivel, origem: s.modo, numeroBelenergy: f.numero, nomeOrcamento: e.nome, frete: e.frete, pagamento: e.pagamento, entrega: `${e.cidadeEntrega || ''}/${e.estadoEntrega || ''}`, cotadoEm: new Date().toISOString(),
       valorKit: f.valorKit, valorProdutos: f.valorProdutos, valorFrete: f.frete,
-      modulo: { sku: e.modulo.sku, nome: e.modulo.nome, potenciaW: e.modulo.potenciaW, qtd: e.modulo.qtd, ...ficha },
-      inversor: { sku: e.inversor.sku, nome: e.inversor.nome + (e.inversor.qtd > 1 ? ` (${e.inversor.qtd} un.)` : ''), potenciaKw: e.inversor.potenciaKw, tipo: e.inversor.tipo, fabricante: e.inversor.fabricante, overload: e.inversor.overload },
+      modulo: { sku: e.modulo.sku, nome: e.modulo.nome, marca: fabModulo(e.modulo.nome), potenciaW: e.modulo.potenciaW, qtd: e.modulo.qtd, ...ficha },
+      inversor: { sku: e.inversor.sku, qtd: e.inversor.qtd || 1, potenciaUnKw: (e.inversor.potenciaKw || 0) / (e.inversor.qtd || 1), nome: e.inversor.nome + (e.inversor.qtd > 1 ? ` (${e.inversor.qtd} un.)` : ''), potenciaKw: e.inversor.potenciaKw, tipo: e.inversor.tipo, fabricante: e.inversor.fabricante, overload: e.inversor.overload },
       estrutura: e.estrutura, itens: { estrutura: e.itensEstrutura, cc: (e.itensCC || []).filter((i) => i.qtd > 0), ca: (e.itensCA || []).filter((i) => i.qtd > 0) },
       descricao: { Inversor: 'Inversor string: o melhor custo por energia gerada.', Microinversor: 'Um microinversor para cada par de placas: ideal com sombra e mais seguro.', Premium: 'Equipamento de topo ou híbrido com bateria.' }[nivel] || 'Kit fechado Belenergy.',
     };
   }
 
-  raiz.Cotador = { ETAPAS, PORTAL, detalhes, conectado, novaSessao, avancar, paraKit, URL_ROBO };
+  raiz.Cotador = { ETAPAS, PORTAL, REGRAS, cotarAuto, fabModulo, detalhes, conectado, novaSessao, avancar, paraKit, URL_ROBO };
 })(window);

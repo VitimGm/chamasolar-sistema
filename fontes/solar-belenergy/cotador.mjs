@@ -37,7 +37,9 @@ async function matSelect(seletor, texto) {
   if (!texto) return;
   await pg.locator(seletor).first().click(); await pausa(600);
   const op = pg.locator('mat-option').filter({ hasText: new RegExp('^\\s*' + texto.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&') + '\\s*$', 'i') }).first();
-  if (await op.count()) await op.click(); else await pg.keyboard.press('Escape');
+  if (await op.count()) await op.click();
+  else if (await pg.locator('mat-option').count()) await pg.locator('mat-option').first().click(); // opção pedida não existe: usa a 1ª do portal
+  else await pg.keyboard.press('Escape');
   await pausa(1200);
 }
 async function listaCustom(rotulo, texto) { // dropdowns próprios da tela de estrutura

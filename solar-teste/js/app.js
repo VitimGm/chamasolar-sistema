@@ -17,6 +17,7 @@
   const SECOES = { resumo: 'resumo em 3 números', conta: 'conta do último ano', espera: 'custo de esperar', pagamento: 'como fica o pagamento', sistema: 'o que vamos instalar', vizinhos: 'clientes vizinhos', duvidas: 'dúvidas', decidir: 'próximo passo', ouviu: 'ouviu a proposta em áudio', dor: 'conta do último ano', boleto: 'como fica o pagamento', opcoes: 'o que vamos instalar' };
 
   B.semear();
+  document.querySelectorAll('[data-ico]').forEach((i) => { i.outerHTML = Icone(i.dataset.ico); });
   const P = () => B.parametros();
   const linkProposta = (o, vendedor) => new URL(`proposta.html?t=${o.token}${vendedor ? '&v=1' : ''}`, location.href).href;
   const tempoRel = (iso) => {
@@ -109,6 +110,7 @@
               <div><span>Pagou em 12 meses</span><b>${brl(a.raioX.pago12)}</b></div>
               <div><span>Conta hoje → com solar</span><b>${brl(a.op.eco.contaAtual)} → ${brl(a.op.eco.contaDepois)}</b></div>
               <div><span>Proposta (${esc(a.op.nivel)})</span><b>${brl(a.op.preco.precoFinal)}</b></div>
+              <div style="grid-column:1/-1"><span>Equipamento</span><b style="font-size:15px">${esc(C.equipamentos(a.op).modulo)} · ${esc(C.equipamentos(a.op).inversor)}</b></div>
               <div><span>Retorno · custo energia</span><b>${n(a.op.eco.paybackAnos, 1)} a · R$ ${n(a.energia.rsKwh, 2)}</b></div>
             </div>
           </div>
@@ -219,7 +221,7 @@
     location.hash = '#lead-' + salvo.id;
   };
 
-  const MODOS = [['pdf', '📄', 'Anexar conta (PDF)'], ['meses', '✏️', 'Digitar 12 meses'], ['media', '≈', 'Só a média'], ['geracao', '☀️', 'Geração desejada']];
+  const MODOS = [['pdf', 'documento', 'Anexar conta (PDF)'], ['meses', 'conta', 'Digitar 12 meses'], ['media', 'grafico', 'Só a média'], ['geracao', 'sol', 'Geração desejada']];
   function passo1(el) {
     const media = C.consumoMedio(orc), modo = orc.modo || 'pdf', disp = M.DISPONIBILIDADE[orc.ligacao] ?? 50;
     const unico = orc.consumos.every((x) => x === orc.consumos[0]) && orc.consumos[0] !== '';
@@ -237,7 +239,7 @@
     }[modo];
     el.innerHTML = `<div class="lado"><div>
       <div class="painel brilha"><span class="rotulo" style="color:var(--sol)">Como você tem o consumo?</span>
-        <div class="chips" style="margin:12px 0">${MODOS.map(([v, ic, t]) => `<button class="chip ${modo === v ? 'sel' : ''}" data-modo="${v}">${ic} ${t}</button>`).join('')}</div>
+        <div class="chips" style="margin:12px 0">${MODOS.map(([v, ic, t]) => `<button class="chip ${modo === v ? 'sel' : ''}" data-modo="${v}">${Icone(ic)} ${t}</button>`).join('')}</div>
         ${blocoModo}</div>
       <div class="painel grade">
         <label class="campo"><span>Nome do cliente</span><input type="text" id="f-nome" value="${esc(orc.nome)}"></label>
@@ -342,6 +344,18 @@
   const TIPO_POR_OPCAO = ['INVERSOR STRING ON-GRID', 'MICROINVERSOR', 'INVERSOR STRING HÍBRIDO'];
   const DICA_OPCAO = ['String on-grid: melhor preço por Wp. É a opção principal que o cliente vê em destaque.', 'Para telhado com sombra ou águas diferentes. Desliga placa por placa (mais seguro).', 'Híbrido com bateria ou equipamento de topo: energia mesmo quando a luz cai.'];
   let cot = null, cotSlot = 0, cotModo = null;
+  function seletores(i) {
+    const sel = (orc.selKits = orc.selKits || [{}, {}, {}])[i];
+    const P0 = Cotador.PORTAL, fabsMod = [...new Set(P0.modulos.map((m) => Cotador.fabModulo(m[1])))];
+    const pots = [...new Set(P0.modulos.filter((m) => !sel.fabMod || Cotador.fabModulo(m[1]) === sel.fabMod).map((m) => m[2]))].sort((a, b) => a - b);
+    const tipo = TIPO_POR_OPCAO[i], fabsInv = tipo === 'MICROINVERSOR' ? P0.fabricantesMicro : P0.fabricantes;
+    const op = (lista, atual, vazio, fmt = (x) => x) => `<option value="">${vazio}</option>` + lista.map((x) => `<option value="${esc(x)}" ${String(x) === String(atual) ? 'selected' : ''}>${esc(fmt(x))}</option>`).join('');
+    return `<div class="grade g2" style="gap:8px">
+      <label class="campo"><span>Módulo · fabricante</span><select data-sel="${i}" data-k="fabMod">${op(fabsMod, sel.fabMod, 'Mais barato')}</select></label>
+      <label class="campo"><span>Módulo · potência</span><select data-sel="${i}" data-k="potMod">${op(pots, sel.potMod, 'Automática', (w) => w + ' W')}</select></label>
+      <label class="campo"><span>${tipo === 'MICROINVERSOR' ? 'Micro' : 'Inversor'} · fabricante</span><select data-sel="${i}" data-k="fabInv">${op(fabsInv, sel.fabInv, 'Melhor custo-benefício')}</select></label>
+      <label class="campo"><span>${tipo === 'MICROINVERSOR' ? 'Micro' : 'Inversor'} · potência</span><select data-sel="${i}" data-k="potInv">${op(P0.potInversor[tipo], sel.potInv, 'Automática', (k) => String(k).replace('.', ',') + ' kW')}</select></label></div>`;
+  }
   function passo4(el) {
     const p = P();
     orc.kitsFechados = orc.kitsFechados || [null, null, null];
@@ -351,17 +365,21 @@
     el.innerHTML = `
       <div class="painel brilha"><span class="rotulo" style="color:var(--sol)">Kit fechado Belenergy</span>
         <p style="margin:8px 0 4px">Monte cada opção no <b>Personalize seu Gerador</b>. O valor final do kit é o que entra no preço.</p>
-        <p class="mini" id="cot-status">Verificando o robô no seu computador…</p></div>
+        <p class="mini" id="cot-status">Verificando o robô no seu computador…</p>
+        <div class="grade g2" style="margin-top:12px;align-items:end">
+          <label class="campo"><span>Frete (vale para as 3)</span><select id="a-frete">${Cotador.PORTAL.fretes.map((f) => `<option ${f === (orc.freteAuto || 'Cliente Retira') ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></label>
+          <p class="mini" style="margin:0">Escolha em cada opção só o módulo e o inversor. Estrutura, componentes e confirmação seguem automáticos, como o portal sugere.</p></div>
+        <div class="linha-h" style="margin-top:12px"><button class="btn sol" id="a-cotar" ${orc.kitsFechados.filter(Boolean).length === 3 ? 'hidden' : ''}>⚡ Cotar ${orc.kitsFechados.filter(Boolean).length ? 'as que faltam' : 'as 3 de uma vez'}</button><span class="mini" id="a-prog"></span></div></div>
       <div class="ops-v" style="margin-top:14px">${NIVEIS_KIT.map((nv, i) => { const k = orc.kitsFechados[i]; return `
         <div class="op-v ${k ? 'sel' : ''}" style="cursor:default">
           <span class="rotulo" style="color:var(--sol)">${i === PRINCIPAL ? 'Principal' : 'Opcional'}</span><h3 style="margin:4px 0">${nv}</h3>
           ${k ? `<div class="preco">${brl(k.valorKit, 2)}</div><span class="mini">valor do kit · ${k.origem === 'simulado' ? 'SIMULADO' : 'Belenergy ' + esc(k.numeroBelenergy)}</span>
-            <ul><li><span>Módulos</span><span>${k.modulo.qtd} × ${esc(k.modulo.nome)}</span></li><li><span>Inversor</span><span>${esc(k.inversor.nome)}</span></li>
+            <ul><li><span>Módulos</span><span>${k.modulo.qtd} × ${esc(k.modulo.marca || k.modulo.nome)} ${k.modulo.potenciaW} W</span></li><li><span>${k.inversor.tipo === 'micro' ? 'Micro' : 'Inversor'}</span><span>${esc(C.equipamentos(M.opcaoKitFechado({ ...C.entrada(orc), kitsFechados: null }, k, p)).inversorCurto)}</span></li>
             <li><span>Estrutura</span><span>${k.estrutura.semEstrutura ? 'sem estrutura' : esc(k.estrutura.tipo)}</span></li><li><span>Frete</span><span>${esc(k.frete)}</span></li>
             <li><span>R$/Wp do kit</span><span>R$ ${n(k.valorKit / (k.modulo.qtd * k.modulo.potenciaW), 2)}</span></li></ul>
-            <div class="acoes-r" style="margin-top:10px"><button class="btn vidro pequeno" data-montar="${i}">Refazer</button><button class="btn vidro pequeno" data-tirar="${i}">Remover</button></div>`
-          : `<p class="sutil" style="margin:8px 0 12px">${DICA_OPCAO[i]}</p>
-            <button class="btn ${i === PRINCIPAL ? 'sol' : 'vidro'} pequeno" data-montar="${i}">Montar kit · ${n(kwpSug, 2)} kWp</button>`}
+            <div class="acoes-r" style="margin-top:10px"><button class="btn vidro pequeno" data-tirar="${i}">Refazer</button></div>`
+          : `<p class="sutil" style="margin:8px 0 12px">${DICA_OPCAO[i]}</p>${seletores(i)}
+            <button class="link" data-montar="${i}" style="margin-top:10px">montar passo a passo</button>`}
         </div>`; }).join('')}</div>
       <p class="mini" style="margin-top:12px">Potência sugerida pelo pré-dimensionamento: <b>${n(kwpSug, 2)} kWp</b> (consumo que dá para zerar + ${n((p.margemGeracao || 0) * 100)}% de margem${!orc.orientacao || orc.orientacao === '?' ? ` + perda de segurança de ${n((p.perdaOrientacao ?? 0.07) * 100)}% da orientação` : ''}).</p>`;
     Cotador.conectado().then((ok) => { cotModo = ok ? 'conectado' : 'simulado'; const st = $('#cot-status'); if (st) st.innerHTML = ok ? '🟢 Robô conectado: a cotação é feita no site da Belenergy, com a sua sessão.' : '🟡 Robô não encontrado neste computador. Modo <b>simulado</b> (mesmas telas, valores de teste).'; });
@@ -373,6 +391,26 @@
       novo();
     });
     el.querySelectorAll('[data-tirar]').forEach((b) => b.onclick = () => { orc.kitsFechados[+b.dataset.tirar] = null; salvarR(); novo(); });
+    el.querySelectorAll('[data-sel]').forEach((x) => x.onchange = () => { const sk = orc.selKits[+x.dataset.sel]; sk[x.dataset.k] = x.value; if (x.dataset.k === 'fabMod') sk.potMod = ''; salvarR(); novo(); });
+    $('#a-frete').onchange = (e) => { orc.freteAuto = e.target.value; salvarR(); };
+    $('#a-cotar').onclick = async (ev) => {
+      const btn = ev.target; btn.disabled = true;
+      const prog = $('#a-prog'), modo = cotModo || 'simulado', inicio = Date.now(), erros = [];
+      const base = { kwp: +kwpSug.toFixed(2), ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[orc.ligacao], cidade: orc.cidade, frete: $('#a-frete').value,
+        estruturaTipo: { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' }[orc.telhado] };
+      for (let i = 0; i < 3; i++) {
+        if (orc.kitsFechados[i]) continue; // já cotada: use "Refazer" para cotar de novo
+        try {
+          const s = await Cotador.cotarAuto(modo, { ...base, ...(orc.selKits || [])[i], tipoInversor: TIPO_POR_OPCAO[i], nome: `${orc.id || 'NOVO'} ${orc.nome} ${NIVEIS_KIT[i]}`.trim() },
+            (etapa) => { if (prog) prog.textContent = `${NIVEIS_KIT[i]} (${i + 1}/3): ${etapa}… ${Math.round((Date.now() - inicio) / 1000)} s`; });
+          orc.kitsFechados[i] = Cotador.paraKit(s, NIVEIS_KIT[i]);
+        } catch (e) { erros.push(`${NIVEIS_KIT[i]}: ${e.message}`); }
+      }
+      orc.opcaoEscolhida = orc.kitsFechados.filter(Boolean).findIndex((k) => k.nivel === NIVEIS_KIT[PRINCIPAL]);
+      salvarR(); novo();
+      toast(erros.length ? `${3 - erros.length} de 3 cotadas` : `3 kits cotados em ${Math.round((Date.now() - inicio) / 1000)} s`);
+      if (erros.length) $('#corpo').insertAdjacentHTML('afterbegin', `<div class="aviso ruim" style="margin-bottom:12px">${erros.map(esc).join('<br>')}</div>`);
+    };
   }
 
   async function passoCot(entrada) {
@@ -510,7 +548,7 @@
         <div class="grade g2"><label class="campo"><span>Comissão de parceiro (%)</span><input type="number" id="f-com" step="0.5" value="${orc.comissaoParceria}"></label>
         <label class="campo"><span>Desconto: ${n(orc.descontoPct, 1)}% de ${pct(p.reservaNegociacao, 0)}</span><input type="range" id="f-desc" min="0" max="${p.reservaNegociacao * 100}" step="0.5" value="${orc.descontoPct}"></label></div>
         <label class="alternar"><span><b>Kit faturado direto pela Belenergy</b><br><span class="sutil">imposto só no serviço (validar com o contador)</span></span><input type="checkbox" id="f-dir" ${orc.kitFaturadoDireto ? 'checked' : ''}></label></div>
-      <div class="painel"><span class="rotulo">Composição do preço · ${esc(op.nivel)} · só você vê</span><table style="margin-top:8px">
+      <div class="painel"><span class="rotulo">Composição do preço · ${esc(op.nivel)} · só você vê</span><p style="margin:8px 0 0;font-weight:600">${esc(C.equipamentos(op).modulo)} · ${esc(C.equipamentos(op).inversor)}</p><table style="margin-top:8px">
         ${pr.linhas.filter((l) => l.valor).map((l) => `<tr><td>${esc(l.nome)}</td><td class="v">${brl(l.valor)}</td></tr>`).join('')}
         <tr class="sub"><td>Custos diretos</td><td class="v">${brl(pr.custosDiretos)}</td></tr>
         <tr><td>Taxa fixa (${brl(p.custoFixoMes)} ÷ ${p.obrasPrevistasMes} obras)</td><td class="v">${brl(pr.taxaFixa)}</td></tr>

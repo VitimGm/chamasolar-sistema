@@ -170,3 +170,41 @@ details.duvida p { color: var(--tinta-2); margin: 0 0 16px; }
   body { background: #fff; padding: 0; }
   .bloco { break-inside: avoid; border-color: #ccc; }
 }
+
+/* Ícones e itens tocáveis */
+.bolha { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: #fff3eb; color: var(--acao-texto); flex: none; font-style: normal; transition: transform .25s, background .25s; }
+.bolha .ico { width: 24px; height: 24px; }
+.bloco h2 { display: flex; align-items: center; gap: 12px; }
+.bloco h2 .bolha { width: 40px; height: 40px; border-radius: 12px; }
+.num-card { position: relative; grid-template-columns: auto 1fr auto; }
+.num-card .bolha { grid-row: span 2; width: 42px; height: 42px; }
+.num-card.hoje .bolha { background: #fff; color: var(--ruim); }
+.num-card.sobra .bolha { background: #fff; color: var(--bom); }
+.num-card small { grid-column: 2 / -1; }
+.itens { display: grid; gap: 10px; }
+details.item { border: 2px solid var(--borda); border-radius: 16px; background: #fff; transition: border-color .2s, box-shadow .2s, transform .15s; }
+details.item:hover { border-color: color-mix(in srgb, var(--acao) 45%, var(--borda)); }
+details.item[open] { border-color: var(--acao); box-shadow: 0 8px 22px -12px color-mix(in srgb, var(--acao) 60%, transparent); }
+details.item summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 12px 14px; min-height: 64px; }
+details.item summary::-webkit-details-marker { display: none; }
+details.item summary:active { transform: scale(.99); }
+details.item .txt b { display: block; font-size: 1rem; }
+details.item .txt span { color: var(--tinta-2); font-size: .85rem; }
+details.item .abrir { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--fundo); color: var(--acao-texto); transition: transform .3s; }
+details.item[open] .abrir { transform: rotate(45deg); background: #fff3eb; }
+details.item[open] .bolha { transform: scale(1.08) rotate(-4deg); background: var(--acao); color: #fff; }
+details.item .explica { padding: 0 16px 16px 70px; color: var(--tinta-2); font-size: .95rem; animation: abrir .35s ease-out; }
+@keyframes abrir { from { opacity: 0; transform: translateY(-6px); } }
+.selos div .ico { width: 22px; height: 22px; color: var(--acao-texto); }
+.ferramentas button { display: inline-flex; align-items: center; gap: 6px; }
+.ferramentas .ico { width: 20px; height: 20px; }
+.btn-g .ico { width: 24px; height: 24px; }
+.cta-fixo .btn-g.verde .ico { width: 28px; height: 28px; }
+@media (max-width: 400px) { details.item .explica { padding-left: 16px; } }
+/* cartões de número: ícone + rótulo na 1ª linha, valor grande embaixo */
+.num-card, .num-card:is(.hoje, .depois, .sobra) { grid-template-columns: auto 1fr; gap: 6px 12px; }
+.num-card .bolha { grid-row: auto; width: 40px; height: 40px; }
+.num-card > span { align-self: center; }
+.num-card b, .num-card small { grid-column: 1 / -1; }
+.num-card b { font-size: 2rem; }
+@media (min-width: 640px) { .num-card, .num-card:is(.hoje, .depois, .sobra) { grid-template-columns: auto 1fr; } }
