@@ -168,6 +168,7 @@
           <button class="btn sol pequeno" id="docPdf">${Icone('documento')} Proposta em PDF</button>
           <button class="btn vidro pequeno" id="docContrato">Contrato</button>
           <button class="btn vidro pequeno" id="docProc">Procuração CPFL</button>
+          ${o.status === 'ganho' ? '<button class="btn vidro pequeno" id="virarUsina">Cadastrar usina</button>' : ''}
         </div>
         <details style="margin-top:10px"><summary class="link">Dados do cliente para contrato e procuração</summary>
           <div class="grade g2" style="margin-top:10px">${[['documento', 'CPF ou CNPJ'], ['rg', 'RG'], ['estadoCivil', 'Estado civil'], ['profissao', 'Profissão'], ['endereco', 'Endereço completo (rua, nº, bairro, cidade, CEP)'], ['instalacao', 'Nº da instalação na CPFL'], ['condicao', 'Condição de pagamento (ex.: entrada + 60x)']]
@@ -227,6 +228,7 @@
     $('#docPdf').onclick = () => { Documentos.proposta(o, p, o.status !== 'novo' ? link : null); B.interacao(o.id, 'nota', 'Gerou a proposta em PDF'); };
     $('#docContrato').onclick = () => Documentos.contrato(o, p);
     $('#docProc').onclick = () => Documentos.procuracao(o, p);
+    if ($('#virarUsina')) $('#virarUsina').onclick = () => { location.hash = '#usinas'; setTimeout(() => formUsina({ cliente_nome: o.nome, whatsapp: o.whatsapp, cidade: o.cidade, kwp: a.op.dim.kwpReal, marca: (C.equipamentos(a.op).fabInv || '').toLowerCase().replace(/^./, (x) => x.toUpperCase()), esperado_mes: a.op.dim.geracaoMes, tarifa_kwh: o.tarifaKwh }), 200); };
     $('#ctSalvar').onclick = () => { o.contrato = { ...(o.contrato || {}) }; app.querySelectorAll('[data-ct]').forEach((x) => { o.contrato[x.dataset.ct] = x.value.trim(); }); B.salvar(o); toast('Dados do contrato salvos'); ficha(o.id); };
     $('#abrirPV').onclick = () => { try { sessionStorage.setItem('sol2_abrir', JSON.stringify({ t: o.token, v: 1 })); } catch { /* sem armazenamento */ } };
     $('#enviarZap').onclick = () => { if (o.status === 'novo') { o.status = 'proposta'; o.enviadoEm = new Date().toISOString(); B.salvar(o); } B.interacao(o.id, 'whatsapp', 'Proposta enviada'); };
@@ -689,6 +691,66 @@
 
   /* ======================= CATÁLOGO ======================= */
   let filtroCat = 'modulo';
+  /* ======================= USINAS (monitoramento) ======================= */
+  function usinasPag() {
+    const U = window.Usinas, lista = B.usinas().filter((u) => u.ativo !== false);
+    const info = lista.map((u) => ({ u, g: B.geracao(u.id), s: U.situacao(u, B.geracao(u.id)) }));
+    const alertas = info.filter((x) => x.s.alerta);
+    const totalMes = info.reduce((t, x) => t + x.s.total, 0);
+    app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Usinas</h1><p class="sutil">Geração lida das plataformas dos fabricantes, comparada com o que a proposta prometeu.</p></div>
+        <div class="linha-h"><button class="btn vidro" id="usImp">Importar planilha</button><button class="btn sol" id="usNova">＋ Cadastrar usina</button></div></div>
+      <div class="kpis entra"><div class="kpi destaque"><span class="rotulo">Usinas</span><b>${lista.length}</b><span class="sutil">${n(lista.reduce((t, u) => t + Number(u.kwp), 0), 1)} kWp instalados</span></div>
+        <div class="kpi"><span class="rotulo">Geração no mês</span><b>${n(totalMes)} kWh</b><span class="sutil">todas as usinas</span></div>
+        <div class="kpi"><span class="rotulo">Precisam de atenção</span><b style="color:${alertas.length ? 'var(--laranja)' : 'inherit'}">${alertas.length}</b><span class="sutil">ligar antes do cliente perceber</span></div>
+        <div class="kpi"><span class="rotulo">Relatórios do mês</span><b>${info.filter((x) => x.s.total).length}</b><span class="sutil">prontos para mandar</span></div></div>
+      ${alertas.length ? `<div class="secao-t"><h2>Atenção</h2><span class="sutil">ligue para o cliente ou abra a plataforma do fabricante</span></div><div class="agora">${alertas.map(({ u, s }) => `<div class="acao p5"><div class="ic">⚠️</div><div><b>${esc(u.cliente_nome)}</b> <span class="sutil">${esc(u.marca)} · ${n(u.kwp, 2)} kWp</span><p>${esc(s.alerta)}</p></div></div>`).join('')}</div>` : ''}
+      <div class="secao-t"><h2>Todas as usinas</h2><span class="sutil">este mês, proporcional aos dias com leitura</span></div>
+      <div class="ops-v duas">${info.map(({ u, s }) => `<div class="op-v" style="cursor:default">
+          <div class="entre"><b style="font-size:17px">${esc(u.cliente_nome)}</b><span class="mini">${esc(u.marca)}${u.plataforma_id ? ' · ' + esc(u.plataforma_id) : ''}</span></div>
+          <span class="mini">${esc(u.cidade || '')} · ${n(u.kwp, 2)} kWp · espera ${n(u.esperado_mes)} kWh/mês</span>
+          <div style="height:10px;border-radius:99px;background:var(--vidro);margin:10px 0 4px;overflow:hidden"><div style="height:100%;width:${Math.min((s.pct || 0) * 100, 100)}%;background:${s.pct === null ? 'transparent' : s.pct < 0.75 ? 'var(--laranja)' : 'var(--verde-claro)'}"></div></div>
+          <span class="mini">${s.pct === null ? 'sem leitura este mês' : `${n(s.total)} kWh · ${n(s.pct * 100)}% do esperado · ${brl(s.economiaMes)} de economia`}${s.ultimo ? ' · última leitura ' + s.ultimo.split('-').reverse().join('/') : ''}</span>
+          <div class="acoes-r" style="margin-top:10px"><button class="btn sol pequeno" data-us="rel" data-id="${u.id}">Relatório PDF</button><button class="btn zap pequeno" data-us="zap" data-id="${u.id}">WhatsApp</button><button class="btn vidro pequeno" data-us="imp" data-id="${u.id}">Importar</button><button class="link" data-us="edit" data-id="${u.id}">editar</button></div>
+        </div>`).join('') || '<p class="sutil">Nenhuma usina cadastrada. Comece pelas mais recentes.</p>'}</div>
+      <input type="file" id="usArq" accept=".csv,.txt,.tsv" hidden>`;
+    let alvo = null;
+    const arq = $('#usArq');
+    arq.onchange = async () => { const f = arq.files[0]; arq.value = ''; if (!f || !alvo) return; const linhas = U.lerPlanilha(await f.text()); if (!linhas.length) { toast('Não achei datas e kWh nesse arquivo. Exporte em CSV com data e energia.'); return; } await B.gravarGeracao(alvo, linhas); toast(linhas.length + ' dia(s) importados'); usinasPag(); };
+    $('#usNova').onclick = () => formUsina({});
+    $('#usImp').onclick = () => { if (!lista.length) { toast('Cadastre a usina primeiro'); return; } escolher(lista, (u) => { alvo = u.id; arq.click(); }); };
+    app.querySelectorAll('[data-us]').forEach((b) => b.onclick = () => {
+      const u = lista.find((x) => String(x.id) === b.dataset.id), g = B.geracao(u.id);
+      if (b.dataset.us === 'rel') U.relatorio(u, g);
+      else if (b.dataset.us === 'zap') window.open('https://wa.me/55' + String(u.whatsapp || '').replace(/\D/g, '').replace(/^55/, '') + '?text=' + encodeURIComponent(U.mensagem(u, g)), '_blank', 'noopener');
+      else if (b.dataset.us === 'imp') { alvo = u.id; arq.click(); }
+      else formUsina(u);
+    });
+  }
+  function escolher(lista, fn) {
+    const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:80;background:#0009;display:grid;place-items:center;padding:16px';
+    ov.innerHTML = `<div class="painel" style="max-width:420px;width:100%"><span class="rotulo">De qual usina é a planilha?</span><div style="display:grid;gap:8px;margin-top:10px">${lista.map((u) => `<button class="btn vidro" data-u="${u.id}">${esc(u.cliente_nome)} · ${esc(u.marca)}</button>`).join('')}</div></div>`;
+    ov.onclick = (e) => { const b = e.target.closest('[data-u]'); if (b) fn(lista.find((u) => String(u.id) === b.dataset.u)); ov.remove(); };
+    document.body.appendChild(ov);
+  }
+  function formUsina(u) {
+    const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:80;background:#0009;display:grid;place-items:center;padding:16px';
+    const campo = (k, r, t = 'text', extra = '') => `<label class="campo"><span>${r}</span><input data-f="${k}" type="${t}" step="any" value="${esc(u[k] ?? '')}" ${extra}></label>`;
+    ov.innerHTML = `<div class="painel" style="max-width:560px;width:100%;max-height:92vh;overflow:auto"><div class="entre"><span class="rotulo" style="color:var(--sol)">${u.id ? 'Editar usina' : 'Cadastrar usina'}</span><button class="link" data-x>fechar</button></div>
+      <div class="grade g2" style="margin-top:10px">${campo('cliente_nome', 'Cliente')}${campo('whatsapp', 'WhatsApp')}${campo('cidade', 'Cidade')}${campo('kwp', 'Potência (kWp)', 'number')}
+        <label class="campo"><span>Marca do inversor</span><select data-f="marca">${window.Usinas.MARCAS.map((m) => `<option ${m === u.marca ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
+        ${campo('plataforma_id', 'ID da usina na plataforma')}${campo('ligada_em', 'Ligada em', 'date')}${campo('esperado_mes', 'Geração prometida (kWh/mês)', 'number')}${campo('tarifa_kwh', 'Tarifa (R$/kWh)', 'number')}</div>
+      <div class="acoes-r" style="margin-top:12px"><button class="btn sol" data-salvar>Salvar</button></div></div>`;
+    document.body.appendChild(ov);
+    ov.onclick = async (e) => {
+      if (e.target === ov || e.target.closest('[data-x]')) return ov.remove();
+      if (!e.target.closest('[data-salvar]')) return;
+      const novoU = { ...u }; ov.querySelectorAll('[data-f]').forEach((i) => { novoU[i.dataset.f] = i.type === 'number' ? (i.value === '' ? null : +i.value) : i.value.trim(); });
+      if (!novoU.cliente_nome || !novoU.kwp) { toast('Preencha cliente e potência'); return; }
+      if (!novoU.esperado_mes) novoU.esperado_mes = Math.round(novoU.kwp * ((D.cidades[novoU.cidade] || D.cidades['Ribeirão Preto']).hsp) * 30 * P().pr);
+      try { await B.salvarUsina(novoU); ov.remove(); toast('Usina salva'); usinasPag(); } catch (err) { toast('Não salvou: ' + err.message.slice(0, 80)); }
+    };
+  }
+
   function catalogoPag() {
     const K = window.Catalogo, c = K.ler();
     const itens = c.itens.filter((i) => i.tipo === filtroCat).sort((a, b) => (b.usar - a.usar) || (a.preco / (a.potenciaW || 1)) - (b.preco / (b.potenciaW || 1)));
@@ -737,7 +799,7 @@
     const [rota, arg] = h.startsWith('lead-') ? ['lead', h.slice(5)] : [h, null];
     document.querySelectorAll('[data-rota]').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === (rota === 'lead' ? 'painel' : rota)));
     if (rota !== 'novo') { document.body.classList.remove('com-barra'); $('#barra').hidden = true; }
-    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'parametros') parametrosPag(); else painel(); };
+    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'parametros') parametrosPag(); else painel(); };
     if (document.startViewTransition) {
       const t = document.startViewTransition(ir);
       [t.ready, t.finished, t.updateCallbackDone].forEach((pr) => pr && pr.catch(() => {})); // navegação rápida cancela a animação, sem problema

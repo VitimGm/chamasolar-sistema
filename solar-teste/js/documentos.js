@@ -145,5 +145,5 @@
     return f;
   }
 
-  raiz.Documentos = { proposta, contrato, procuracao, faltando, empresaDe };
+  raiz.Documentos = { proposta, contrato, procuracao, faltando, empresaDe, pagina, abrir };
 })(window);

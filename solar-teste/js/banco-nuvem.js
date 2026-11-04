@@ -58,7 +58,7 @@
   }
 
   /* ---------- cache ---------- */
-  let orcs = [], eventos = [], interacoes = [], paramVigente = {}, publico = null;
+  let orcs = [], eventos = [], interacoes = [], paramVigente = {}, publico = null, usinas = [], geracaoPor = {};
   const dbid = {}; // ORC-0001 -> id no banco
 
   function linhaParaOrc(r) {
@@ -156,6 +156,22 @@
       });
     },
 
+    /* ---------- usinas instaladas e geração diária ---------- */
+    usinas() { return usinas; },
+    geracao(id) { return (geracaoPor[id] || []).slice(); },
+    async salvarUsina(u) {
+      const campos = ['orcamento_id', 'cliente_nome', 'whatsapp', 'cidade', 'kwp', 'marca', 'plataforma_id', 'ligada_em', 'esperado_mes', 'tarifa_kwh', 'ativo', 'obs'];
+      const corpo = Object.fromEntries(campos.filter((c) => u[c] !== undefined).map((c) => [c, u[c] === '' ? null : u[c]]));
+      const r = u.id ? await api('sol_usinas?id=eq.' + u.id, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify(corpo) })
+        : await api('sol_usinas', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(corpo) });
+      const salvo = r[0]; const i = usinas.findIndex((x) => x.id === salvo.id); i >= 0 ? (usinas[i] = salvo) : usinas.push(salvo); aviso('Salvo ✓'); return salvo;
+    },
+    async gravarGeracao(id, linhas) {
+      for (let i = 0; i < linhas.length; i += 500) await api('sol_geracao?on_conflict=usina_id,dia', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify(linhas.slice(i, i + 500).map((l) => ({ usina_id: id, dia: l.dia, kwh: l.kwh, origem: 'planilha' }))) });
+      const m = Object.fromEntries((geracaoPor[id] || []).map((l) => [l.dia, l])); linhas.forEach((l) => { m[l.dia] = { dia: l.dia, kwh: l.kwh }; });
+      geracaoPor[id] = Object.values(m).sort((a, b) => a.dia.localeCompare(b.dia)); aviso('Salvo ✓'); return linhas.length;
+    },
+
     semear() { /* no oficial não existem leads de exemplo */ },
     zerarTudo() { ['rascunho', 'etapa'].forEach((k) => { try { localStorage.removeItem(LOCAL + k); } catch { /* */ } }); },
     rascunho: { ler: () => lerL('rascunho', null), gravar: (v) => gravarL('rascunho', v), etapa: () => lerL('etapa', 0), gravarEtapa: (e) => gravarL('etapa', e) },
@@ -173,6 +189,9 @@
       eventos = ev.map((e) => ({ token: (porId[e.orcamento_id] || {}).token_publico, tipo: e.tipo, dados: e.dados, em: e.em }));
       interacoes = it.map((i) => ({ orcId: (porId[i.orcamento_id] || {}).codigo, tipo: i.tipo, texto: i.texto, em: i.em }));
       paramVigente = (pr[0] && pr[0].dados) || {};
+      const desde = new Date(Date.now() - 400 * 864e5).toISOString().slice(0, 10);
+      const [us, ge] = await Promise.all([api('sol_usinas?select=*&order=cliente_nome.asc'), api('sol_geracao?select=usina_id,dia,kwh&dia=gte.' + desde + '&order=dia.asc&limit=100000')]);
+      usinas = us; geracaoPor = {}; ge.forEach((g) => { (geracaoPor[g.usina_id] = geracaoPor[g.usina_id] || []).push({ dia: g.dia, kwh: +g.kwh }); });
     },
     /* proposta aberta pelo cliente: só a vitrine, pelo token */
     async carregarPublica(t) {

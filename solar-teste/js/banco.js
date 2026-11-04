@@ -87,7 +87,25 @@
       });
       gravar('semeado', true);
     },
-    zerarTudo() { ['orcamentos', 'eventos', 'interacoes', 'semeado', 'rascunho', 'etapa'].forEach((k) => { try { localStorage.removeItem(PREFIXO + k); } catch { /* sem armazenamento */ } }); },
+    zerarTudo() { ['orcamentos', 'eventos', 'interacoes', 'semeado', 'rascunho', 'etapa', 'usinas', 'geracao'].forEach((k) => { try { localStorage.removeItem(PREFIXO + k); } catch { /* sem armazenamento */ } }); },
+    /* ---------- usinas instaladas e geração diária ---------- */
+    usinas() {
+      let u = ler('usinas', null);
+      if (!u) { // exemplo para o teste
+        u = [{ id: 1, cliente_nome: 'Rosa Martins', cidade: 'Ribeirão Preto', kwp: 4.11, marca: 'Auxsol', plataforma_id: 'AX-1001', ligada_em: '2025-08-12', esperado_mes: 480, tarifa_kwh: 0.98, whatsapp: '16 99100-0001' },
+          { id: 2, cliente_nome: 'Mercado Bom Preço', cidade: 'Sertãozinho', kwp: 16.44, marca: 'Huawei', plataforma_id: 'HW-2203', ligada_em: '2025-03-02', esperado_mes: 1950, tarifa_kwh: 0.92, whatsapp: '16 99100-0002' },
+          { id: 3, cliente_nome: 'João Batista', cidade: 'Franca', kwp: 6.17, marca: 'Deye', plataforma_id: 'DY-3310', ligada_em: '2026-01-20', esperado_mes: 730, tarifa_kwh: 0.98, whatsapp: '16 99100-0003' }];
+        gravar('usinas', u);
+        const g = {}, hoje = new Date();
+        u.forEach((x, k) => { g[x.id] = []; for (let d = 50; d >= (k === 2 ? 5 : 1); d--) { const dia = new Date(hoje - d * 864e5).toISOString().slice(0, 10); const f = k === 1 ? 0.62 : 0.95; g[x.id].push({ dia, kwh: +((x.esperado_mes / 30) * f * (0.75 + Math.random() * 0.45)).toFixed(1) }); } });
+        gravar('geracao', g);
+      }
+      return u;
+    },
+    geracao(id) { return (ler('geracao', {})[id] || []).slice(); },
+    async salvarUsina(u) { const lista = this.usinas(); if (!u.id) u.id = lista.reduce((m, x) => Math.max(m, x.id), 0) + 1; const i = lista.findIndex((x) => x.id === u.id); i >= 0 ? (lista[i] = u) : lista.push(u); gravar('usinas', lista); return u; },
+    async gravarGeracao(id, linhas) { const g = ler('geracao', {}); const m = Object.fromEntries((g[id] || []).map((l) => [l.dia, l])); linhas.forEach((l) => { m[l.dia] = { dia: l.dia, kwh: l.kwh }; }); g[id] = Object.values(m).sort((a, b) => a.dia.localeCompare(b.dia)); gravar('geracao', g); return linhas.length; },
+
     rascunho: { ler: () => ler('rascunho', null), gravar: (v) => gravar('rascunho', v), etapa: () => ler('etapa', 0), gravarEtapa: (e) => gravar('etapa', e) },
   };
 
