@@ -728,7 +728,7 @@
     const alertas = info.filter((x) => x.s.alerta);
     const totalMes = info.reduce((t, x) => t + x.s.total, 0);
     app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Usinas</h1><p class="sutil">Geração lida das plataformas dos fabricantes, comparada com o que a proposta prometeu.</p></div>
-        <div class="linha-h"><button class="btn vidro" id="usImp">Importar planilha</button><button class="btn sol" id="usNova">＋ Cadastrar usina</button></div></div>
+        <div class="linha-h"><button class="btn vidro" id="usAtu">↻ Atualizar agora</button><button class="btn vidro" id="usImp">Importar planilha</button><button class="btn sol" id="usNova">＋ Cadastrar usina</button></div></div>
       <div class="kpis entra"><div class="kpi destaque"><span class="rotulo">Usinas</span><b>${lista.length}</b><span class="sutil">${n(lista.reduce((t, u) => t + Number(u.kwp), 0), 1)} kWp instalados</span></div>
         <div class="kpi"><span class="rotulo">Geração no mês</span><b>${n(totalMes)} kWh</b><span class="sutil">todas as usinas</span></div>
         <div class="kpi"><span class="rotulo">Precisam de atenção</span><b style="color:${alertas.length ? 'var(--laranja)' : 'inherit'}">${alertas.length}</b><span class="sutil">ligar antes do cliente perceber</span></div>
@@ -747,6 +747,11 @@
     const arq = $('#usArq');
     arq.onchange = async () => { const f = arq.files[0]; arq.value = ''; if (!f || !alvo) return; const linhas = U.lerPlanilha(await f.text()); if (!linhas.length) { toast('Não achei datas e kWh nesse arquivo. Exporte em CSV com data e energia.'); return; } await B.gravarGeracao(alvo, linhas); toast(linhas.length + ' dia(s) importados'); usinasPag(); };
     $('#usNova').onclick = () => formUsina({});
+    $('#usAtu').onclick = async (ev) => {
+      const b = ev.target; b.disabled = true; b.textContent = 'Lendo as plataformas… (até 2 min)';
+      try { const r = await B.atualizarMonitoramento(); toast(Object.entries(r).map(([m, x]) => m + ': ' + (x.erro ? 'erro — ' + x.erro : typeof x === 'string' ? x : x.usinas + ' usinas, ' + x.dias + ' dias')).join(' · ') || 'Nenhuma plataforma com acesso guardado'); usinasPag(); }
+      catch (e) { toast('Não leu: ' + String(e.message).slice(0, 120)); b.disabled = false; b.textContent = '↻ Atualizar agora'; }
+    };
     $('#usImp').onclick = () => { if (!lista.length) { toast('Cadastre a usina primeiro'); return; } escolher(lista, (u) => { alvo = u.id; arq.click(); }); };
     app.querySelectorAll('[data-us]').forEach((b) => b.onclick = () => {
       const u = lista.find((x) => String(x.id) === b.dataset.id), g = B.geracao(u.id);

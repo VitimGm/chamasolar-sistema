@@ -89,7 +89,47 @@ async function growatt(cred: Record<string, string>, amostra: Record<string, unk
   return saida;
 }
 
-const LEITORES: Record<string, (c: Record<string, string>, a: Record<string, unknown>) => Promise<{ id: string; nome: string; kwp: number; dias: { dia: string; kwh: number }[] }[]>> = { Growatt: growatt };
+// ---------- Growatt OpenAPI v1 (token de instalador / OSS) ----------
+async function growattV1(cred: Record<string, string>, amostra: Record<string, unknown>) {
+  const token = (cred.chave || "").trim();
+  const v1 = async (pagina: string, params: Record<string, string>) => {
+    const r = await fetch("https://openapi.growatt.com/v1/" + pagina + "?" + new URLSearchParams(params), { headers: { token } });
+    const j = await r.json().catch(() => ({ error_code: -1, error_msg: "HTTP " + r.status }));
+    if (j.error_code !== 0) throw new Error(`Growatt ${pagina}: ${j.error_msg || j.error_code}`);
+    return j.data;
+  };
+  const plantas: { id: string; nome: string; kwp: number; dias: { dia: string; kwh: number }[] }[] = [];
+  for (let pag = 1; pag <= 30; pag++) {
+    const d = await v1("plant/list", { page: String(pag), perpage: "100" });
+    const lista = (d && (d.plants || d.plant_list || d.list)) || [];
+    if (pag === 1) amostra.lista = { chaves: Object.keys(d || {}), exemplo: lista[0] ? Object.keys(lista[0]) : null, total: d && d.count };
+    lista.forEach((p: any) => plantas.push({ id: String(p.plant_id ?? p.id), nome: p.name || p.plant_name || "", kwp: Number(p.peak_power ?? p.nominal_power ?? 0), dias: [] }));
+    if (lista.length < 100) break;
+  }
+  const hoje = new Date(Date.now() - 3 * 3600e3), iso = (d: Date) => d.toISOString().slice(0, 10);
+  const janelas = Number(cred.dias_historico || 0) > 7 ? Math.ceil(Number(cred.dias_historico) / 7) : 2; // padrão: últimos 14 dias
+  for (const p of plantas) {
+    for (let j = 0; j < janelas; j++) {
+      const fim = new Date(hoje.getTime() - j * 7 * 864e5), ini = new Date(fim.getTime() - 6 * 864e5);
+      let d: any;
+      try { d = await v1("plant/energy", { plant_id: p.id, start_date: iso(ini), end_date: iso(fim), time_unit: "day", page: "1", perpage: "100" }); }
+      catch (e) { amostra["erro_" + p.id] = String(e).slice(0, 120); break; }
+      if (!amostra.energia) amostra.energia = { chaves: Object.keys(d || {}), exemplo: JSON.stringify(d).slice(0, 200) };
+      const lista = (d && (d.energys || d.energy || d.datas || d.list)) || (Array.isArray(d) ? d : []);
+      for (const x of lista) {
+        const dia = String(x.date || x.time || x.day || "").slice(0, 10), kwh = Number(x.energy ?? x.value ?? x.eday);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dia) && !isNaN(kwh)) p.dias.push({ dia, kwh });
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+  return plantas;
+}
+async function growattAuto(cred: Record<string, string>, amostra: Record<string, unknown>) {
+  return (cred.chave || "").trim() ? growattV1(cred, amostra) : growatt(cred, amostra);
+}
+
+const LEITORES: Record<string, (c: Record<string, string>, a: Record<string, unknown>) => Promise<{ id: string; nome: string; kwp: number; dias: { dia: string; kwh: number }[] }[]>> = { Growatt: growattAuto };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
