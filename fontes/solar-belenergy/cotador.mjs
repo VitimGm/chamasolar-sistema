@@ -38,7 +38,36 @@ const logado = async () => (await pg.locator('text=/Chama Solar Instala|Meus Or�
 /* ---------- utilidades ---------- */
 const botao = (texto) => pg.locator('button:visible').filter({ hasText: texto }).first();
 /* O portal escreve os botões em minúsculas e mostra em MAIÚSCULAS via CSS: comparar sempre sem caixa */
-async function proximo() { await botao(/^\s*PRÓXIMO\s*$/i).click(); await pg.waitForLoadState('networkidle').catch(() => {}); await pausa(800); }
+/* Avisos que o portal mostra quando não deixa avançar (ex.: "falta conector MC4") */
+async function avisoPortal() {
+  return pg.evaluate(() => [...document.querySelectorAll('mat-snack-bar-container, .mat-mdc-snack-bar-container, simple-snack-bar, .toast, .toast-message, .alert, .swal2-popup, [role="alert"], mat-dialog-container, .mat-mdc-dialog-container, .mat-error, .text-danger')]
+    .filter((e) => e.offsetParent !== null).map((e) => e.innerText.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' | ')).catch(() => '');
+}
+async function fecharAvisos() { for (const t of [/^\s*OK\s*$/i, /^\s*Fechar\s*$/i, /^\s*Entendi\s*$/i]) { const b = pg.locator('button:visible').filter({ hasText: t }).first(); if (await b.count()) await b.click({ timeout: 2000 }).catch(() => {}); } await pg.keyboard.press('Escape').catch(() => {}); }
+/* Correções automáticas para bloqueios conhecidos do portal */
+async function corrigirBloqueio(msg) {
+  if (/MC4|conector/i.test(msg)) { // conector MC4 zerado ou faltando: põe a quantidade sugerida (mínimo 2 pares)
+    const rows = await linhas('MC4|CONECTOR');
+    for (const r of rows) if (!r.qtd) await ajustarQtd(r.sku, Math.max(r.qtdSugerida || 0, 2));
+    if (!rows.length) { const add = pg.locator('button:visible, a:visible').filter({ hasText: /adicionar|incluir/i }).first(); if (await add.count()) await add.click({ timeout: 3000 }).catch(() => {}); }
+    return rows.length > 0;
+  }
+  return false;
+}
+async function proximo() {
+  const antes = pg.url();
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    await botao(/^\s*PRÓXIMO\s*$/i).click(); await pg.waitForLoadState('networkidle').catch(() => {}); await pausa(1200);
+    if (pg.url() !== antes) return;
+    const msg = await avisoPortal();
+    if (!msg) return; // mesma URL mas sem aviso: telas da mesma página
+    console.log('Portal avisou: ' + msg);
+    await fecharAvisos();
+    if (tentativa === 0 && (await corrigirBloqueio(msg))) { console.log('Corrigi e vou tentar de novo.'); continue; }
+    const f = await printErro('bloqueio');
+    throw new Error('O portal não deixou avançar: ' + msg.slice(0, 160) + (f ? ' · print salvo em ' + f : ''));
+  }
+}
 async function semCookies() { const b = pg.locator('button:visible').filter({ hasText: /^\s*Rejeitar\s*$/i }).first(); if (await b.count()) await b.click().catch(() => {}); }
 async function esperarLinhas(filtro, ms = 60000) { // o portal demora (~13 s para listar módulos): espera a tabela estabilizar
   const t0 = Date.now(); let antes = -1;
