@@ -26,6 +26,7 @@ const num = (t) => +String(t || '').replace(/\./g, '').replace(',', '.').replace
 
 const ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), { headless: false, viewport: { width: 1450, height: 900 } });
 const pg = ctx.pages()[0] || (await ctx.newPage());
+pg.setDefaultTimeout(20000);
 await pg.goto(BASE + '/');
 const logado = async () => (await pg.locator('text=/Chama Solar Instala|Meus Orçamentos/i').count()) > 0;
 
@@ -63,11 +64,18 @@ async function ajustarQtd(skuAlvo, alvo) { // usa + / − da própria linha (o A
 async function ajustarItens(itens) { for (const it of itens || []) if (it.sku) await ajustarQtd(it.sku, Math.max(+it.qtd || 0, 0)); }
 
 /* ---------- etapas (mesma numeração do sistema) ---------- */
+const NOMES = ['potência', 'módulo', 'inversor', 'estrutura', 'itens da estrutura', 'elétricos CC', 'elétricos CA', 'confirmação'];
 async function passo(etapa, e = {}) {
+  try { return await passoInterno(etapa, e); }
+  catch (err) { console.error(err); throw new Error(`Robô parou na etapa "${NOMES[etapa] || etapa}" do portal: ${String(err.message || err).split('\n')[0].slice(0, 160)}`); }
+}
+async function passoInterno(etapa, e = {}) {
   if (!(await logado())) throw new Error('A sessão da Belenergy expirou: faça login na janela do robô e tente de novo.');
   if (etapa === 0) {
     await pg.goto(BASE + '/energy/escolha-metodo'); await pausa(1500);
-    await botao(/ESCOLHER/).click(); await pausa(2000);
+    // "ESCOLHER" do Convencional não é <button>: clica pelo texto (o 1º é o Convencional)
+    await pg.getByText('ESCOLHER', { exact: true }).first().click(); await pausa(2000);
+    await pg.locator('#inputPotencia').waitFor({ timeout: 15000 });
     await pg.locator('#inputPotencia').fill(String(e.kwp));
     await pg.locator('button').filter({ hasText: 'navigate_next' }).first().click(); await pausa(3500);
     await pg.locator('select').filter({ hasText: 'Menor Preço Por Watt' }).first().selectOption({ label: 'Menor Preço Por Watt' }).catch(() => {});

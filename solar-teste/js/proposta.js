@@ -166,7 +166,7 @@
         <li><div class="ic">🛠️</div><div><b>Instalação, projeto e papelada da CPFL</b><span>Tudo incluído no preço</span></div></li>
       </ul>
       <div class="preco-sis"><span>Investimento</span><b>${brl(op.preco.precoFinal)}</b></div>
-      <details class="outras"><summary>Ver outras opções (mais simples ou com bateria)</summary>
+      <details class="outras"><summary>Ver as outras opções (microinversor ou premium)</summary>
         ${a.opcoes.map((x, i) => i === est.opcao ? '' : `<div class="op-mini"><span><b style="font-family:inherit">${esc(x.nivel)}</b></span><b>${brl(x.preco.precoFinal)}</b><p>${esc(x.descricao)} ${x.dim.placas} placas, gera ${n(x.dim.geracaoMes)} kWh/mês.</p><button type="button" data-op="${i}">Escolher esta opção</button></div>`).join('')}
       </details>`;
 

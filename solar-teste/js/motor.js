@@ -223,7 +223,7 @@
     const preco = precificar({ ...orc, kit: k.valorKit, placas, kwp: kwpReal }, p);
     const eco = economia({ ...orc, geracaoMes, investimento: preco.precoFinal, anoInicio: p.anoBase }, p);
     const areaM2 = arred(placas * modulo.areaM2, 1);
-    return { nivel: k.nivel, destaque: k.nivel === 'Recomendada', descricao: k.descricao || 'Kit fechado Belenergy.', modulo, inversor, relacaoDcAc: arred(relacao, 2), dcAcOk: relacao >= p.faixaDcAc.min && relacao <= p.faixaDcAc.max,
+    return { nivel: k.nivel, destaque: k.nivel === 'Inversor' || k.nivel === 'Recomendada', descricao: k.descricao || 'Kit fechado Belenergy.', modulo, inversor, relacaoDcAc: arred(relacao, 2), dcAcOk: relacao >= p.faixaDcAc.min && relacao <= p.faixaDcAc.max,
       bateria: k.bateria || null, dim, strings: { strings: k.estrutura?.linhas || 1, porString: k.estrutura?.modulosPorLinha || placas, avisos: [], vocFrio: 0, ok: true }, kit: k.valorKit, kitFechado: k, preco, eco, areaM2, cabeNoTelhado: !orc.areaDisponivel || areaM2 <= orc.areaDisponivel };
   }
 

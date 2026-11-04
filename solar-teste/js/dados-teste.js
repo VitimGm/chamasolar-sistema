@@ -11,7 +11,8 @@
 
     // Dimensionamento
     pr: 0.776,                          // = perdas 22,4% (mesmo conservadorismo do Groner)
-    margemGeracao: 0.05,                // gera 5% acima do consumo compensável (perda dos módulos, clima)
+    margemGeracao: 0.05,
+    perdaOrientacao: 0.07,              // orientação ainda desconhecida: perda de segurança (E/O dividido ≈ −7% no pior caso, Canal Solar)                // gera 5% acima do consumo compensável (perda dos módulos, clima)
     faixaDcAc: { min: 1.10, max: 1.35 },
     tempMinima: 5,                      // °C, para tensão de string no frio
 

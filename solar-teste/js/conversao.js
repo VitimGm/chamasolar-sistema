@@ -16,8 +16,10 @@
   const hspDe = (o) => (D.cidades[o.cidade] || D.cidades['Ribeirão Preto']).hsp;
 
   function entrada(o) {
+    const desconhecida = !o.orientacao || o.orientacao === '?';
+    const perda = desconhecida ? ((raiz.Banco && raiz.Banco.parametros().perdaOrientacao) ?? 0.07) : 0;
     return {
-      consumoMedio: consumoMedio(o), ligacao: o.ligacao, hsp: hspDe(o), orientacao: o.orientacao || 'N', telhado: o.telhado || 'ceramico',
+      consumoMedio: consumoMedio(o), ligacao: o.ligacao, hsp: hspDe(o) * (1 - perda), orientacao: desconhecida ? 'N' : o.orientacao, telhado: o.telhado || 'ceramico',
       distanciaKm: Number(o.distanciaKm) || 0, trocaPadrao: !!o.trocaPadrao, areaDisponivel: Number(o.areaDisponivel) || 0,
       formaPagamento: o.formaPagamento || 'financiamento', comissaoParceria: (Number(o.comissaoParceria) || 0) / 100,
       kitFaturadoDireto: !!o.kitFaturadoDireto, descontoPct: (Number(o.descontoPct) || 0) / 100,

@@ -27,7 +27,7 @@
   };
   const rotuloEvento = (e) => ({
     abriu: '👀 Abriu a proposta', viu: `📖 Leu: ${SECOES[e.dados?.secao] || e.dados?.secao}`, simulou: `💳 Simulou ${e.dados?.prazo ? e.dados.prazo + 'x' : 'à vista'}${e.dados?.entrada ? ` com ${e.dados.entrada}% de entrada` : ''}`,
-    escolheu: `👆 Olhou a opção ${['Econômica', 'Recomendada', 'Premium'][e.dados?.opcao] || ''}`, compartilhou: '👥 Mostrou para outra pessoa', whatsapp: '💬 Clicou para falar com você',
+    escolheu: `👆 Olhou outra opção de kit`, compartilhou: '👥 Mostrou para outra pessoa', whatsapp: '💬 Clicou para falar com você',
     duvida: `❓ Abriu a dúvida "${e.dados?.tema}"`, aceite: '✅ ACEITOU a proposta',
   }[e.tipo] || e.tipo);
   function toast(t) { const d = document.createElement('div'); d.className = 'toast'; d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 2300); }
@@ -182,13 +182,13 @@
   }
 
   /* ======================= NOVO ORÇAMENTO (6 passos) ======================= */
-  const novoOrc = () => ({ nome: '', whatsapp: '', cep: '', cidade: '', distanciaKm: 0, ligacao: 'bi', consumos: Array(12).fill(''), tarifaKwh: P().tarifaKwh, lidoPorIA: false, modo: 'pdf', telhado: 'ceramico', orientacao: 'N', areaDisponivel: '', trocaPadrao: false, opcaoEscolhida: 1, formaPagamento: 'financiamento', comissaoParceria: 0, kitFaturadoDireto: false, descontoPct: 0, origem: 'WhatsApp', status: 'novo' });
+  const novoOrc = () => ({ nome: '', whatsapp: '', cep: '', cidade: '', distanciaKm: 0, ligacao: 'bi', consumos: Array(12).fill(''), tarifaKwh: P().tarifaKwh, lidoPorIA: false, modo: 'pdf', telhado: 'ceramico', orientacao: '?', areaDisponivel: '', trocaPadrao: false, opcaoEscolhida: 1, formaPagamento: 'financiamento', comissaoParceria: 0, kitFaturadoDireto: false, descontoPct: 0, origem: 'WhatsApp', status: 'novo' });
   let orc = B.rascunho.ler() || novoOrc();
   let etapa = B.rascunho.etapa();
   const salvarR = () => { B.rascunho.gravar(orc); B.rascunho.gravarEtapa(etapa); };
   const ETAPAS = [
     ['Cliente e conta', passo1, () => (orc.nome.trim() && C.consumoMedio(orc) > 0 && orc.cidade) ? '' : 'Preencha nome, CEP e o consumo.'],
-    ['Local e telhado', passo2, () => ''], ['Dimensionamento', passo3, () => ''], ['Kit Belenergy', passo4, () => (orc.kitsFechados && orc.kitsFechados[1]) ? '' : 'Monte o kit da opção Recomendada para continuar.'],
+    ['Local e telhado', passo2, () => ''], ['Dimensionamento', passo3, () => ''], ['Kit Belenergy', passo4, () => (orc.kitsFechados && orc.kitsFechados[0]) ? '' : 'Monte o kit da opção Inversor para continuar.'],
     ['Preço e pagamento', passo5, () => ''], ['Proposta Viva', passo6, () => ''],
   ];
   function novo() {
@@ -302,13 +302,16 @@
     const p = P(), hsp = (D.cidades[orc.cidade] || D.cidades['Ribeirão Preto']).hsp;
     el.innerHTML = `<div class="lado"><div class="painel grade">
       <div class="campo"><span>Tipo de telhado</span><div class="chips">${[['ceramico', 'Cerâmico'], ['fibrocimento', 'Fibrocimento'], ['metalico', 'Metálico'], ['laje', 'Laje'], ['solo', 'Solo']].map(([v, t]) => `<button class="chip ${orc.telhado === v ? 'sel' : ''}" data-tel="${v}">${t}<small>${brl(D.catalogo.estrutura[v])}/pl</small></button>`).join('')}</div></div>
-      <div class="campo"><span>Orientação do telhado</span><div class="chips">${[['N', 'Norte', 'ideal'], ['NE', 'Nordeste', '−3%'], ['NO', 'Noroeste', '−3%'], ['L', 'Leste', '−12%'], ['O', 'Oeste', '−12%'], ['S', 'Sul', '−25%']].map(([v, t, d]) => `<button class="chip ${orc.orientacao === v ? 'sel' : ''}" data-ori="${v}">${t}<small>${d}</small></button>`).join('')}</div></div>
+      <div class="campo"><span>Orientação do telhado</span>
+        <button class="chip ${!orc.orientacao || orc.orientacao === '?' ? 'sel' : ''}" data-ori="?" style="justify-self:start">A confirmar na visita técnica<small>perda de segurança ${n((p.perdaOrientacao ?? 0.07) * 100)}%</small></button>
+        <details ${orc.orientacao && orc.orientacao !== '?' ? 'open' : ''}><summary class="mini" style="cursor:pointer">Já sei a orientação</summary>
+          <div class="chips" style="margin-top:8px">${[['N', 'Norte', 'ideal'], ['NE', 'Nordeste', '−3%'], ['NO', 'Noroeste', '−3%'], ['L', 'Leste', '−12%'], ['O', 'Oeste', '−12%'], ['S', 'Sul', '−25%']].map(([v, t, d]) => `<button class="chip ${orc.orientacao === v ? 'sel' : ''}" data-ori="${v}">${t}<small>${d}</small></button>`).join('')}</div></details></div>
       <div class="grade g2"><label class="campo"><span>Área livre (m²)</span><input type="number" id="f-area" value="${esc(orc.areaDisponivel)}" placeholder="opcional"></label>
       <label class="campo"><span>Distância (km)</span><input type="number" id="f-km" value="${esc(orc.distanciaKm)}"></label></div>
       <label class="alternar"><span><b>Troca de padrão de entrada</b><br><span class="sutil">soma ${brl(p.trocaPadrao)}</span></span><input type="checkbox" id="f-pad" ${orc.trocaPadrao ? 'checked' : ''}></label></div>
       <div class="painel"><span class="rotulo">Sol no local</span><div class="numeros4" style="margin-top:12px">
-        <div><span>${esc(orc.cidade || 'Ribeirão Preto')}</span><b>${n(hsp, 2)} HSP</b></div><div><span>Com a orientação</span><b>${n(hsp * M.FATOR_ORIENTACAO[orc.orientacao], 2)} HSP</b></div></div>
-        <p class="mini" style="margin-top:10px">Irradiação de teste. No oficial vem da base pública pelo endereço.</p></div></div>`;
+        <div><span>${esc(orc.cidade || 'Ribeirão Preto')}</span><b>${n(hsp, 2)} HSP</b></div><div><span>${!orc.orientacao || orc.orientacao === '?' ? 'Com a perda de segurança' : 'Com a orientação'}</span><b>${n(hsp * (!orc.orientacao || orc.orientacao === '?' ? 1 - (p.perdaOrientacao ?? 0.07) : M.FATOR_ORIENTACAO[orc.orientacao]), 2)} HSP</b></div></div>
+        <p class="mini" style="margin-top:10px">Irradiação de teste. No oficial vem da base pública pelo endereço. A perda de segurança cobre telhado leste/oeste até a visita técnica (ajustável em Parâmetros).</p></div></div>`;
     el.querySelectorAll('[data-tel]').forEach((b) => b.onclick = () => { orc.telhado = b.dataset.tel; salvarR(); novo(); });
     el.querySelectorAll('[data-ori]').forEach((b) => b.onclick = () => { orc.orientacao = b.dataset.ori; salvarR(); novo(); });
     $('#f-area').oninput = (e) => { orc.areaDisponivel = e.target.value; salvarR(); };
@@ -334,8 +337,11 @@
   }
 
   /* ---------- Passo 4: KIT FECHADO na Belenergy (mesmo caminho do portal) ---------- */
-  const NIVEIS_KIT = ['Econômica', 'Recomendada', 'Premium'];
-  let cot = null, cotSlot = 1, cotModo = null;
+  const NIVEIS_KIT = ['Inversor', 'Microinversor', 'Premium'];
+  const PRINCIPAL = 0; // a opção Inversor (string) é a principal e aparece em destaque
+  const TIPO_POR_OPCAO = ['INVERSOR STRING ON-GRID', 'MICROINVERSOR', 'INVERSOR STRING HÍBRIDO'];
+  const DICA_OPCAO = ['String on-grid: melhor preço por Wp. É a opção principal que o cliente vê em destaque.', 'Para telhado com sombra ou águas diferentes. Desliga placa por placa (mais seguro).', 'Híbrido com bateria ou equipamento de topo: energia mesmo quando a luz cai.'];
+  let cot = null, cotSlot = 0, cotModo = null;
   function passo4(el) {
     const p = P();
     orc.kitsFechados = orc.kitsFechados || [null, null, null];
@@ -348,19 +354,19 @@
         <p class="mini" id="cot-status">Verificando o robô no seu computador…</p></div>
       <div class="ops-v" style="margin-top:14px">${NIVEIS_KIT.map((nv, i) => { const k = orc.kitsFechados[i]; return `
         <div class="op-v ${k ? 'sel' : ''}" style="cursor:default">
-          <span class="rotulo" style="color:var(--sol)">${i === 1 ? 'Principal' : 'Opcional'}</span><h3 style="margin:4px 0">${nv}</h3>
+          <span class="rotulo" style="color:var(--sol)">${i === PRINCIPAL ? 'Principal' : 'Opcional'}</span><h3 style="margin:4px 0">${nv}</h3>
           ${k ? `<div class="preco">${brl(k.valorKit, 2)}</div><span class="mini">valor do kit · ${k.origem === 'simulado' ? 'SIMULADO' : 'Belenergy ' + esc(k.numeroBelenergy)}</span>
             <ul><li><span>Módulos</span><span>${k.modulo.qtd} × ${esc(k.modulo.nome)}</span></li><li><span>Inversor</span><span>${esc(k.inversor.nome)}</span></li>
             <li><span>Estrutura</span><span>${k.estrutura.semEstrutura ? 'sem estrutura' : esc(k.estrutura.tipo)}</span></li><li><span>Frete</span><span>${esc(k.frete)}</span></li>
             <li><span>R$/Wp do kit</span><span>R$ ${n(k.valorKit / (k.modulo.qtd * k.modulo.potenciaW), 2)}</span></li></ul>
             <div class="acoes-r" style="margin-top:10px"><button class="btn vidro pequeno" data-montar="${i}">Refazer</button><button class="btn vidro pequeno" data-tirar="${i}">Remover</button></div>`
-          : `<p class="sutil" style="margin:8px 0 12px">${i === 1 ? 'Obrigatório: é a opção que o cliente vê em destaque.' : 'Monte se quiser oferecer outra opção.'}</p>
-            <button class="btn ${i === 1 ? 'sol' : 'vidro'} pequeno" data-montar="${i}">Montar kit · ${n(kwpSug, 2)} kWp</button>`}
+          : `<p class="sutil" style="margin:8px 0 12px">${DICA_OPCAO[i]}</p>
+            <button class="btn ${i === PRINCIPAL ? 'sol' : 'vidro'} pequeno" data-montar="${i}">Montar kit · ${n(kwpSug, 2)} kWp</button>`}
         </div>`; }).join('')}</div>
-      <p class="mini" style="margin-top:12px">Potência sugerida pelo pré-dimensionamento: <b>${n(kwpSug, 2)} kWp</b> (consumo que dá para zerar + ${n((p.margemGeracao || 0) * 100)}% de margem).</p>`;
+      <p class="mini" style="margin-top:12px">Potência sugerida pelo pré-dimensionamento: <b>${n(kwpSug, 2)} kWp</b> (consumo que dá para zerar + ${n((p.margemGeracao || 0) * 100)}% de margem${!orc.orientacao || orc.orientacao === '?' ? ` + perda de segurança de ${n((p.perdaOrientacao ?? 0.07) * 100)}% da orientação` : ''}).</p>`;
     Cotador.conectado().then((ok) => { cotModo = ok ? 'conectado' : 'simulado'; const st = $('#cot-status'); if (st) st.innerHTML = ok ? '🟢 Robô conectado: a cotação é feita no site da Belenergy, com a sua sessão.' : '🟡 Robô não encontrado neste computador. Modo <b>simulado</b> (mesmas telas, valores de teste).'; });
     el.querySelectorAll('[data-montar]').forEach((b) => b.onclick = async () => {
-      cotSlot = +b.dataset.montar; cot = Cotador.novaSessao(cotModo || 'simulado'); cot.escolhas.kwp = +kwpSug.toFixed(2);
+      cotSlot = +b.dataset.montar; cot = Cotador.novaSessao(cotModo || 'simulado'); cot.escolhas.kwp = +kwpSug.toFixed(2); cot.escolhas.tipoInversor = TIPO_POR_OPCAO[cotSlot];
       cot.escolhas.ligacao = { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[orc.ligacao];
       cot.escolhas.estruturaTipo = { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' }[orc.telhado];
       cot.escolhas.nome = `${orc.id || 'NOVO'} ${orc.nome} ${NIVEIS_KIT[cotSlot]}`.trim();
@@ -370,9 +376,23 @@
   }
 
   async function passoCot(entrada) {
-    const alvo = $('#cot-corpo'); if (alvo) alvo.style.opacity = .5;
-    try { await Cotador.avancar(cot, entrada); } catch (e) { toast(e.message); }
-    novo();
+    const alvo = $('#cot-corpo');
+    let seg = 0, timer = null;
+    if (alvo) {
+      alvo.style.pointerEvents = 'none';
+      alvo.insertAdjacentHTML('afterbegin', `<div class="aviso" id="cot-espera">${cot.modo === 'conectado' ? '⏳ O robô está trabalhando no site da Belenergy' : '⏳ Calculando'}… <b id="cot-seg">0 s</b></div>`);
+      timer = setInterval(() => { seg++; const el = $('#cot-seg'); if (el) el.textContent = seg + ' s'; }, 1000);
+    }
+    try { await Cotador.avancar(cot, entrada); clearInterval(timer); novo(); }
+    catch (e) {
+      clearInterval(timer);
+      if (alvo) {
+        alvo.style.pointerEvents = '';
+        $('#cot-espera').outerHTML = `<div class="aviso ruim"><b>Não deu certo:</b> ${esc(e.message)}<div class="acoes-r" style="margin-top:10px"><button class="btn vidro pequeno" id="c-tentar">Tentar de novo</button><button class="btn vidro pequeno" id="c-simular">Continuar no simulado</button></div></div>`;
+        $('#c-tentar').onclick = () => passoCot(entrada);
+        $('#c-simular').onclick = () => { const kwp = cot.escolhas.kwp, base = { ...cot.escolhas }; cot = Cotador.novaSessao('simulado'); Object.assign(cot.escolhas, { kwp, ligacao: base.ligacao, estruturaTipo: base.estruturaTipo, nome: base.nome }); cotModo = 'simulado'; novo(); };
+      }
+    }
   }
 
   function assistente(el) {
@@ -478,7 +498,7 @@
       if (et === 7) return passoCot({ nome: v('c-nome'), estadoEntrega: v('c-uf'), cidadeEntrega: v('c-cid'), frete: v('c-frete'), pagamento: v('c-pg'), salvar: $('#c-salvar').checked });
     };
     const usar = $('#c-usar');
-    if (usar) usar.onclick = () => { orc.kitsFechados[cotSlot] = Cotador.paraKit(cot, NIVEIS_KIT[cotSlot]); orc.opcaoEscolhida = orc.kitsFechados.filter(Boolean).findIndex((k) => k.nivel === 'Recomendada'); cot = null; salvarR(); toast('Kit fechado salvo na opção ' + NIVEIS_KIT[cotSlot]); novo(); };
+    if (usar) usar.onclick = () => { orc.kitsFechados[cotSlot] = Cotador.paraKit(cot, NIVEIS_KIT[cotSlot]); orc.opcaoEscolhida = orc.kitsFechados.filter(Boolean).findIndex((k) => k.nivel === NIVEIS_KIT[PRINCIPAL]); cot = null; salvarR(); toast('Kit fechado salvo na opção ' + NIVEIS_KIT[cotSlot]); novo(); };
   }
 
   function passo5(el) {
@@ -528,7 +548,7 @@
     ['Custo fixo', [['custoFixoMes', 'Custo fixo do mês (R$)', 1], ['obrasPrevistasMes', 'Obras previstas/mês', 1]]],
     ['Custos por obra', [['maoDeObraPorPlaca', 'Terceiro por placa (R$)', 1], ['art', 'ART (R$)', 1], ['materialCaBase', 'Material CA fixo (R$)', 1], ['materialCaPorKwp', 'Material CA/kWp (R$)', 1], ['custoKm', 'Custo por km (R$)', 1], ['visitasObra', 'Viagens por obra', 1], ['trocaPadrao', 'Troca de padrão (R$)', 1], ['reservaGarantia', 'Reserva garantia (% kit)', 100]]],
     ['Percentuais', [['impostoTotal', 'Imposto com kit (%)', 100], ['impostoServico', 'Imposto só serviço (%)', 100], ['reservaNegociacao', 'Reserva de negociação (%)', 100]]],
-    ['Conversão e retorno', [['tarifaKwh', 'Tarifa padrão (R$/kWh)', 1], ['margemGeracao', 'Margem de geração (%)', 100], ['reajusteAnual', 'Reajuste ao ano (%)', 100], ['simultaneidade', 'Simultaneidade (%)', 100], ['validadeDias', 'Validade da cotação (dias)', 1], ['manutencaoAnual', 'Manutenção/ano (R$)', 1], ['pr', 'PR (eficiência)', 1]]],
+    ['Conversão e retorno', [['tarifaKwh', 'Tarifa padrão (R$/kWh)', 1], ['margemGeracao', 'Margem de geração (%)', 100], ['perdaOrientacao', 'Perda de segurança da orientação (%)', 100], ['reajusteAnual', 'Reajuste ao ano (%)', 100], ['simultaneidade', 'Simultaneidade (%)', 100], ['validadeDias', 'Validade da cotação (dias)', 1], ['manutencaoAnual', 'Manutenção/ano (R$)', 1], ['pr', 'PR (eficiência)', 1]]],
   ];
   function parametrosPag() {
     const p = P();

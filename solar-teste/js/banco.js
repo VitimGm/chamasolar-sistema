@@ -75,7 +75,7 @@
         const o = this.salvar({
           nome: l.nome, whatsapp: l.whatsapp, cep: l.cep, cidade: c?.cidade || 'Ribeirão Preto', distanciaKm: c?.km || 12,
           ligacao: l.ligacao, consumos: l.consumos, tarifaKwh: p.tarifaKwh, lidoPorIA: true,
-          telhado: 'ceramico', orientacao: 'N', areaDisponivel: '', trocaPadrao: false,
+          telhado: 'ceramico', orientacao: '?', areaDisponivel: '', trocaPadrao: false,
           opcaoEscolhida: 1, formaPagamento: 'financiamento', comissaoParceria: 0, kitFaturadoDireto: false, descontoPct: 0,
           origem: l.origem, status: 'proposta', motivoPerda: l.motivoPerda || '',
         });
