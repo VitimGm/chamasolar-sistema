@@ -554,7 +554,7 @@
       <div class="painel"><span class="rotulo">Composição do preço · ${esc(op.nivel)} · só você vê</span><p style="margin:8px 0 0;font-weight:600">${esc(C.equipamentos(op).modulo)} · ${esc(C.equipamentos(op).inversor)}</p><table style="margin-top:8px">
         ${pr.linhas.filter((l) => l.valor).map((l) => `<tr><td>${esc(l.nome)}</td><td class="v">${brl(l.valor)}</td></tr>`).join('')}
         <tr class="sub"><td>Custos diretos</td><td class="v">${brl(pr.custosDiretos)}</td></tr>
-        <tr><td>Taxa fixa (${brl(p.custoFixoMes)} ÷ ${p.obrasPrevistasMes} obras)</td><td class="v">${brl(pr.taxaFixa)}</td></tr>
+        <tr><td>${p.kwpPrevistosMes > 0 ? `Custo fixo (${brl(p.custoFixoMes)} ÷ ${n(p.kwpPrevistosMes)} kWp/mês × ${n(op.dim.kwpReal, 2)} kWp)` : `Taxa fixa (${brl(p.custoFixoMes)} ÷ ${p.obrasPrevistasMes} obras)`}</td><td class="v">${brl(pr.taxaFixa)}</td></tr>
         <tr><td>Impostos (${pct(pr.percentuais.impostos)})</td><td class="v">${brl(pr.decomp.impostos)}</td></tr>
         ${pr.decomp.taxaPagamento ? `<tr><td>Taxa do cartão</td><td class="v">${brl(pr.decomp.taxaPagamento)}</td></tr>` : ''}${pr.decomp.comissao ? `<tr><td>Comissão parceiro</td><td class="v">${brl(pr.decomp.comissao)}</td></tr>` : ''}
         <tr><td>Margem (${pct(pr.percentuais.margem, 0)})</td><td class="v">${brl(pr.decomp.margem)}</td></tr>
@@ -586,17 +586,17 @@
 
   /* ======================= PARÂMETROS ======================= */
   const CAMPOS = [
-    ['Custo fixo', [['custoFixoMes', 'Custo fixo do mês (R$)', 1], ['obrasPrevistasMes', 'Obras previstas/mês', 1]]],
+    ['Custo fixo', [['custoFixoMes', 'Custo fixo do mês (R$)', 1], ['kwpPrevistosMes', 'Meta de venda (kWp/mês)', 1], ['obrasPrevistasMes', 'Obras/mês (se meta = 0)', 1]]],
     ['Custos por obra', [['maoDeObraPorPlaca', 'Terceiro por placa (R$)', 1], ['art', 'ART (R$)', 1], ['materialCaBase', 'Material CA fixo (R$)', 1], ['materialCaPorKwp', 'Material CA/kWp (R$)', 1], ['custoKm', 'Custo por km (R$)', 1], ['visitasObra', 'Viagens por obra', 1], ['trocaPadrao', 'Troca de padrão (R$)', 1], ['reservaGarantia', 'Reserva garantia (% kit)', 100]]],
     ['Percentuais', [['impostoTotal', 'Imposto com kit (%)', 100], ['impostoServico', 'Imposto só serviço (%)', 100], ['reservaNegociacao', 'Reserva de negociação (%)', 100]]],
     ['Conversão e retorno', [['tarifaKwh', 'Tarifa padrão (R$/kWh)', 1], ['margemGeracao', 'Margem de geração (%)', 100], ['perdaOrientacao', 'Perda de segurança da orientação (%)', 100], ['reajusteAnual', 'Reajuste ao ano (%)', 100], ['simultaneidade', 'Simultaneidade (%)', 100], ['validadeDias', 'Validade da cotação (dias)', 1], ['manutencaoAnual', 'Manutenção/ano (R$)', 1], ['pr', 'PR (eficiência)', 1]]],
   ];
   function parametrosPag() {
     const p = P();
-    app.innerHTML = `${cabCelular()}<div class="cab"><div><h1>Parâmetros</h1><p class="sutil">Valores de teste. Troque pelos reais quando tiver custo fixo, alíquota e preço do terceiro.</p></div></div>
+    app.innerHTML = `${cabCelular()}<div class="cab"><div><h1>Parâmetros</h1><p class="sutil">${B.nuvem ? 'Valores usados em todos os orçamentos. Cada vez que salvar, a versão anterior fica guardada.' : 'Valores de teste. Troque pelos reais quando tiver custo fixo, alíquota e preço do terceiro.'}</p></div></div>
       <div class="lado"><div>${CAMPOS.map(([t, cs]) => `<div class="painel"><span class="rotulo">${t}</span><div class="grade g2" style="margin-top:12px">${cs.map(([k, r, m]) => `<label class="campo"><span>${r}</span><input type="number" step="any" data-par="${k}" data-m="${m}" value="${+(p[k] * m).toFixed(4)}"></label>`).join('')}</div></div>`).join('')}</div>
       <div><div class="painel"><span class="rotulo">Margem por tamanho</span><table style="margin-top:8px">${p.margens.map((x, i) => `<tr><td>até ${x.ate >= 1e9 ? '∞' : x.ate} kWp</td><td class="v"><input type="number" step="0.5" data-mg="${i}" value="${+(x.margem * 100).toFixed(2)}" style="width:90px;padding:6px 8px;text-align:right"> %</td></tr>`).join('')}</table></div>
-        <div class="painel"><span class="rotulo">Fórmula</span><p class="sutil" style="margin-top:8px">Preço = (custos diretos + taxa fixa) ÷ (1 − (impostos + taxa de pagamento + comissão + margem + reserva))</p></div>
+        ${p.kwpPrevistosMes > 0 ? `<div class="painel"><span class="rotulo">Ponto de equilíbrio</span><p style="margin:8px 0 4px">Para pagar ${brl(p.custoFixoMes)} de custo fixo, a meta é vender <b>${n(p.kwpPrevistosMes)} kWp por mês</b>.</p><p class="sutil" style="margin:0">≈ ${Math.ceil(p.kwpPrevistosMes / 4.3)} obras de 4,3 kWp ou ${Math.ceil(p.kwpPrevistosMes / 10)} de 10 kWp. Vendendo menos, o custo fixo não fecha; vendendo mais, a margem vira lucro.</p></div>` : ''}<div class="painel"><span class="rotulo">Fórmula</span><p class="sutil" style="margin-top:8px">Preço = (custos diretos + taxa fixa) ÷ (1 − (impostos + taxa de pagamento + comissão + margem + reserva))</p></div>
         <div class="acoes-r" style="margin-top:14px"><button class="btn sol" id="salvarP">Salvar</button><button class="btn vidro" id="resetP">Voltar ao teste</button></div></div></div>`;
     $('#salvarP').onclick = () => {
       const novoP = {}; app.querySelectorAll('[data-par]').forEach((i) => { novoP[i.dataset.par] = +i.value / +i.dataset.m; });

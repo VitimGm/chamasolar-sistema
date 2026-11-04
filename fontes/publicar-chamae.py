@@ -34,6 +34,8 @@ def carregar_depois(html, script, pagina):
 
 idx = (ORIGEM / 'index.html').read_text(encoding='utf-8')
 idx = carregar_depois(idx, 'app.js', 'central')
+# botão fixo para voltar ao Chamae (computador e celular)
+idx = idx.replace('<body data-pagina="central">', '<body data-pagina="central">\n  <a href="../chamae/" id="voltarChamae" style="position:fixed;top:12px;right:12px;z-index:60;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;background:#ffffff14;border:1px solid #ffffff33;color:#fff;font:600 14px system-ui;text-decoration:none;backdrop-filter:blur(8px)">‹ Chamae</a>', 1)
 idx = re.sub(r'<div class="selo-teste">.*?</div>',
              '<div class="selo-teste">' + ('TESTE · ' if destino_nome == 'solar-teste' else '') +
              'dados salvos no Chamae<br><a class="link" href="../chamae/">‹ voltar ao Chamae</a></div>', idx, flags=re.S)

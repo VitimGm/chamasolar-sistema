@@ -36,6 +36,7 @@
     // Custo fixo rateado
     custoFixoMes: 6000,                 // TESTE — aguardando custos reais
     obrasPrevistasMes: 4,
+    kwpPrevistosMes: 0,                 // meta de kWp vendidos/mês; > 0 rateia o custo fixo por kWp
 
     // Percentuais sobre o preço
     impostoTotal: 0.10,                 // TESTE — aguardando contador

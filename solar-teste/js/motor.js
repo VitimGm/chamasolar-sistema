@@ -99,7 +99,8 @@
     const linhas = custosDiretos(entrada, p);
     const C = linhas.reduce((s, l) => s + l.valor, 0);
     const K = entrada.kit;
-    const F = p.custoFixoMes / p.obrasPrevistasMes;
+    // custo fixo: rateado por kWp vendido (justo com sistema pequeno) ou, se não houver meta em kWp, por obra
+    const F = p.kwpPrevistosMes > 0 ? (p.custoFixoMes * entrada.kwp) / p.kwpPrevistosMes : p.custoFixoMes / p.obrasPrevistasMes;
     const margem = faixaDe(p.margens, entrada.kwp).margem;
     const t = entrada.kitFaturadoDireto ? p.impostoServico : p.impostoTotal;
     const pg = p.taxaPagamento[entrada.formaPagamento] ?? 0;
