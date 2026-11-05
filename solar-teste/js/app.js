@@ -367,10 +367,15 @@
   ];
   function novo() {
     document.body.classList.add('com-barra'); $('#barra').hidden = false;
-    app.innerHTML = `${cabCelular()}<div class="cab"><div><span class="rotulo" style="color:var(--sol)">Passo ${etapa + 1} de 6</span><h1>${ETAPAS[etapa][0]}</h1></div>${orc.id ? `<span class="sutil">editando ${esc(orc.id)}</span>` : ''}</div>
+    app.innerHTML = `${cabCelular()}<div class="cab"><div><span class="rotulo" style="color:var(--sol)">Passo ${etapa + 1} de 6</span><h1>${ETAPAS[etapa][0]}</h1></div><div class="linha-h" style="gap:10px;align-items:center">${orc.id ? `<span class="sutil">editando ${esc(orc.id)}</span>` : ''}<button class="btn vidro pequeno" id="btnZerar" type="button" title="Apaga o rascunho e começa um orçamento novo">↺ ${orc.id ? 'Sair e começar outro' : 'Zerar orçamento'}</button></div></div>
       <div class="etapas">${ETAPAS.map((e, i) => `<button class="etapa ${i < etapa ? 'feita' : ''} ${i === etapa ? 'atual' : ''}" data-ir="${i}" ${i > etapa ? 'disabled' : ''}><i></i><span class="t">${e[0]}</span></button>`).join('')}</div>
       <div id="corpo" class="entra"></div>`;
     app.querySelectorAll('[data-ir]').forEach((b) => b.onclick = () => { etapa = +b.dataset.ir; salvarR(); novo(); });
+    $('#btnZerar').onclick = (ev) => {
+      const bt = ev.currentTarget;
+      if (!bt.dataset.conf) { bt.dataset.conf = '1'; bt.textContent = orc.id ? 'Tocar de novo: sai sem salvar as mudanças' : 'Tocar de novo para apagar o rascunho'; bt.style.borderColor = 'var(--laranja)'; setTimeout(() => { if (bt.isConnected) { delete bt.dataset.conf; bt.textContent = '↺ ' + (orc.id ? 'Sair e começar outro' : 'Zerar orçamento'); bt.style.borderColor = ''; } }, 4000); return; }
+      cot = null; kitDig = null; orc = novoOrc(); etapa = 0; salvarR(); novo(); scrollTo(0, 0); toast('Orçamento zerado: pode começar do zero');
+    };
     ETAPAS[etapa][1]($('#corpo'));
     barra();
   }
