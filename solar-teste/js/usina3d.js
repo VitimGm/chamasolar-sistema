@@ -245,9 +245,15 @@
     caixa: { nome: "Caixa d'água", r: 0.75, h: 1.3, redondo: true, base: 'auto' },
     ar: { nome: 'Condensadora (ar)', w: 0.9, d: 0.4, h: 0.7, base: 'auto' },
     respiro: { nome: 'Respiro/chaminé', r: 0.15, h: 1.0, redondo: true, base: 'auto' },
+    antena: { nome: 'Antena', r: 0.35, h: 1.2, redondo: true, base: 'auto' },
+    boiler: { nome: 'Boiler (reservatório)', w: 1.6, d: 0.6, h: 0.7, base: 'auto' },
+    coletor: { nome: 'Coletor de aquecimento', w: 2.0, d: 1.0, h: 0.15, base: 'auto' },
     arvore: { nome: 'Árvore', r: 2.5, h: 8, redondo: true, base: 'chao' },
     predio: { nome: 'Prédio/muro vizinho', w: 6, d: 4, h: 6, base: 'chao' },
+    area: { nome: 'Área sem placa', h: 0, base: 'auto', area: true },
   };
+  /* árvore: tronco até a copa (hc) e copa achatada de raio r até a altura h */
+  const copaDe = (o) => { const Tp = OBST.arvore, h = o.h ?? Tp.h, r = o.r ?? Tp.r, hc = Math.min(o.hc ?? Math.max(1.5, h * 0.3), h - 0.5); return { h, r, hc, ry: (h - hc) / 2, cy: (h + hc) / 2 }; };
   function baseObst(proj, o) {
     if ((o.base || OBST[o.tipo].base) === 'chao') return 0;
     let y = 0; faces(proj).forEach((b) => { if (dentro([o.x, o.z], b.pts)) y = Math.max(y, alturaEm(b, [o.x, o.z])); });
@@ -255,6 +261,7 @@
   }
   function pegadaObst(o, folga = 0) { // polígono no chão (para tirar placas de cima)
     const T = OBST[o.tipo] || {};
+    if (T.area || o.pts) return folga > 0.1 ? recuar(o.pts, -0.05) : o.pts.map((p) => [...p]);
     if (T.redondo || o.r) { const r = (o.r || T.r) + folga; return Array.from({ length: 12 }, (_, i) => [o.x + r * Math.cos(i * Math.PI / 6), o.z + r * Math.sin(i * Math.PI / 6)]); }
     const w = (o.w || T.w) / 2 + folga, d = (o.d || T.d) / 2 + folga, c = Math.cos(rad(o.rot || 0)), s = Math.sin(rad(o.rot || 0));
     return [[-w, -d], [w, -d], [w, d], [-w, d]].map(([u, v]) => [o.x + u * c - v * s, o.z + u * s + v * c]);
@@ -334,7 +341,7 @@
       y: alturaEm(b, c) + 0.1, n: normalPlano(b.incl, b.az), fora: !cantos.every((q) => dentro(q, b.pts)) };
   }
   /* imã: a placa nova encosta na vizinha da mesma água (mesma fileira ou coluna, com o espaço do grampo) */
-  function alinharManual(proj, vizinhas, m) {
+  function alinharManual(proj, vizinhas, m, raio = 0.35) {
     const L = proj.layout || {}, mod = L.modulo || { c: 2.382, l: 1.134 }, b = faceEm(proj, [m.x, m.z]); if (!b) return m;
     const d = desce(b.az), a = [-d[1], d[0]], cosI = Math.cos(rad(b.incl)), retr = m.ori !== 'paisagem', w = retr ? mod.l : mod.c, hg = (retr ? mod.c : mod.l) * cosI;
     const gU = (L.entrePlacasMm ?? 20) / 1000, gV = ((L.entreFileirasMm ?? 20) / 1000) * cosI;
@@ -346,6 +353,8 @@
       if (Math.abs(du) < pu * 0.6 && Math.abs(dv) < pv * 1.6) cand.push([0, Math.sign(dv || 1) * pv]); // acima ou abaixo, na mesma coluna
       cand.forEach(([cu, cv]) => { const dist = Math.hypot(du - cu, dv - cv); if (dist < dm) { dm = dist; melhor = [s.c[0] + cu * a[0] + cv * d[0], s.c[1] + cu * a[1] + cv * d[1]]; } });
     });
+    // só encosta quando a placa já foi solta quase colada na vizinha; longe dela fica solta onde foi tocada
+    if (L.ima === false || dm > raio) melhor = null;
     return melhor ? { ...m, x: Math.round(melhor[0] * 1000) / 1000, z: Math.round(melhor[1] * 1000) / 1000, b: b.id } : { ...m, b: b.id };
   }
   /* nota de cada água: sol do ano pela direção e inclinação (sem sombra), em relação à melhor posição possível */
@@ -414,10 +423,11 @@
     });
     (proj.obst || []).forEach((o) => {
       const T = [], y0 = baseObst(proj, o), Tp = OBST[o.tipo] || {}, h = o.h ?? Tp.h;
+      if (Tp.area || !(h > 0.05)) return;
       if (o.tipo === 'arvore') {
-        const r = o.r ?? Tp.r, cy = y0 + h - r, n = 10;
-        for (let i = 0; i < n; i++) for (let j = 0; j < 5; j++) { // esfera grosseira
-          const f = (a, e) => [o.x + r * Math.cos(e) * Math.cos(a), cy + r * Math.sin(e), o.z + r * Math.cos(e) * Math.sin(a)];
+        const cp = copaDe(o), r = cp.r, cy = y0 + cp.cy, ry = cp.ry, n = 10;
+        for (let i = 0; i < n; i++) for (let j = 0; j < 5; j++) { // copa (elipsoide grosseiro)
+          const f = (a, e) => [o.x + r * Math.cos(e) * Math.cos(a), cy + ry * Math.sin(e), o.z + r * Math.cos(e) * Math.sin(a)];
           const a0 = i / n * 2 * Math.PI, a1 = (i + 1) / n * 2 * Math.PI, e0 = -Math.PI / 2 + j / 5 * Math.PI, e1 = -Math.PI / 2 + (j + 1) / 5 * Math.PI;
           quad(T, f(a0, e0), f(a1, e0), f(a1, e1), f(a0, e1));
         }
@@ -527,6 +537,11 @@
     const on = marcados(lista, L.forcarOn), off = marcados(lista, L.forcarOff);
     const ok = lista.filter((s) => !off.has(s.k)), fixas = ok.filter((s) => s.manual || on.has(s.k)), livres = ok.filter((s) => !s.manual && !on.has(s.k));
     if (L.soMao) return fixas; // o vendedor coloca todas: nada é completado sozinho
+    if (L.maxAguas && !L.soMao && !L._semLimite) { // inversor com poucas MPPTs: só as melhores águas (cada MPPT recebe uma água)
+      const r = escolher(lista, qtd, { ...L, _semLimite: true }), chaves = [], out = [], t = (s) => (s.analise ? s.analise.tsrf : 1);
+      [...fixas, ...r.filter((x) => !fixas.includes(x)), ...livres.filter((x) => !r.includes(x)).sort((x, y) => t(y) - t(x))].forEach((x) => { const k = chaveFace(x.incl, x.az); if (!chaves.includes(k)) { if (chaves.length >= L.maxAguas && !fixas.includes(x)) return; chaves.push(k); } if (out.length < Math.max(qtd, fixas.length) || fixas.includes(x)) out.push(x); });
+      return out;
+    }
     if (L.preferir) { const pref = livres.filter((s) => s.b === L.preferir || String(s.b).split('~')[0] === L.preferir); if (pref.length) { const resto = escolher(livres.filter((s) => !pref.includes(s)), Math.max(0, qtd - fixas.length - pref.length), { ...L, preferir: null, forcarOn: [], forcarOff: [] }); return [...fixas, ...escolher(pref, Math.max(0, qtd - fixas.length), { ...L, preferir: null, forcarOn: [], forcarOff: [] }), ...resto].slice(0, Math.max(qtd, fixas.length)); } }
     const t = (s) => (s.analise ? s.analise.tsrf : 1), faixa = (s) => Math.round(t(s) * 40), n = Math.max(qtd, fixas.length);
     const notaAguas = (ls) => { const porB = {}; ls.forEach((s) => { (porB[s.b] = porB[s.b] || []).push(s); }); return Object.entries(porB).map(([b, v]) => { const ts = v.map(t).sort((x, y) => y - x), k = Math.max(1, Math.min(ts.length, qtd)); return { b, v, media: ts.slice(0, k).reduce((a, c) => a + c, 0) / k, cap: v.length }; }).sort((x, y) => Math.round(y.media * 50) - Math.round(x.media * 50) || y.cap - x.cap); };
@@ -616,8 +631,30 @@
       placa: new T.MeshStandardMaterial({ map: tPlaca, roughness: 0.22, metalness: 0.4 }),
       moldura: new T.MeshStandardMaterial({ color: 0xaab1b9, metalness: 0.7, roughness: 0.4 }),
       caixa: new T.MeshStandardMaterial({ color: 0x2f6fb0, roughness: 0.6 }), ar: new T.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.5 }), respiro: new T.MeshStandardMaterial({ color: 0x8a9098, metalness: 0.6, roughness: 0.4 }),
-      tronco: new T.MeshStandardMaterial({ color: 0x5e4129, roughness: 1 }), copa: new T.MeshStandardMaterial({ color: 0x3b7a35, roughness: 1 }), predio: new T.MeshStandardMaterial({ color: 0xd9d4cc, roughness: 0.9 }),
+      tronco: new T.MeshStandardMaterial({ color: 0x5b4330, roughness: 1 }), copa: new T.MeshStandardMaterial({ color: 0x3b7a35, roughness: 1 }),
+      folhas: [0x1a3315, 0x22421c, 0x2c5224, 0x173012, 0x335c28, 0x203f1a].map((c) => new T.MeshStandardMaterial({ color: c, roughness: 1, flatShading: true })),
+      antena: new T.MeshStandardMaterial({ color: 0xe9ecef, roughness: 0.5, metalness: 0.3, side: T.DoubleSide }), boiler: new T.MeshStandardMaterial({ color: 0xd8dde3, roughness: 0.35, metalness: 0.6 }),
+      coletor: new T.MeshStandardMaterial({ color: 0x1d2a3a, roughness: 0.3, metalness: 0.5 }), predio: new T.MeshStandardMaterial({ color: 0xd9d4cc, roughness: 0.9 }),
     };
+    /* árvore: tronco com galhos e copa feita de vários tufos (como uma mangueira vista de cima) */
+    function arvore3d(o, y0) {
+      const cp = copaDe(o), g = new T.Group(); g.position.set(o.x, y0, o.z);
+      let sem = 0; for (const ch of String(o.id || o.x)) sem = (sem * 31 + ch.charCodeAt(0)) >>> 0; const rnd = () => { sem = (sem * 1664525 + 1013904223) >>> 0; return sem / 4294967296; };
+      const tr = new T.Mesh(new T.CylinderGeometry(Math.max(0.12, cp.r * 0.06), Math.max(0.2, cp.r * 0.1), cp.hc + cp.ry * 0.6, 9), M.tronco); tr.position.y = (cp.hc + cp.ry * 0.6) / 2; tr.castShadow = true; g.add(tr);
+      for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2 + rnd(), L = cp.r * 0.6, gal = new T.Mesh(new T.CylinderGeometry(0.06, 0.11, L, 6), M.tronco); gal.position.set(Math.cos(a) * L * 0.35, cp.hc + 0.3, Math.sin(a) * L * 0.35); gal.rotation.z = Math.cos(a) * 0.9; gal.rotation.x = -Math.sin(a) * 0.9; g.add(gal); }
+      const n = Math.round(22 + cp.r * 6);
+      const tufoGeo = (rr) => { // bola de folhas irregular (os vértices iguais andam juntos: sem rachaduras)
+        const geo = new T.IcosahedronGeometry(rr, 1), P = geo.attributes.position, desl = {};
+        for (let k = 0; k < P.count; k++) { const x = P.getX(k), y = P.getY(k), z = P.getZ(k), ch = `${x.toFixed(3)},${y.toFixed(3)},${z.toFixed(3)}`; const f = desl[ch] ?? (desl[ch] = 0.78 + rnd() * 0.4); P.setXYZ(k, x * f, y * f, z * f); }
+        geo.computeVertexNormals(); return geo; };
+      for (let i = 0; i < n; i++) {
+        const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * cp.r * 0.78, e = (rnd() * 2 - 1) * 0.8, rr = cp.r * (0.2 + rnd() * 0.16);
+        const tufo = new T.Mesh(tufoGeo(rr), M.folhas[i % M.folhas.length]);
+        tufo.position.set(Math.cos(a) * d, cp.cy + e * cp.ry * 0.7, Math.sin(a) * d); tufo.scale.set(1, 0.72 + rnd() * 0.2, 1); tufo.rotation.set(rnd() * 3, rnd() * 3, 0);
+        tufo.castShadow = true; tufo.receiveShadow = true; g.add(tufo);
+      }
+      return g;
+    }
     const matPlaca = {}; const materialPlaca = (cor) => { if (!cor) return M.placa; if (!matPlaca[cor]) matPlaca[cor] = new T.MeshStandardMaterial({ map: tPlaca, color: new T.Color(cor).lerp(new T.Color(0xffffff), 0.35), roughness: 0.3, metalness: 0.3, emissive: new T.Color(cor).multiplyScalar(0.25) }); return matPlaca[cor]; };
     const sombraMat = new T.MeshStandardMaterial({ map: tPlaca, color: 0xff6a55, roughness: 0.4, emissive: 0x4a0a00 });
     let imgFundo = null, imgDrone = null; const texCache = {};
@@ -668,7 +705,14 @@
       (proj.obst || []).forEach((o) => {
         const y0 = baseObst(proj, o), Tp = OBST[o.tipo] || {}, h = o.h ?? Tp.h;
         let m;
-        if (o.tipo === 'arvore') { const r = o.r ?? Tp.r, g = new T.Group(); g.position.set(o.x, y0, o.z); const tr = new T.Mesh(new T.CylinderGeometry(0.22, 0.35, h - r, 10), M.tronco); tr.position.y = (h - r) / 2; const co = new T.Mesh(new T.IcosahedronGeometry(r, 1), M.copa); co.position.y = h - r; [tr, co].forEach((x) => { x.castShadow = true; }); g.add(tr, co); m = g; }
+        if (Tp.area || o.pts) { // área sem placa: contorno vermelho rente ao telhado
+          const pts = o.pts.map((p) => { let y = 0; faces(proj).forEach((f) => { if (dentro(p, f.pts)) y = Math.max(y, alturaEm(f, p)); }); return new T.Vector3(p[0], y + 0.06, p[1]); });
+          m = new T.LineLoop(new T.BufferGeometry().setFromPoints(pts), new T.LineBasicMaterial({ color: 0xff3d3d })); grupo.add(m); return;
+        }
+        if (o.tipo === 'arvore') m = arvore3d(o, y0);
+        else if (o.tipo === 'antena') { const g = new T.Group(); g.position.set(o.x, y0, o.z); const mastro = new T.Mesh(new T.CylinderGeometry(0.03, 0.03, h, 8), M.respiro); mastro.position.y = h / 2; const r = o.r ?? Tp.r, prato = new T.Mesh(new T.SphereGeometry(r, 20, 10, 0, Math.PI * 2, 0, Math.PI / 3.2), M.antena); prato.position.y = h - 0.15; prato.rotation.x = -1.1; prato.rotation.z = 0.3; [mastro, prato].forEach((x) => { x.castShadow = true; }); g.add(mastro, prato); m = g; }
+        else if (o.tipo === 'boiler') { const w = o.w ?? Tp.w, d = o.d ?? Tp.d, g = new T.Group(); g.position.set(o.x, y0, o.z); g.rotation.y = -rad(o.rot || 0); const cil = new T.Mesh(new T.CylinderGeometry(Math.min(d, h) / 2, Math.min(d, h) / 2, w, 20), M.boiler); cil.rotation.z = Math.PI / 2; cil.position.y = h / 2; cil.castShadow = true; g.add(cil); m = g; }
+        else if (o.tipo === 'coletor') { const w = o.w ?? Tp.w, d = o.d ?? Tp.d, g = new T.Group(); g.position.set(o.x, y0 + 0.12, o.z); g.rotation.y = -rad(o.rot || 0); const pl = new T.Mesh(new T.BoxGeometry(w, Math.max(0.05, h * 0.5), d), M.coletor); pl.castShadow = true; g.add(pl); m = g; }
         else if (Tp.redondo) { m = new T.Mesh(new T.CylinderGeometry(o.r ?? Tp.r, o.r ?? Tp.r, h, 24), M[o.tipo] || M.caixa); m.position.set(o.x, y0 + h / 2, o.z); m.castShadow = true; }
         else { m = new T.Mesh(new T.BoxGeometry(o.w ?? Tp.w, h, o.d ?? Tp.d), M[o.tipo] || M.predio); m.position.set(o.x, y0 + h / 2, o.z); m.rotation.y = -rad(o.rot || 0); m.castShadow = m.receiveShadow = true; }
         grupo.add(m);

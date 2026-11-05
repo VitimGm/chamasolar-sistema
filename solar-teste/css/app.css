@@ -244,3 +244,5 @@ body.com-barra { padding-bottom: 150px; }
 .t3-flut button { border: 0; background: transparent; color: #fff; font: 600 12px system-ui; padding: 6px 9px; white-space: nowrap; border-radius: 999px; cursor: pointer; }
 .t3-flut button[aria-pressed="true"] { background: var(--sol, #ff8a3d); color: #1a1205; }
 .t3-flut span { color: #fffc; font: 600 12px system-ui; padding: 0 6px; }
+.t3-mppt { margin: 10px 0; padding: 10px; border-radius: 12px; border: 1px solid #ffffff22; background: #ffffff08; }
+.t3-bola { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }

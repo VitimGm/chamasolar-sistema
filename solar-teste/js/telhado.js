@@ -16,7 +16,7 @@
   const CORES = ['#ff8a3d', '#3db4ff', '#b48cff', '#3ddc97', '#ffd23d', '#ff5c8a', '#5cf0ff', '#c0ff5c'];
   const pct = (graus) => Math.round(Math.tan(graus * Math.PI / 180) * 100);
   const grausDe = (p) => Math.round(Math.atan((Number(p) || 0) / 100) * 180 / Math.PI * 10) / 10;
-  const ICONE = { caixa: '💧', ar: '❄️', respiro: '🔩', arvore: '🌳', predio: '🏢' };
+  const ICONE = { caixa: '💧', ar: '❄️', respiro: '🔩', antena: '📡', boiler: '🛢️', coletor: '♨️', arvore: '🌳', predio: '🏢', area: '🚫' };
   const hhmm = (h) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
 
   function abrir({ orc, modulo, qtd, tipoTelhado, aba, aoSalvar, kits = [] }) {
@@ -32,6 +32,15 @@
     proj.layout.arranjo = proj.layout.arranjo || 'fileiras'; proj.layout.manuais = proj.layout.manuais || []; proj.layout.oriFace = proj.layout.oriFace || {};
     const cid = (raiz.DadosTeste && raiz.DadosTeste.cidades) || {}, hsp = (cid[orc.cidade] || cid['Ribeirão Preto'] || { hsp: 5.4 }).hsp, pr = P.pr || 0.776;
     proj.cabos = Object.assign({ modo: 'seguro', nStrings: 0, inv: null, quadro: null }, proj.cabos || {});
+    /* MPPT: ficha do inversor (datasheet ou típica, corrigível) e a placa (tensão e corrente) */
+    const kitDe = (t) => kits.find((k) => k && k.inversor && (k.inversor.tipo === 'micro' ? 'micro' : 'string') === t);
+    proj.mppt = proj.mppt || {}; if (!proj.mppt.kit || !kitDe(proj.mppt.kit)) proj.mppt.kit = kitDe('string') ? 'string' : kitDe('micro') ? 'micro' : null;
+    const fichaPadrao = () => { const k = kitDe(proj.mppt.kit); return k && raiz.Mppt ? raiz.Mppt.fichaDe(k.inversor) : null; };
+    const chaveKit = () => { const k = kitDe(proj.mppt.kit); return k ? `${k.inversor.nome}|${k.inversor.qtd || 1}` : ''; };
+    if (!proj.mppt.ficha || proj.mppt.chave !== chaveKit()) { proj.mppt.ficha = fichaPadrao(); proj.mppt.chave = chaveKit(); }
+    if (!proj.mppt.mod || proj.mppt.mod.potW !== proj.layout.modulo.potW) { const fm = raiz.Catalogo && raiz.Catalogo.fichaModulo ? raiz.Catalogo.fichaModulo(proj.layout.modulo.potW) : { voc: 45, vmp: 37.5, isc: 14 }; proj.mppt.mod = { potW: proj.layout.modulo.potW, voc: fm.voc, vmp: fm.vmp, isc: fm.isc, estimada: true }; }
+    const limiteAguas = () => { const f = proj.mppt.ficha; proj.layout.maxAguas = f && f.tipo === 'string' && raiz.Mppt ? raiz.Mppt.totalEntradas(f) : 0; };
+    limiteAguas();
     const st = { aba: aba || (proj.blocos.length ? 'telhados' : 'foto'), ferr: null, sel: null, des: [], ponteiro: null, view: { esc: 14, ox: 0, oz: 0 }, vagas: [], escolhidas: [], analisado: false, ocupado: false, ver: 0, di: 6, hora: 9.5, play: false, regua: [], alfaDrone: 1, corPlacas: 'tsrf', mapas: false, imgsNovas: {}, oriMao: 'retrato' };
 
     const ov = document.createElement('div'); ov.className = 't3-ov';
@@ -113,12 +122,13 @@
       });
       if (st.aba === 'telhados' && proj.pistas && proj.pistas.length) proj.pistas.forEach((pi) => { const c2 = m2tela(pi.c), d2 = U.desce(pi.az); g.globalAlpha = 0.8; seta(c2, d2, 11, '#5cf0ff'); g.globalAlpha = 1; rotulo(`${pct(pi.incl)}%`, c2[0], c2[1] + 18, '#5cf0ff'); });
       // obstáculos
-      proj.obst.forEach((o) => { const pg = U.pegadaObst(o), sel = st.sel && st.sel.t === 'o' && st.sel.id === o.id; caminho(pg); g.fillStyle = o.tipo === 'arvore' ? '#2f7d3a99' : '#ffffffaa'; g.fill(); g.strokeStyle = sel ? '#ffb000' : '#222'; g.lineWidth = sel ? 3 : 1.5; g.stroke(); if (escurecer && !sel) return; const c = m2tela([o.x, o.z]); rotulo(`${ICONE[o.tipo] || ''} ${n(o.h ?? U.OBST[o.tipo].h, 1)} m`, c[0], c[1] - 12); });
+      proj.obst.forEach((o) => { const pg = U.pegadaObst(o), sel = st.sel && st.sel.t === 'o' && st.sel.id === o.id, area = o.tipo === 'area'; caminho(pg); g.fillStyle = area ? '#ff3d3d40' : o.tipo === 'arvore' ? '#2f7d3a99' : '#ffffffaa'; g.fill(); g.strokeStyle = sel ? '#ffb000' : area ? '#ff3d3d' : '#222'; g.lineWidth = sel ? 3 : area ? 2 : 1.5; if (area) g.setLineDash([6, 4]); g.stroke(); g.setLineDash([]); if (escurecer && !sel && !area) return; const c = m2tela(area ? U.centroide(o.pts) : [o.x, o.z]); rotulo(area ? '🚫 sem placa' : `${ICONE[o.tipo] || ''} ${n(o.h ?? U.OBST[o.tipo].h, 1)} m`, c[0], c[1] - (area ? 0 : 12), area ? '#ff8a8a' : '#fff'); });
       // placas
       if (st.aba === 'placas' || st.aba === 'sol' || st.aba === 'cabos') {
         const esc2 = new Set(st.escolhidas.map((s) => s.k));
         const mans = st.escolhidas.filter((v) => v.manual), bate = new Set(); mans.forEach((x, i) => mans.slice(i + 1).forEach((y) => { if (U.cruzam(x.cantos, y.cantos)) { bate.add(x.k); bate.add(y.k); } }));
-        st.vagas.forEach((s) => { if (bate.has(s.k)) s.fora = true; caminho(s.cantos); if (esc2.has(s.k)) { g.fillStyle = st.analisado && s.analise ? U.corTsrf(s.analise.tsrf) : '#1c3a7a'; g.globalAlpha = 0.9; g.fill(); g.globalAlpha = 1; g.strokeStyle = s.manual ? (s.fora ? '#ff3d3d' : '#ffffff') : '#0d1a38'; g.lineWidth = s.manual ? 2 : 1; g.stroke(); } else if (st.ferr !== 'mao') { g.strokeStyle = '#ffffff55'; g.lineWidth = 1; g.stroke(); } });
+        const pm = st.aba === 'placas' ? planoMppt() : null, corM = {}; if (pm && pm.mppts) pm.mppts.forEach((m) => m.slots.forEach((x) => { corM[x.k] = CORES_MPPT[(m.n - 1) % 8]; }));
+        st.vagas.forEach((s) => { if (bate.has(s.k)) s.fora = true; caminho(s.cantos); if (esc2.has(s.k) && corM[s.k] && !s.fora) { g.fillStyle = st.analisado && s.analise ? U.corTsrf(s.analise.tsrf) : '#1c3a7a'; g.globalAlpha = 0.9; g.fill(); g.globalAlpha = 1; g.strokeStyle = corM[s.k]; g.lineWidth = 2.5; g.stroke(); return; } if (esc2.has(s.k)) { g.fillStyle = st.analisado && s.analise ? U.corTsrf(s.analise.tsrf) : '#1c3a7a'; g.globalAlpha = 0.9; g.fill(); g.globalAlpha = 1; g.strokeStyle = s.manual ? (s.fora ? '#ff3d3d' : '#ffffff') : '#0d1a38'; g.lineWidth = s.manual ? 2 : 1; g.stroke(); } else if (st.ferr !== 'mao') { g.strokeStyle = '#ffffff55'; g.lineWidth = 1; g.stroke(); } });
         if (st.aba === 'placas') U.notaFaces(proj, st.vagas).filter((f) => f.incl <= 45).forEach((f, i) => { const fc = U.faces(proj).find((x) => x.id === f.id); if (!fc) return; const c = m2tela(U.centroide(fc.pts)); rotulo(`${i === 0 ? '★ ' : ''}${n(f.nota * 100)}%`, c[0], c[1] - 6, i === 0 ? '#ffd23d' : '#fff'); });
       }
       // desenho em andamento
@@ -163,7 +173,7 @@
       const A = arrasto.alvo, dm = [dx / st.view.esc, dy / st.view.esc];
       if (A && A.tipo === 'vertice') { const b = bloco(A.id); b.pts[A.k] = encaixar(tela2m(...sp), sp, b.id, A.k); sujar(); }
       else if (A && A.tipo === 'bloco') { const b = bloco(A.id); b.pts = b.pts.map((p) => [p[0] + dm[0], p[1] + dm[1]]); sujar(); }
-      else if (A && A.tipo === 'obst') { const o = obst(A.id); o.x += dm[0]; o.z += dm[1]; sujar(); }
+      else if (A && A.tipo === 'obst') { const o = obst(A.id); o.x += dm[0]; o.z += dm[1]; if (o.pts) o.pts = o.pts.map((p) => [p[0] + dm[0], p[1] + dm[1]]); sujar(); }
       else if (A && A.tipo === 'drone') { proj.drone.cx += dm[0]; proj.drone.cz += dm[1]; sujar(true); }
       else if (A && A.tipo === 'placa') { const mm = proj.layout.manuais.find((x) => x.id === A.id); if (mm) { mm.x += dm[0]; mm.z += dm[1]; st.vagas = U.vagas(proj); st.escolhidas = U.escolher(st.vagas, proj.layout.qtd, proj.layout); } }
       else { st.view.ox -= dm[0]; st.view.oz -= dm[1]; }
@@ -173,7 +183,7 @@
       toques.delete(e.pointerId); if (toques.size < 2) pinca = null;
       if (!arrasto) return; const a = arrasto; arrasto = null;
       if (!a.moveu) tocar(tela2m(...a.ini), a.ini, a.alvo);
-      else if (a.alvo && a.alvo.tipo === 'placa') { const L = proj.layout, mm = L.manuais.find((x) => x.id === a.alvo.id); if (mm) { const outras = st.escolhidas.filter((v) => v.mid !== mm.id), nv = U.alinharManual(proj, outras, mm); Object.assign(mm, { x: nv.x, z: nv.z, b: nv.b }); if (!U.faceEm(proj, [mm.x, mm.z])) { L.manuais = L.manuais.filter((x) => x !== mm); msg('A placa saiu do telhado e foi tirada.', true); } } sujar(); painel(); }
+      else if (a.alvo && a.alvo.tipo === 'placa') { const L = proj.layout, mm = L.manuais.find((x) => x.id === a.alvo.id); if (mm) { const outras = st.escolhidas.filter((v) => v.mid !== mm.id), nv = U.alinharManual(proj, outras, mm); Object.assign(mm, { x: nv.x, z: nv.z, b: nv.b }); const plN = U.placaManual(proj, mm), bl = plN && aguaBloqueada(plN, mm.id); if (bl) { mm.x = a.alvo.x0; mm.z = a.alvo.z0; mm.b = a.alvo.b0; msg(bl, true); } else if (!U.faceEm(proj, [mm.x, mm.z])) { L.manuais = L.manuais.filter((x) => x !== mm); msg('A placa saiu do telhado e foi tirada.', true); } } sujar(); painel(); }
       else if (a.alvo) { if (a.alvo.tipo === 'vertice') { const b = bloco(a.alvo.id); if (b && (b.forma || '1') !== '1') { b.pts = U.retanguloDe(b.pts).cantos; sujar(); desenhar(); } } painel(); refazer(); }
     };
     cv.addEventListener('pointerup', fim); cv.addEventListener('pointercancel', fim);
@@ -188,7 +198,7 @@
       }
       if (st.aba === 'obst' && st.ferr === 'ajustar') { const o = proj.obst.find((x) => U.dentro(m, U.pegadaObst(x, 0.3))); if (o) return { tipo: 'obst', id: o.id }; }
       if (st.aba === 'foto' && st.ferr === 'moverDrone' && proj.drone) return { tipo: 'drone' };
-      if (st.aba === 'placas' && st.ferr === 'mao') { const s = st.vagas.find((v) => v.manual && U.dentro(m, v.cantos)); if (s) return { tipo: 'placa', id: s.mid }; }
+      if (st.aba === 'placas' && st.ferr === 'mao') { const s = st.vagas.find((v) => v.manual && U.dentro(m, v.cantos)); if (s) { const mm = proj.layout.manuais.find((x) => x.id === s.mid); return { tipo: 'placa', id: s.mid, x0: mm.x, z0: mm.z, b0: mm.b }; } }
       return null;
     }
     function encaixar(m, sp, ignorarBloco, ignorarK) { // imã nos cantos dos outros telhados e no ângulo da casa
@@ -215,6 +225,10 @@
         const b = [...proj.blocos].reverse().find((x) => U.dentro(m, x.pts)); st.sel = b ? { t: 'b', id: b.id } : null; painel(); desenhar(); return;
       }
       if (st.aba === 'obst') {
+        if (st.ferr === 'area') {
+          if (st.des.length >= 3) { const q = m2tela(st.des[0]); if (Math.hypot(q[0] - sp[0], q[1] - sp[1]) < 14) { fecharArea(); return; } }
+          st.des.push(m); desenhar(); painel(); return;
+        }
         if (st.ferr && st.ferr !== 'ajustar') { const T = U.OBST[st.ferr], o = { id: U.novoId('o'), tipo: st.ferr, x: m[0], z: m[1], h: T.h }; if (T.redondo) o.r = T.r; else { o.w = T.w; o.d = T.d; o.rot = 0; } proj.obst.push(o); st.sel = { t: 'o', id: o.id }; st.ferr = 'ajustar'; sujar(); painel(); desenhar(); return; }
         const o = proj.obst.find((x) => U.dentro(m, U.pegadaObst(x, 0.3))); st.sel = o ? { t: 'o', id: o.id } : null; painel(); desenhar(); return;
       }
@@ -228,6 +242,15 @@
       }
     }
     /* placas à mão: tocar no telhado põe (encosta na vizinha), tocar na placa tira, arrastar move; "girar" troca retrato/paisagem */
+    /* inversor com poucas MPPTs: uma água a mais não pode (cada MPPT só recebe placas de uma água) */
+    function aguaBloqueada(pl, ignorar) {
+      const max = proj.layout.maxAguas; if (!max) return null;
+      // valem as placas que vão ficar: com "só as que eu colocar", só as à mão
+      const ficam = st.escolhidas.filter((v) => (proj.layout.soMao === false || v.manual) && (ignorar == null || v.mid !== ignorar));
+      const ch = new Set(ficam.map((v) => U.chaveFace(v.incl, v.az)));
+      if (ch.has(U.chaveFace(pl.incl, pl.az)) || ch.size < max) return null;
+      return `O inversor tem <b>${max} MPPT${max > 1 ? 's' : ''}</b> e as placas já estão em ${ch.size} água${ch.size > 1 ? 's' : ''}: cada MPPT só recebe placas de uma água (mesma inclinação e direção). Ponha esta placa numa água já usada, ou escolha um inversor com mais MPPTs ou micro.`;
+    }
     function tocarMao(m) {
       const L = proj.layout, noVaga = st.escolhidas.find((v) => U.dentro(m, v.cantos));
       if (st.ferr === 'girar') {
@@ -247,9 +270,16 @@
       const nova = U.alinharManual(proj, st.escolhidas, { id: U.novoId('p'), x: m[0], z: m[1], ori: st.oriMao }), pl = U.placaManual(proj, nova);
       if (!pl) return;
       if (st.escolhidas.some((v) => v.manual && U.cruzam(v.cantos, pl.cantos))) return msg('Ali já tem placa. Toque num espaço livre ou arraste a placa.', true);
+      const bloq = aguaBloqueada(pl); if (bloq) return msg(bloq, true);
+      if (proj.obst.some((o) => o.tipo === 'area' && U.cruzam(o.pts, pl.cantos))) return msg('Ali é uma <b>área sem placa</b> (passo 3). Escolha outro lugar ou apague a área.', true);
       if (L.soMao === undefined) L.soMao = true;
       L.manuais.push(nova); sujar(); painel();
       msg(`${L.manuais.length} placa(s) à mão${L.manuais.length > L.qtd ? ` · <b>o kit tem ${L.qtd}</b>` : ` de ${L.qtd} do kit`}. ${pl.fora ? '<b>Esta passou da borda do telhado</b>: arraste para dentro. ' : ''}Toque para pôr a próxima (ela encosta na vizinha), na placa para tirar, ou arraste para mover.`, pl.fora);
+    }
+    function fecharArea() {
+      if (st.des.length < 3) return; const pts = st.des.map((p) => [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100]), c = U.centroide(pts);
+      const o = { id: U.novoId('o'), tipo: 'area', pts, x: c[0], z: c[1], h: 0 }; proj.obst.push(o); st.des = []; st.ponteiro = null; st.sel = { t: 'o', id: o.id }; st.ferr = 'ajustar'; sujar(); painel(); desenhar();
+      msg('Área sem placa criada: nenhuma placa vai para dentro dela (nem no automático, nem à mão).');
     }
     function fecharDesenho(pts) {
       const T = proj.tipoTelhado, ref = st.sel && st.sel.t === 'b' ? bloco(st.sel.id) : proj.blocos[proj.blocos.length - 1];
@@ -299,7 +329,7 @@
     function irAba(a) {
       st.aba = a; st.ferr = a === 'telhados' ? (proj.blocos.length ? 'ajustar' : 'ret') : a === 'obst' ? 'ajustar' : null; st.des = []; st.regua = [];
       ov.querySelectorAll('[data-aba]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.aba === a)));
-      const dica = { cabos: temKit('micro') && !temKit('string') ? 'Toque em <b>Onde fica o quadro</b> e marque no desenho o quadro de ligação: o sistema mede o cabo tronco e o CA dos micros.' : 'Toque em <b>Onde fica o inversor</b> e marque no desenho: o sistema mede o cabo de cada string pelo caminho da estrutura e das paredes.', foto: proj.drone ? 'Ajuste a escala com a <b>régua</b> (toque nas 2 pontas de uma medida conhecida) e gire até o <b>norte</b> ficar para cima.' : 'Busque o satélite pelo endereço e, se tiver, envie a <b>foto de cima do drone</b> (câmera a 90°, 40 a 60 m de altura).', telhados: 'Desenhe cada parte do telhado com <b>3 toques</b>: 2 cantos de uma parede e o terceiro para a profundidade. Os cantos grudam nos telhados vizinhos.', obst: "Toque no tipo e depois no lugar: caixa d'água, condensadora, respiro, árvore ou prédio vizinho. A altura faz a sombra.", placas: 'As placas usam a medida da placa do kit. Toque em <b>Calcular o melhor sol</b>: o sistema testa todas as posições e escolhe as melhores.', sol: 'Veja o sol passar no dia escolhido. Placa vermelha = na sombra naquele horário.' }[a];
+      const dica = { cabos: temKit('micro') && !temKit('string') ? 'Toque em <b>Onde fica o quadro</b> e marque no desenho o quadro de ligação: o sistema mede o cabo tronco e o CA dos micros.' : 'Toque em <b>Onde fica o inversor</b> e marque no desenho: o sistema mede o cabo de cada string pelo caminho da estrutura e das paredes.', foto: proj.drone ? 'Ajuste a escala com a <b>régua</b> (toque nas 2 pontas de uma medida conhecida) e gire até o <b>norte</b> ficar para cima.' : 'Busque o satélite pelo endereço e, se tiver, envie a <b>foto de cima do drone</b> (câmera a 90°, 40 a 60 m de altura).', telhados: 'Desenhe cada parte do telhado com <b>3 toques</b>: 2 cantos de uma parede e o terceiro para a profundidade. Os cantos grudam nos telhados vizinhos.', obst: "Toque no tipo e depois no lugar: caixa d'água, condensadora, antena, boiler, coletor de aquecimento, árvore ou prédio vizinho (a altura faz a sombra). Para um lugar onde não pode ter placa, use <b>🚫 Área sem placa</b> e desenhe.", placas: 'As placas usam a medida da placa do kit. Toque em <b>Calcular o melhor sol</b>: o sistema testa todas as posições e escolhe as melhores.', sol: 'Veja o sol passar no dia escolhido. Placa vermelha = na sombra naquele horário.' }[a];
       if ((a === 'placas' || a === 'sol' || a === 'cabos') && proj.blocos.length && !st.enquadrado) { st.enquadrado = true; centralizar(); }
       st.enc = [];
       msg(dica); painel(); refazer();
@@ -309,23 +339,24 @@
     ov.addEventListener('click', (e) => {
       if (e.target.closest('[data-x]')) { fechar(); return; }
       const ab = e.target.closest('[data-aba]'); if (ab) { irAba(ab.dataset.aba); return; }
-      const f = e.target.closest('[data-ferr]'); if (f) { st.ferr = f.dataset.ferr || null; st.des = []; st.regua = []; st.enc = []; painel(); desenhar(); if (/^(posInv|posQuadro|regua|encaixar|ret|pol|mao|girar)$/.test(st.ferr)) { const r = tela.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) tela.scrollIntoView({ block: 'center', behavior: 'smooth' }); } return; }
+      const f = e.target.closest('[data-ferr]'); if (f) { st.ferr = f.dataset.ferr || null; st.des = []; st.regua = []; st.enc = []; painel(); desenhar(); if (/^(posInv|posQuadro|regua|encaixar|ret|pol|mao|girar|area)$/.test(st.ferr)) { const r = tela.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) tela.scrollIntoView({ block: 'center', behavior: 'smooth' }); } return; }
       const ac = e.target.closest('[data-acao]'); if (ac) acao(ac.dataset.acao, ac);
     });
     const ehEscolha = (t) => t.type === 'checkbox' || t.type === 'radio' || t.type === 'file' || t.tagName === 'SELECT';
     ov.addEventListener('input', (e) => { if (!ehEscolha(e.target)) campo(e.target); });
-    ov.addEventListener('change', (e) => { const t = e.target; if (t.id === 't3Arq') enviarFoto(t.files[0]); else if (ehEscolha(t)) campo(t, true); });
+    ov.addEventListener('change', (e) => { const t = e.target; if (t.id === 't3Arq') enviarFoto(t.files[0]); else if (ehEscolha(t) || t.dataset.mp) campo(t, true); });
     ov.addEventListener('keydown', (e) => {
       if (e.target.closest('input,select,textarea')) return;
       if (e.key === 'Escape' && (st.des.length || st.regua.length)) { st.des = []; st.regua = []; st.ponteiro = null; desenhar(); painel(); e.preventDefault(); }
       else if (e.key === 'Backspace' && st.des.length) { st.des.pop(); desenhar(); painel(); e.preventDefault(); }
       else if (e.key === 'Enter' && st.ferr === 'pol' && st.des.length >= 3) { fecharDesenho(st.des); e.preventDefault(); }
+      else if (e.key === 'Enter' && st.ferr === 'area' && st.des.length >= 3) { fecharArea(); e.preventDefault(); }
     });
 
     function barraMao() {
       const fl = $('#t3Flut', ov); if (!fl) return; const on = st.aba === 'placas' && (st.ferr === 'mao' || st.ferr === 'girar'); fl.hidden = !on; if (!on) return;
       const L = proj.layout;
-      fl.innerHTML = `<button data-acao="oriMao" data-v="retrato" aria-pressed="${st.ferr === 'mao' && st.oriMao === 'retrato'}">▯ Retrato</button><button data-acao="oriMao" data-v="paisagem" aria-pressed="${st.ferr === 'mao' && st.oriMao === 'paisagem'}">▭ Paisagem</button><button data-ferr="girar" aria-pressed="${st.ferr === 'girar'}">🔄 Girar</button><span>${L.manuais.length}/${L.qtd}</span><button data-ferr="">✓ Pronto</button>`;
+      fl.innerHTML = `<button data-acao="oriMao" data-v="retrato" aria-pressed="${st.ferr === 'mao' && st.oriMao === 'retrato'}">▯ Retrato</button><button data-acao="oriMao" data-v="paisagem" aria-pressed="${st.ferr === 'mao' && st.oriMao === 'paisagem'}">▭ Paisagem</button><button data-ferr="girar" aria-pressed="${st.ferr === 'girar'}">🔄 Girar</button><button data-acao="ima" aria-pressed="${L.ima !== false}" title="encostar na placa vizinha quando soltar perto dela">🧲 Imã</button><span>${L.manuais.length}/${L.qtd}</span><button data-ferr="">✓ Pronto</button>`;
     }
     function painel() {
       barraMao();
@@ -360,8 +391,10 @@
       } else if (A === 'obst') {
         const o = st.sel && st.sel.t === 'o' ? obst(st.sel.id) : null, T = o ? U.OBST[o.tipo] : null;
         el.innerHTML = `<div class="t3-ferr">${Object.entries(U.OBST).map(([k, t]) => `<button data-ferr="${k}" aria-pressed="${st.ferr === k}">${ICONE[k]} ${t.nome}</button>`).join('')}<button data-ferr="ajustar" aria-pressed="${st.ferr === 'ajustar'}">✋ Mover</button></div>
-          ${o ? `<div class="grade g2 t3-form"><label class="campo"><span>Altura (m)<small>${T.base === 'chao' ? 'do chão' : 'acima de onde está apoiado'}</small></span><input type="number" step="0.1" data-o="h" value="${o.h ?? T.h}"></label>
-            ${T.redondo ? `<label class="campo"><span>${o.tipo === 'arvore' ? 'Raio da copa' : 'Raio'} (m)</span><input type="number" step="0.05" data-o="r" value="${o.r ?? T.r}"></label>` : `<label class="campo"><span>Largura (m)</span><input type="number" step="0.1" data-o="w" value="${o.w ?? T.w}"></label><label class="campo"><span>Profundidade (m)</span><input type="number" step="0.1" data-o="d" value="${o.d ?? T.d}"></label><label class="campo"><span>Girar (°)</span><input type="number" step="5" data-o="rot" value="${o.rot || 0}"></label>`}</div>
+          ${st.ferr === 'area' ? `<div class="t3-linha"><span class="mini">${st.des.length < 3 ? `Toque nos cantos da área onde não pode ter placa (claraboia, passagem, telha quebrada, parte que fica para depois). ${st.des.length} ponto(s).` : `${st.des.length} pontos. Toque no primeiro ponto para fechar.`}</span>${st.des.length ? '<button class="link" data-acao="desfazerPonto">desfazer ponto</button>' : ''}${st.des.length >= 3 ? '<button class="btn sol pequeno" data-acao="fecharArea">Fechar a área</button>' : ''}</div>` : ''}
+          ${o && o.tipo === 'area' ? `<div class="t3-linha"><span class="mini">🚫 Área sem placa · ${n(U.areaPol(o.pts), 1)} m² · arraste com "Mover"</span><button class="link" data-acao="apagarO">apagar</button></div>` : o ? `<div class="grade g2 t3-form"><label class="campo"><span>Altura (m)<small>${T.base === 'chao' ? 'do chão' : 'acima de onde está apoiado'}</small></span><input type="number" step="0.1" data-o="h" value="${o.h ?? T.h}"></label>
+            ${o.tipo === 'arvore' ? `<label class="campo"><span>Tronco até a copa (m)<small>onde começam as folhas</small></span><input type="number" step="0.1" data-o="hc" value="${o.hc ?? Math.max(1.5, Math.round((o.h ?? T.h) * 3) / 10)}"></label>` : ''}
+            ${T.redondo ? `<label class="campo"><span>${o.tipo === 'arvore' ? 'Raio da copa' : o.tipo === 'antena' ? 'Raio da antena' : 'Raio'} (m)</span><input type="number" step="0.05" data-o="r" value="${o.r ?? T.r}"></label>` : `<label class="campo"><span>Largura (m)</span><input type="number" step="0.1" data-o="w" value="${o.w ?? T.w}"></label><label class="campo"><span>Profundidade (m)</span><input type="number" step="0.1" data-o="d" value="${o.d ?? T.d}"></label><label class="campo"><span>Girar (°)</span><input type="number" step="5" data-o="rot" value="${o.rot || 0}"></label>`}</div>
             <div class="t3-linha"><span class="mini">${T.nome} · ${T.base === 'chao' ? 'no chão' : 'em cima do telhado'}</span><button class="link" data-acao="apagarO">apagar</button></div>` : '<p class="mini">Escolha o tipo e toque no lugar. Para mexer num obstáculo, use "Mover".</p>'}`;
       } else if (A === 'placas') {
         const L = proj.layout, M = L.modulo;
@@ -377,10 +410,11 @@
             <label class="campo"><span>Corredor a cada (fileiras)<small>0 = sem corredor</small></span><input type="number" step="1" min="0" data-l="corredorCada" value="${L.corredorCada}"></label></div>
           <div class="t3-ferr" style="margin-top:4px"><button data-ferr="mao" aria-pressed="${st.ferr === 'mao'}">✋ Colocar à mão</button><button data-ferr="girar" aria-pressed="${st.ferr === 'girar'}">🔄 Girar placa</button>${st.ferr === 'mao' || st.ferr === 'girar' ? '<button data-ferr="" aria-pressed="false">✓ Pronto</button>' : ''}</div>
           ${st.ferr === 'mao' ? `<div class="t3-linha"><span class="mini">Placa nova:</span><div class="t3-chips">${[['retrato', '▯ Retrato (em pé)'], ['paisagem', '▭ Paisagem (deitada)']].map(([v, t]) => `<button class="t3-chip" data-acao="oriMao" data-v="${v}" aria-pressed="${st.oriMao === v}">${t}</button>`).join('')}</div></div>
-            <p class="mini">Toque no telhado para pôr: a placa segue a inclinação e o caimento daquela água e encosta na vizinha. Toque numa placa para tirar; arraste para mover.</p>` : ''}
+            <p class="mini">Toque no telhado para pôr: a placa segue a inclinação e o caimento daquela água. Solta longe das outras, ela fica onde você tocou; perto (até 35 cm), encosta na vizinha (🧲 Imã). Toque numa placa para tirar; arraste para mover.</p>` : ''}
           ${st.ferr === 'girar' ? '<p class="mini">Toque numa placa para trocar entre retrato e paisagem.</p>' : ''}
           ${L.manuais.length ? `<div class="t3-linha"><label class="chk"><input type="checkbox" id="t3SoMao" ${L.soMao ? 'checked' : ''}> só as placas que eu colocar (não completar sozinho)</label><span class="mini">${L.manuais.length} à mão${L.manuais.length !== L.qtd ? ` · kit: ${L.qtd}` : ' ✓'}</span><button class="link" data-acao="limparMao">tirar as placas à mão</button></div>` : ''}
           ${rankingAguas()}
+          ${cartaoMppt()}
           <div class="t3-linha"><span class="mini">Arranjo automático:</span><div class="t3-chips">${[['fileiras', 'Em fileiras (como se monta)'], ['sol', 'Placa a placa pelo sol']].map(([v, t]) => `<button class="t3-chip" data-acao="arranjo" data-v="${v}" aria-pressed="${(L.arranjo || 'fileiras') === v}">${t}</button>`).join('')}</div></div>
           <div class="t3-linha"><button class="btn sol pequeno" data-acao="calcular">☀️ Calcular o melhor sol</button>${(L.forcarOn || []).length + (L.forcarOff || []).length ? `<span class="mini">${(L.forcarOn || []).length + (L.forcarOff || []).length} ajuste(s) à mão</span><button class="link" data-acao="limparManual">desfazer ajustes à mão</button>` : '<span class="mini">Toque numa placa para tirar, ou num espaço vazio para pôr: o ajuste fica mesmo se você mexer no desenho.</span>'}</div>`;
       } else if (A === 'cabos') {
@@ -400,6 +434,24 @@
           <p class="mini" id="t3GrafTxt">Curva do dia médio do mês: área clara = sem sombra, laranja = com a sombra medida.</p>`;
         grafico();
       }
+    }
+    const CORES_MPPT = ['#ffd23d', '#3db4ff', '#ff5c8a', '#3ddc97', '#b48cff', '#ff8a3d', '#5cf0ff', '#c0ff5c'];
+    function planoMppt() { const f = proj.mppt.ficha; return f && raiz.Mppt && st.escolhidas.length ? raiz.Mppt.planejar(st.escolhidas, f, proj.mppt.mod) : null; }
+    function cartaoMppt() {
+      const f = proj.mppt.ficha, k = kitDe(proj.mppt.kit); if (!f || !k) return '<p class="mini">Cote o kit (passo 4 do orçamento) para conferir as MPPTs do inversor aqui.</p>';
+      const pl = planoMppt(), M = proj.mppt.mod, num = (cp, rot, v, st2 = 'any') => `<label class="campo"><span>${rot}</span><input type="number" step="${st2}" min="0" data-mp="${cp}" value="${v ?? ''}"></label>`;
+      const dois = kitDe('string') && kitDe('micro');
+      return `<div class="t3-mppt"><div class="entre"><b>${f.tipo === 'micro' ? 'Microinversor' : 'Inversor'} e MPPTs</b>${dois ? `<div class="t3-chips">${[['string', 'Inversor'], ['micro', 'Micro']].map(([v, t]) => `<button class="t3-chip" data-acao="mpptKit" data-v="${v}" aria-pressed="${proj.mppt.kit === v}">${t}</button>`).join('')}</div>` : ''}</div>
+        <p class="mini" style="margin:4px 0">${esc(k.inversor.nome)}${(f.qtd || 1) > 1 ? ` × ${f.qtd}` : ''} · ${f.conferida ? `<b style="color:var(--verde,#3ddc97)">${esc(f.fonte)}</b>` : `<b style="color:var(--laranja)">${esc(f.fonte)}: confira no datasheet e corrija</b>`}${f.tipo === 'string' ? ` · <b>${raiz.Mppt.totalEntradas(f)} MPPT${raiz.Mppt.totalEntradas(f) > 1 ? 's' : ''}</b>: as placas podem ficar em até ${raiz.Mppt.totalEntradas(f)} água${raiz.Mppt.totalEntradas(f) > 1 ? 's' : ''}` : ` · ${f.entradas} entradas independentes por micro: pode misturar águas`}</p>
+        <details ${f.conferida ? '' : 'open'}><summary class="mini" style="cursor:pointer">Ficha do datasheet${f.editada ? ' (corrigida por você)' : ''}</summary>
+          <div class="grade g2 t3-form" style="margin-top:6px">${f.tipo === 'micro' ? num('entradas', 'Entradas por micro', f.entradas, 1) : num('mppts', 'MPPTs por inversor', f.mppts, 1) + num('strPorMppt', 'Strings por MPPT', f.strPorMppt, 1)}
+            ${num('vMax', 'Tensão máx. de entrada (V)', f.vMax)}${num('vMinMppt', 'MPPT mínimo (V)', f.vMinMppt)}${num('iMax', 'Corrente máx. por entrada (A)', f.iMax)}${num('iscMax', 'Curto máx. por entrada (A)', f.iscMax)}
+            ${num('m.voc', `Placa: Voc (V)${M.estimada ? ' · estimada' : ''}`, M.voc)}${num('m.vmp', 'Placa: Vmp (V)', M.vmp)}${num('m.isc', 'Placa: Isc (A)', M.isc)}</div>
+          ${f.editada ? '<button class="link" data-acao="mpptPadrao">voltar à ficha padrão</button>' : ''}</details>
+        ${pl ? (pl.tipo === 'micro' ? `<p class="mini" style="margin:6px 0 0">${st.escolhidas.length} placas em ${pl.grupos.length} água(s) · ${pl.usadas} de ${pl.entradas} entradas.</p>`
+          : `<table style="margin-top:6px"><tr><th>MPPT</th><th>Placas</th><th class="v">Strings</th><th class="v">Frio / calor</th></tr>${pl.mppts.map((m) => `<tr><td><i class="t3-bola" style="background:${CORES_MPPT[(m.n - 1) % 8]}"></i> ${m.n}</td><td>${m.placas} · ${m.agua.split('|')[0]}° ${ponto(+m.agua.split('|')[1])}</td><td class="v">${m.strings} × ${m.porString}</td><td class="v">${m.vFrio} V / ${m.vCalor} V ${m.ok ? '✓' : '⚠'}</td></tr>`).join('')}</table>
+            <p class="mini">Por string: de ${pl.nMin} a ${pl.nMax} placas.${pl.livres ? ` ${pl.livres} MPPT livre(s).` : ''}</p>`) : ''}
+        ${pl ? [...pl.avisos, ...(pl.mppts || []).flatMap((m) => m.avisos.map((x) => `MPPT ${m.n}: ${x}`))].map((x) => `<div class="aviso ruim" style="margin-top:6px">${esc(x)}</div>`).join('') || (st.escolhidas.length ? '<div class="aviso ok" style="margin-top:6px">✓ Ligação dentro dos limites do inversor.</div>' : '') : ''}</div>`;
     }
     /* qual telhado é melhor: sol do ano pela direção e inclinação (e a sombra, depois do cálculo) */
     function rankingAguas() {
@@ -447,6 +499,8 @@
       if (t.id === 't3Hora') { st.hora = +t.value; $('#t3HoraO', ov).textContent = hhmm(st.hora); if (viewer) viewer.sol(st.di, st.hora); grafico(); return; }
       if (t.name === 't3Cor') { st.corPlacas = t.value; if (viewer) viewer.cor(t.value); return; }
       if (t.id === 't3Mapa') { st.mapas = t.checked; mapasSombra(); }
+      if (t.dataset.mp && mudou) { const k = t.dataset.mp, v = Number(String(t.value).replace(',', '.')) || 0; if (k.startsWith('m.')) { proj.mppt.mod[k.slice(2)] = v; proj.mppt.mod.estimada = false; } else { proj.mppt.ficha[k] = v; proj.mppt.ficha.editada = true; } limiteAguas(); recompor(); painel(); return; }
+      if (t.dataset.mp) return;
       if (t.id === 't3SoMao') { proj.layout.soMao = t.checked; recompor(); painel(); }
     }
     async function acao(a, el) {
@@ -465,6 +519,7 @@
       if (a === 'sel-b') { st.sel = { t: 'b', id: el.dataset.id }; st.ferr = 'ajustar'; painel(); desenhar(); return; }
       if (a === 'desfazerPonto') { st.des.pop(); desenhar(); painel(); return; }
       if (a === 'cancelarDes') { st.des = []; st.ponteiro = null; desenhar(); painel(); return; }
+      if (a === 'fecharArea') { fecharArea(); return; }
       if (a === 'fecharPol') { if (st.des.length >= 3) fecharDesenho(st.des); return; }
       if (a === 'forma') { const b = bloco(st.sel.id); b.forma = el.dataset.v; if (b.forma !== '1') { b.pts = U.retanguloDe(b.pts).cantos; b.platibanda = 0; if (b.incl < 10) b.incl = grausDe(35); } sujar(); painel(); desenhar(); return; }
       if (a === 'inverter') { const b = bloco(st.sel.id); b.az = (b.az + 180) % 360; sujar(); painel(); desenhar(); return; }
@@ -472,6 +527,9 @@
       if (a === 'apagarB') { proj.blocos = proj.blocos.filter((b) => b.id !== st.sel.id); st.sel = null; sujar(); painel(); desenhar(); return; }
       if (a === 'apagarO') { proj.obst = proj.obst.filter((o) => o.id !== st.sel.id); st.sel = null; sujar(); painel(); desenhar(); return; }
       if (a === 'calcular') { st.analisado = false; return analisar(); }
+      if (a === 'mpptKit') { proj.mppt.kit = el.dataset.v; proj.mppt.ficha = fichaPadrao(); proj.mppt.chave = chaveKit(); limiteAguas(); recompor(); painel(); return; }
+      if (a === 'mpptPadrao') { proj.mppt.ficha = fichaPadrao(); limiteAguas(); recompor(); painel(); return; }
+      if (a === 'ima') { proj.layout.ima = proj.layout.ima === false; painel(); msg(proj.layout.ima === false ? 'Imã desligado: a placa fica exatamente onde você tocar.' : 'Imã ligado: solte a placa perto da vizinha e ela encosta com o espaço do grampo.'); return; }
       if (a === 'oriMao') { st.oriMao = el.dataset.v; st.ferr = 'mao'; painel(); return; }
       if (a === 'limparMao') { proj.layout.manuais = []; proj.layout.soMao = undefined; sujar(); painel(); return; }
       if (a === 'oriFace') { const L = proj.layout, id = el.dataset.id, f = U.faces(proj).find((x) => x.id === id), atual = L.oriFace[id] || (f && f.orientacao) || 'retrato'; L.oriFace[id] = atual === 'paisagem' ? 'retrato' : 'paisagem'; sujar(); painel(); return; }
@@ -632,6 +690,7 @@
       try { fim.resultado_cabos = calcCabos().map(({ k, tipo, r, conf }) => ({ nivel: k ? k.nivel : null, tipo, porString: r.porString, modo: proj.cabos.modo, frog: r.frog ? { vermelho: r.frog.vermelho, preto: r.frog.preto } : null, seguro: r.seguro ? { vermelho: r.seguro.vermelho, preto: r.seguro.preto } : null, troncoM: r.troncoM, conexoes: r.conexoes, caM: r.caM, erro: r.erro || null, conf: conf ? { faltaVermelho: conf.faltaVermelho, faltaPreto: conf.faltaPreto, faltaTronco: conf.faltaTronco, faltaCa: conf.faltaCa, semDados: !!conf.semDados, kitVermelho: conf.kit ? conf.kit.vermelho + conf.kit.semCor / 2 : null, kitPreto: conf.kit ? conf.kit.preto + conf.kit.semCor / 2 : null } : null })); } catch { /* cabos são extra */ }
       fim.resultado = { ...res, escolhidas: st.escolhidas.map((s) => s.k), placasPos: st.escolhidas.map((s) => ({ k: s.k, tsrf: s.analise ? Math.round(s.analise.tsrf * 1000) / 1000 : null })) };
       if (fim.resultado_cabos) { fim.resultado.cabos = fim.resultado_cabos; delete fim.resultado_cabos; }
+      try { const pm = planoMppt(); if (pm) fim.resultado.mppt = { tipo: pm.tipo, ok: pm.ok, avisos: [...pm.avisos, ...(pm.mppts || []).flatMap((m) => m.avisos.map((x) => `MPPT ${m.n}: ${x}`))], mppts: (pm.mppts || []).map((m) => ({ n: m.n, agua: m.agua, placas: m.placas, strings: m.strings, porString: m.porString, vFrio: m.vFrio })), fonte: proj.mppt.ficha.fonte, conferida: !!proj.mppt.ficha.conferida && !proj.mppt.ficha.editada }; } catch { /* extra */ }
       fim.perda = res.perda; fim.fotos = fotos; fim.salvoEm = new Date().toISOString();
       delete fim.tipoTelhado;
       aoSalvar(fim); fechar();
