@@ -207,6 +207,10 @@
             ${o.status === 'perdido' ? `<input type="text" id="motivo" placeholder="Motivo da perda" value="${esc(o.motivoPerda)}" style="flex:1;min-width:180px;padding:7px 10px;font-size:14px">` : ''}</div></div>
         </div>
         <div class="proxima" style="margin-top:14px"><div class="ic">${acao.icone}</div><div><span class="rotulo" style="color:var(--sol)">Próxima melhor ação</span><div style="font-weight:600;margin-top:4px">${esc(acao.texto)}</div></div></div>
+        <div class="linha-h" style="margin-top:10px;gap:6px;flex-wrap:wrap"><span class="mini">📌 Próximo contato:</span>${[['amanhã', 1], ['3 dias', 3], ['1 semana', 7], ['15 dias', 15]].map(([t, d]) => `<button class="chip" data-prox="${d}">${t}</button>`).join('')}${lembretes().filter((l) => l.ref === o.id).map((l) => `<span class="mini" style="color:var(--sol)">· ${esc(l.texto)} em ${new Date(l.quando).toLocaleDateString('pt-BR')}</span>`).join('')}</div>
+        <div class="painel" style="margin-top:12px" id="conversa"><span class="rotulo">💬 O cliente respondeu</span>
+          <textarea id="cvTxt" rows="2" placeholder="Cole aqui o que o cliente disse (ex.: achei caro, vou falar com minha esposa)" style="width:100%;margin-top:8px"></textarea>
+          <div class="acoes-r" style="margin-top:6px"><button class="btn vidro pequeno" id="cvOk">O que eu respondo?</button></div><div id="cvRes"></div></div>
         <div class="acoes-r" style="margin-top:14px">
           <a class="btn sol pequeno" href="${linkProposta(o, true)}" id="abrirPV">Abrir Proposta Viva</a>
           <a class="btn zap pequeno" href="https://wa.me/55${String(o.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(msgZap)}" target="_blank" rel="noopener" id="enviarZap">Enviar no WhatsApp</a>
@@ -296,7 +300,34 @@
     $('#abrirPV').onclick = () => { try { sessionStorage.setItem('sol2_abrir', JSON.stringify({ t: o.token, v: 1 })); } catch { /* sem armazenamento */ } };
     $('#enviarZap').onclick = () => { if (o.status === 'novo') { o.status = 'proposta'; o.enviadoEm = new Date().toISOString(); B.salvar(o); } B.interacao(o.id, 'whatsapp', 'Proposta enviada'); };
     $('#editar').onclick = () => { B.rascunho.gravar(o); B.rascunho.gravarEtapa(0); location.hash = '#novo'; };
-    $('#status').onchange = (e) => { o.status = e.target.value; if (o.status !== 'novo' && !o.enviadoEm) o.enviadoEm = new Date().toISOString(); if (o.status === 'ganho' && !o.ganhoEm) o.ganhoEm = new Date().toISOString(); B.salvar(o); ficha(id); };
+    /* simulador de conversa: entende a resposta do cliente, sugere o caminho e aprende com o que você usa */
+    const rep = () => P().repertorio || [];
+    const INT = [{ id: 'aceitou', t: 'Cliente quer fechar', k: ['fechar', 'vamos fazer', 'pode fazer', 'quero fazer', 'aceito', 'bora', 'pode mandar o contrato'], r: () => `Que ótimo, ${o.nome.split(' ')[0]}! Vou te mandar o contrato para conferir e já reservo a data da instalação. Prefere assinar pelo celular hoje ou amanhã?`, prox: 1, st: 'negociando' },
+      { id: 'financiamento', t: 'Pediu financiamento', k: ['financ', 'parcel', 'banco', 'prestação', 'prestacao', 'boleto'], r: () => `Consigo sim. Para simular de verdade no banco preciso do seu CPF e da renda aproximada. A estimativa da proposta é de ${a.boleto.prazo}x de ${brl(a.boleto.parcela)}. Me passa esses dados que te trago a simulação aprovada?`, prox: 2, st: 'negociando' },
+      { id: 'sumiu', t: 'Sem resposta', k: ['não respondeu', 'nao respondeu', 'sumiu', 'visualizou e não'], r: () => `Oi ${o.nome.split(' ')[0]}, tudo bem? Passando para saber se ficou alguma dúvida na proposta. Se preferir, te explico em 5 minutos por ligação. Qual o melhor horário?`, prox: 3 }];
+    const entenderResp = (txt) => { const t = txt.toLowerCase(), i = INT.find((x) => x.k.some((k) => t.includes(k))); if (i) return { id: i.id, t: i.t, resposta: i.r(), prox: i.prox, st: i.st };
+      const ob = A.lista.find((x) => x.id === 'objecoes').fn({ o, a, texto: txt }); return ob.blocos.length === 1 ? { id: 'obj:' + ob.blocos[0].titulo, t: ob.blocos[0].titulo, resposta: ob.blocos[0].texto, prox: 2 } : { id: 'geral', t: 'Resposta livre', resposta: '', prox: 2 }; };
+    const cvMostrar = () => {
+      const txt = $('#cvTxt').value.trim(); if (!txt) return; const r = entenderResp(txt), minhas = rep().filter((x) => x.id === r.id).sort((x, y) => (y.usos || 0) - (x.usos || 0)).slice(0, 3);
+      const opc = [...minhas.map((m) => ({ txt: m.texto, de: `sua resposta · usada ${m.usos || 0}×` })), ...(r.resposta ? [{ txt: r.resposta, de: 'sugestão do agente' }] : [])];
+      $('#cvRes').innerHTML = `<p class="mini" style="margin:8px 0 4px">Entendi: <b>${esc(r.t)}</b>. Caminho: ${r.st === 'negociando' ? 'passar para "Negociando" e ' : ''}responder agora e voltar a falar em ${r.prox} dia(s).</p>
+        ${opc.map((x, k) => `<div class="painel" style="margin-top:6px"><span class="mini">${x.de}</span><textarea data-cvop="${k}" rows="3" style="width:100%;margin-top:4px">${esc(x.txt)}</textarea>
+          <div class="acoes-r" style="margin-top:4px"><button class="btn zap pequeno" data-cvusar="${k}">Mandar no WhatsApp</button></div></div>`).join('') || '<p class="mini">Escreva a sua resposta e mande: ela entra no seu repertório.</p><textarea data-cvop="0" rows="3" style="width:100%"></textarea><div class="acoes-r"><button class="btn zap pequeno" data-cvusar="0">Mandar no WhatsApp</button></div>'}
+        <p class="mini" style="margin-top:6px">O que você mandar (do jeito que ajustou) fica no seu repertório e aparece primeiro na próxima vez.</p>`;
+      $('#cvRes').querySelectorAll('[data-cvusar]').forEach((bt) => bt.onclick = () => {
+        const texto = $('#cvRes').querySelector(`[data-cvop="${bt.dataset.cvusar}"]`).value.trim(); if (!texto) return;
+        const lista = rep(), ja = lista.find((x) => x.id === r.id && x.texto === texto); if (ja) ja.usos = (ja.usos || 0) + 1; else lista.push({ id: r.id, tema: r.t, cliente: txt.slice(0, 200), texto, usos: 1 });
+        B.salvarParametros({ repertorio: lista.slice(-300) });
+        window.open('https://wa.me/55' + String(o.whatsapp || '').replace(/\D/g, '').replace(/^55/, '') + '?text=' + encodeURIComponent(texto), '_blank', 'noopener');
+        B.interacao(o.id, 'nota', `Cliente: "${txt.slice(0, 120)}" → respondi (${r.t})`);
+        if (r.st && ['proposta', 'visualizou'].includes(o.status)) { o.status = r.st; B.salvar(o); }
+        novoLembrete({ texto: `Retomar ${o.nome} (${r.t})`, ref: o.id, quando: new Date(Date.now() + r.prox * 864e5).toISOString() });
+        toast(`Resposta guardada no repertório · lembrete em ${r.prox} dia(s)`); ficha(id);
+      });
+    };
+    $('#cvOk').onclick = cvMostrar;
+    app.querySelectorAll('[data-prox]').forEach((bt) => bt.onclick = () => { const d = +bt.dataset.prox, q = new Date(Date.now() + d * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `Falar com ${o.nome}`, ref: o.id, quando: q.toISOString() }); toast('Próximo contato marcado no Meu dia'); ficha(id); });
+    $('#status').onchange = (e) => { o.status = e.target.value; if (o.status === 'perdido') { const q = new Date(Date.now() + 90 * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `Retomar ${o.nome} (perdido há 90 dias: preço e momento mudam)`, ref: o.id, quando: q.toISOString() }); toast('Perdido: retomada agendada em 90 dias. Anote o motivo.'); } if (o.status !== 'novo' && !o.enviadoEm) o.enviadoEm = new Date().toISOString(); if (o.status === 'ganho' && !o.ganhoEm) o.ganhoEm = new Date().toISOString(); B.salvar(o); ficha(id); };
     const mot = $('#motivo'); if (mot) mot.onchange = (e) => { o.motivoPerda = e.target.value; B.salvar(o); toast('Motivo salvo'); };
   }
 
