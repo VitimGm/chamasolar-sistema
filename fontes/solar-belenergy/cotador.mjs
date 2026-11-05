@@ -32,6 +32,23 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
+const VERSAO = '2026-11-05c'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+/* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
+   Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
+const voando = new Map(); let ultimoFim = Date.now();
+const contaRede = (r) => ['xhr', 'fetch', 'document'].includes(r.resourceType()) && !/google|facebook|hotjar|clarity|doubleclick|tiktok|analytics|gtm|pixel|sentry/i.test(r.url());
+pg.on('request', (r) => { if (contaRede(r)) voando.set(r, Date.now()); });
+const acabou = (r) => { if (voando.delete(r)) ultimoFim = Date.now(); };
+pg.on('requestfinished', acabou); pg.on('requestfailed', acabou);
+async function redeQuieta(quieto = 300, max = 8000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < max) {
+    const agora = Date.now(); for (const [r, t] of voando) if (agora - t > 15000) voando.delete(r);
+    if (!voando.size && agora - ultimoFim >= quieto) return true;
+    await new Promise((ok) => setTimeout(ok, 80));
+  }
+  return false;
+}
 await pg.goto(BASE + '/');
 const logado = async () => (await pg.locator('text=/Chama Solar Instala|Meus Orçamentos/i').count()) > 0;
 
@@ -48,14 +65,14 @@ async function fecharAvisos() { for (const t of [/^\s*OK\s*$/i, /^\s*Fechar\s*$/
 async function aguardarPortal(maxMs = 25000) {
   const fim = Date.now() + maxMs; let antes = '', iguais = 0;
   while (Date.now() < fim) {
-    await pg.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {});
+    await redeQuieta(300, Math.max(400, Math.min(6000, fim - Date.now())));
     const r = await pg.evaluate(() => {
       const carregando = [...document.querySelectorAll('mat-spinner, mat-progress-spinner, mat-progress-bar, .spinner, .spinner-border, .loading, .loader, ngx-spinner, .ngx-spinner-overlay, .la-ball-fall, [class*="carregando"], [class*="loading"]')].some((e) => e.offsetParent !== null);
       const txt = document.body.innerText; const carregandoTxt = /\bCarregando\.\.\.|Aguarde/i.test(txt);
       return { carregando: carregando || carregandoTxt, assinatura: document.body.innerText.length + ':' + document.querySelectorAll('tr').length + ':' + location.pathname };
     }).catch(() => ({ carregando: false, assinatura: '' }));
-    if (!r.carregando && r.assinatura === antes) { if (++iguais >= 2) return true; } else iguais = 0;
-    antes = r.assinatura; await pausa(500);
+    if (!r.carregando && r.assinatura === antes) { if (++iguais >= 1) return true; } else iguais = 0;
+    antes = r.assinatura; await pausa(300);
   }
   return false;
 }
@@ -100,18 +117,21 @@ async function esperarLinhas(filtro, ms = 60000) { // o portal demora (~13 s par
   const t0 = Date.now(); let antes = -1;
   while (Date.now() - t0 < ms) {
     const n = await pg.evaluate((f) => [...document.querySelectorAll('tr')].filter((r) => new RegExp(f, 'i').test(r.innerText) && /Código:/.test(r.innerText)).length, filtro);
-    if (n > 0 && n === antes) return n; antes = n; await pausa(700);
+    if (n > 0 && n === antes) return n; antes = n; await pausa(450);
   }
   return 0;
 }
 async function matSelect(seletor, texto) {
   if (!texto) return;
-  await pg.locator(seletor).first().click(); await pausa(600);
-  const op = pg.locator('mat-option').filter({ hasText: new RegExp('^\\s*' + texto.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&') + '\\s*$', 'i') }).first();
+  const campo = typeof seletor === 'string' ? pg.locator(seletor).first() : seletor;
+  await campo.click();
+  const ops = pg.locator('mat-option'); await ops.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+  const op = ops.filter({ hasText: exato(texto) }).first();
   if (await op.count()) await op.click();
-  else if (await pg.locator('mat-option').count()) await pg.locator('mat-option').first().click(); // opção pedida não existe: usa a 1ª do portal
+  else if (await ops.count()) await ops.first().click(); // opção pedida não existe: usa a 1ª do portal
   else await pg.keyboard.press('Escape');
-  await pausa(1200);
+  await ops.first().waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
+  await aguardarPortal(6000);
 }
 const rx = (t) => new RegExp(String(t).replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'), 'i');
 async function listaCustom(rotulo, texto) { // listas da tela de estrutura (select comum, mat-select, ng-select ou lista própria)
@@ -127,9 +147,9 @@ async function listaCustom(rotulo, texto) { // listas da tela de estrutura (sele
     if (!(await c.count())) continue;
     await c.first().click({ timeout: 4000 }).catch(() => {}); await pausa(700);
     const op = pg.locator('mat-option, [role="option"], .ng-option, .dropdown-item, li, .option, .item').filter({ hasText: alvo }).locator('visible=true').first();
-    if (await op.count()) { await op.click({ timeout: 4000 }).catch(() => {}); await pausa(1000); return true; }
+    if (await op.count()) { await op.click({ timeout: 4000 }).catch(() => {}); await aguardarPortal(5000); return true; }
     const folha = pg.getByText(alvo).locator('visible=true').last();
-    if (await folha.count()) { await folha.click({ timeout: 4000 }).catch(() => {}); await pausa(1000); return true; }
+    if (await folha.count()) { await folha.click({ timeout: 4000 }).catch(() => {}); await aguardarPortal(5000); return true; }
     await pg.keyboard.press('Escape').catch(() => {});
   }
   console.log(`Não achei "${texto}" em "${rotulo}": seguindo com o que o portal sugeriu.`);
@@ -153,6 +173,35 @@ async function opcoesDe(rotulo) {
   return ops;
 }
 async function escolherPrimeira(rotulo, texto) { return (await listaCustom(rotulo, texto)) ? texto : null; }
+/* Lista os "Detalhes da Estrutura" de três jeitos (o campo muda conforme o tipo de telha) */
+async function listarDetalhes() {
+  let ops = await opcoesDe('Detalhes da Estrutura');
+  if (!ops.length) { // abre o campo logo depois do rótulo e lê o que aparecer
+    const rot = pg.getByText(rx('Detalhes da Estrutura')).first();
+    if (await rot.count()) {
+      for (const c of [rot.locator('xpath=following-sibling::*[1]'), rot.locator('xpath=following::*[self::mat-select or self::select or @role="combobox" or contains(@class,"select")][1]'), rot.locator('..')]) {
+        if (!(await c.count())) continue;
+        await c.first().click({ timeout: 3000 }).catch(() => {}); await pausa(500);
+        ops = (await pg.locator('mat-option, [role="option"], .ng-option, .dropdown-item, li.option').locator('visible=true').allInnerTexts().catch(() => [])).map((t) => t.trim()).filter((t) => t && t.length < 120 && !/selecione/i.test(t));
+        if (!ops.length) ops = await pg.evaluate(() => [...document.querySelectorAll('*')].filter((e) => e.children.length === 0 && e.offsetParent !== null && /^Modelo /.test((e.innerText || '').trim())).map((e) => e.innerText.trim())).catch(() => []);
+        await pg.keyboard.press('Escape').catch(() => {}); await pausa(250);
+        if (ops.length) break;
+      }
+    }
+  }
+  return [...new Set(ops)];
+}
+/* HTML do formulário da etapa (sem scripts e estilos), para eu entender a tela quando der erro */
+async function htmlDaTela(...ancoras) {
+  return pg.evaluate((anc) => {
+    const cands = [...document.querySelectorAll('form, section, mat-card, div')].filter((d) => anc.every((a) => (d.innerText || '').includes(a)));
+    const el = cands.sort((a, b) => a.innerText.length - b.innerText.length)[0]; if (!el) return '';
+    const c = el.cloneNode(true); c.querySelectorAll('script, style, svg, img, path').forEach((x) => x.remove());
+    c.querySelectorAll('*').forEach((x) => { [...x.attributes].forEach((a) => { if (/^(style|_ngcontent|_nghost|data-)/.test(a.name)) x.removeAttribute(a.name); }); });
+    c.querySelectorAll('input, select, textarea').forEach((x) => x.setAttribute('data-valor', x.value || ''));
+    return c.outerHTML.replace(/\s+/g, ' ').slice(0, 20000);
+  }, ancoras).catch(() => '');
+}
 async function printErro(nome) { try { const f = path.resolve('erros', `${new Date().toISOString().replace(/[:.]/g, '-')}-${nome}.png`); await import('node:fs').then((fs) => fs.mkdirSync(path.resolve('erros'), { recursive: true })); await pg.screenshot({ path: f, fullPage: true }); return f; } catch { return ''; } }
 async function linhas(filtro) { // linhas das tabelas (módulos, inversores, itens)
   return pg.evaluate((filtro) => [...document.querySelectorAll('tr')].map((r, i) => {
@@ -175,20 +224,22 @@ async function ajustarItens(itens) { for (const it of itens || []) if (it.sku) a
 /* ---------- etapas (mesma numeração do sistema) ---------- */
 const NOMES = ['potência', 'módulo', 'inversor', 'estrutura', 'itens da estrutura', 'elétricos CC', 'elétricos CA', 'confirmação'];
 async function passo(etapa, e = {}) {
-  ultimoAviso = '';
-  try { return await passoInterno(etapa, e); }
+  ultimoAviso = ''; const t0 = Date.now();
+  try { const r = await passoInterno(etapa, e); const ms = Date.now() - t0; console.log(`Etapa ${etapa} pronta em ${(ms / 1000).toFixed(1)} s`); return { ...r, ms }; }
   catch (err) {
     console.error(err);
     const f = await printErro('etapa-' + etapa);
     const msg = String(err.message || err).split('\n')[0].replace(/\u001b\[\d+m/g, '').slice(0, 220);
     const x = new Error(`Robô parou na etapa "${NOMES[etapa] || etapa}" do portal: ${msg}${f ? ' · print salvo em ' + f : ''}`);
     x.diag = await diagnostico(etapa, e, msg);
+    if (err.html) x.diag.html = err.html;
     throw x;
   }
 }
 /* Tudo o que ajuda a entender o erro sem estar olhando a tela (vai para o sistema e fica em erros/ultimo-erro.json) */
 async function diagnostico(etapa, entrada, msg) {
-  const d = { etapa, nomeEtapa: NOMES[etapa] || String(etapa), mensagem: msg, aviso: ultimoAviso, url: pg.url(), em: new Date().toISOString(), entrada };
+  const d = { etapa, nomeEtapa: NOMES[etapa] || String(etapa), mensagem: msg, aviso: ultimoAviso, url: pg.url(), em: new Date().toISOString(), entrada, versao: VERSAO };
+  try { d.html = await htmlDaTela(...({ 2: ['FILTRAR'], 3: ['Tipo de estrutura'], 4: ['PRÓXIMO'], 5: ['PRÓXIMO'], 6: ['PRÓXIMO'], 7: ['Valor'] }[etapa] || ['PRÓXIMO'])); } catch { /* */ }
   try { d.avisosNaTela = await avisoPortal(); } catch { /* */ }
   try { d.linhas = (await linhas('Código:')).slice(0, 40).map((r) => ({ sku: r.sku, nome: r.nome.slice(0, 80), qtd: r.qtd, sugerida: r.qtdSugerida })); } catch { /* */ }
   try { d.botoes = (await pg.locator('button:visible').allInnerTexts()).map((x) => x.trim()).filter(Boolean).slice(0, 30); } catch { /* */ }
@@ -200,7 +251,7 @@ async function diagnostico(etapa, entrada, msg) {
 async function passoInterno(etapa, e = {}) {
   if (!(await logado())) throw new Error('A sessão da Belenergy expirou: faça login na janela do robô e tente de novo.');
   if (etapa === 0) {
-    await pg.goto(BASE + '/energy/escolha-metodo'); await pausa(1500);
+    await pg.goto(BASE + '/energy/escolha-metodo'); await aguardarPortal(10000);
     // "ESCOLHER" do Convencional não é <button>: clica pelo texto (o 1º é o Convencional)
     await semCookies();
     await pg.locator('button:visible').filter({ hasText: /^\s*escolher\s*$/i }).first().click();
@@ -209,7 +260,7 @@ async function passoInterno(etapa, e = {}) {
     await pg.locator('button:enabled').filter({ hasText: 'navigate_next' }).first().click();
     if (!(await esperarLinhas('MODULO'))) throw new Error('o portal não listou módulos para ' + e.kwp + ' kWp');
     await pg.locator('select').filter({ hasText: 'Menor Preço Por Watt' }).first().selectOption({ label: 'Menor Preço Por Watt' }).catch(() => {});
-    await pausa(1200);
+    await aguardarPortal(8000); await esperarLinhas('MODULO', 15000);
     const mods = (await linhas('MODULO')).map((m) => ({ sku: m.sku, nome: m.nome.replace(/^MODULO\s*/i, ''), potenciaW: num(m.potencia) || num((m.nome.match(/(\d{3,4})W/) || [])[1]), qtdSugerida: m.qtdSugerida || m.qtd }));
     return { etapa: 1, opcoes: { modulos: mods.map((m) => ({ ...m, kwp: Math.round(m.qtdSugerida * m.potenciaW / 10) / 100 })) } };
   }
@@ -218,7 +269,7 @@ async function passoInterno(etapa, e = {}) {
     if (e.moduloQtd) await ajustarQtd(e.moduloSku, +e.moduloQtd);
     await linha.locator('input[type=radio]').first().check({ force: true }); await pausa(600);
     await proximo();
-    const opcoes = async (fc) => { await pg.locator(`mat-select[formcontrolname="${fc}"]`).click(); await pausa(700); const t = await pg.locator('mat-option').allInnerTexts(); await pg.keyboard.press('Escape'); await pausa(300); return t.map((x) => x.trim()); };
+    const opcoes = async (fc) => { await pg.locator(`mat-select[formcontrolname="${fc}"]`).click(); await pg.locator('mat-option').first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {}); const t = await pg.locator('mat-option').allInnerTexts(); await pg.keyboard.press('Escape'); await pausa(200); return t.map((x) => x.trim()); };
     return { etapa: 2, opcoes: { tipos: await opcoes('tipoInversor'), ligacoes: ['MONOFÁSICO', 'BIFÁSICO', 'TRIFÁSICO'], tensoes: {}, fabricantes: (await pg.locator('ng-multiselect-dropdown li').allInnerTexts()).map((x) => x.trim()).filter((x) => x && !/Marcar Todos/i.test(x)), inversores: null } };
   }
   if (etapa === 2 && e.filtrar) {
@@ -227,7 +278,7 @@ async function passoInterno(etapa, e = {}) {
     await matSelect('mat-select[formcontrolname="tipoLigacao"]', e.ligacao);
     await pg.locator('mat-select[formcontrolname="tensaoNominal"]').click(); await pausa(600);
     const tensoes = (await pg.locator('mat-option').allInnerTexts()).map((x) => x.trim());
-    await pg.locator('mat-option').filter({ hasText: e.tensao && tensoes.includes(e.tensao) ? e.tensao : tensoes[0] }).first().click(); await pausa(1200);
+    await pg.locator('mat-option').filter({ hasText: e.tensao && tensoes.includes(e.tensao) ? e.tensao : tensoes[0] }).first().click(); await aguardarPortal(6000);
     if (e.fabricantes && e.fabricantes.length) {
       await pg.locator('ng-multiselect-dropdown .dropdown-btn').click(); await pausa(500);
       for (let k = 0; k < 20 && (await pg.locator('ng-multiselect-dropdown li').filter({ hasText: /Não há fabricantes/i }).count()); k++) await pausa(500);
@@ -257,17 +308,27 @@ async function passoInterno(etapa, e = {}) {
     if (e.semEstrutura) { await pg.getByText(exato('Sem Estrutura')).click(); await pausa(800); return { etapa: 4, opcoes: { itens: [] } }; }
     await listaCustom('Tipo de estrutura', e.estruturaTipo); await aguardarPortal(8000);
     // Fibrocimento e laje pedem "Detalhes da Estrutura" (tipo de fixação/terça). Sem detalhe escolhido o CALCULAR fica travado:
-    // usa o detalhe pedido ou, se não vier, a primeira opção do portal (e devolve a lista para o vendedor escolher depois).
-    const detalhes = await opcoesDe('Detalhes da Estrutura');
+    // usa o detalhe pedido (Parâmetros) ou a primeira opção do portal; se o botão não liberar, tenta as próximas.
+    const detalhes = await listarDetalhes();
+    const fila = [...new Set([e.estruturaDetalhe, ...detalhes].filter(Boolean))].slice(0, 4);
+    const preencher = async () => {
+      await pg.locator('#numero-linhas').first().fill(String(e.linhas)); await pg.locator('#modulos-linha').first().fill(String(e.modulosPorLinha));
+      await matSelect('#tipo-orientacao', e.orientacao || 'Retrato');
+    };
+    const calc = botao(/CALCULAR ESTRUTURA/i), liberou = async (ms) => { for (let k = 0; k < ms / 250 && (await calc.isDisabled().catch(() => false)); k++) await pausa(250); return !(await calc.isDisabled().catch(() => false)); };
     let detalheUsado = null;
-    if (e.estruturaDetalhe && (await listaCustom('Detalhes da Estrutura', e.estruturaDetalhe))) detalheUsado = e.estruturaDetalhe;
-    else if (detalhes.length) { detalheUsado = await escolherPrimeira('Detalhes da Estrutura', detalhes[0]); }
+    if (!fila.length) { await preencher(); }
+    for (const d of fila) {
+      if (await listaCustom('Detalhes da Estrutura', d)) detalheUsado = d;
+      await preencher();
+      if (await liberou(4000)) break;
+      console.log(`"Calcular estrutura" não liberou com "${d}": tentando outra opção.`); detalheUsado = null;
+    }
     if (detalheUsado) console.log('Detalhe da estrutura: ' + detalheUsado);
-    await pg.locator('#numero-linhas').fill(String(e.linhas)); await pg.locator('#modulos-linha').fill(String(e.modulosPorLinha));
-    await matSelect('#tipo-orientacao', e.orientacao || 'Retrato');
-    const calc = botao(/CALCULAR ESTRUTURA/i);
-    for (let k = 0; k < 16 && (await calc.isDisabled().catch(() => false)); k++) await pausa(500);
-    if (await calc.isDisabled().catch(() => false)) throw new Error(`o portal não liberou "Calcular estrutura" para ${e.estruturaTipo}${detalhes.length ? ` (detalhes disponíveis: ${detalhes.join(' / ')})` : ' (não achei a lista de detalhes)'}`);
+    if (!(await liberou(3000))) {
+      const x = new Error(`o portal não liberou "Calcular estrutura" para ${e.estruturaTipo}${detalhes.length ? ` (detalhes do portal: ${detalhes.join(' / ')})` : ' (não achei a lista de detalhes)'} com ${e.linhas} linha(s) de ${e.modulosPorLinha}`);
+      x.html = await htmlDaTela('Tipo de estrutura', 'Módulos por linha'); throw x;
+    }
     await calc.click({ timeout: 10000 }); await esperarLinhas('.', 45000);
     return { etapa: 4, opcoes: { detalhes, detalheUsado, itens: (await linhas('Código:')).map((x) => ({ sku: x.sku, nome: x.nome, qtd: x.qtd })) } };
   }
@@ -291,27 +352,39 @@ async function passoInterno(etapa, e = {}) {
       const sel = pg.locator('select').filter({ has: pg.locator('option', { hasText: rx(texto) }) }).first();
       if (!(await sel.count())) { console.log('Sem a opção "' + texto + '" na confirmação: mantido o padrão do portal.'); return; }
       const rot = (await sel.locator('option', { hasText: rx(texto) }).first().textContent({ timeout: 3000 }) || '').trim();
-      await sel.selectOption({ label: rot }, { timeout: 5000 }).catch(() => {}); await pausa(1200);
+      await sel.selectOption({ label: rot }, { timeout: 5000 }).catch(() => {}); await aguardarPortal(6000);
     };
     const nome = pg.getByText('Nome da proposta:', { exact: false }).locator('xpath=following::input[1]');
     if (e.nome && (await nome.count())) await nome.fill(e.nome, { timeout: 3000 }).catch(() => {});
     await escolher(e.estadoEntrega); await escolher(e.cidadeEntrega); await escolher(e.frete);
-    await pg.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {}); await pausa(1200);
+    await aguardarPortal(10000);
     if (e.pagamento && /Outras/.test(e.pagamento)) await pg.getByText('Outras Formas de Pagamento').first().click({ timeout: 3000 }).catch(() => {});
     await pausa(800);
     let t = await pg.evaluate(() => document.body.innerText);
     const valor = num((t.match(/Valor da proposta:\s*R\$\s*([\d.,]+)/) || t.match(/(?:Valor total|Total da proposta|Total geral)[^R]{0,20}R\$\s*([\d.,]+)/i) || [])[1]);
     const produtos = num((t.match(/Valor dos produtos:\s*R\$\s*([\d.,]+)/) || [])[1]);
-    let numero = 'não salvo', pdf = null;
+    let numero = 'não salvo', pdf = null, diagSalvar = null;
     if (e.salvar) { // só com a caixa "Salvar na Belenergy" marcada pelo vendedor
-      await botao(/^\s*Salvar\s*$/i).click(); await aguardarPortal(20000); await pausa(1500);
-      t = await pg.evaluate(() => document.body.innerText) + ' ' + (await avisoPortal());
-      const w = t.match(/\bWEB\s*[-:#nº°]*\s*(\d{3,})/i) || t.match(/(?:Or[çc]amento|Proposta|Pedido)\s*(?:n[ºo°.]*)?\s*[:#]?\s*(\d{4,})/i);
-      numero = w ? 'WEB ' + w[1] : 'salvo (ver Meus Orçamentos)';
+      const antesSalvar = await pg.evaluate(() => document.body.innerText);
+      await botao(/^\s*Salvar\s*$/i).click(); await aguardarPortal(20000); await pausa(800);
+      // o número pode aparecer num aviso que some rápido, na tela ou no endereço: procura nos três
+      let achado = null;
+      for (let k = 0; k < 6 && !achado; k++) {
+        t = await pg.evaluate(() => document.body.innerText) + ' ' + (await avisoPortal()) + ' ' + pg.url();
+        const w = t.match(/\bWEB\s*[-:#nº°]*\s*(\d{3,})/i) || pg.url().match(/(?:id|orcamento|proposta|pedido)[=/](\d{4,})/i)
+          || t.match(/(?:Or[çc]amento|Proposta|Pedido)\s*(?:n[ºo°.]*)?\s*[:#]?\s*(\d{4,})/i);
+        if (w && !antesSalvar.includes(w[1])) achado = w[1]; else await pausa(500);
+      }
+      numero = achado ? 'WEB ' + achado : 'salvo (ver Meus Orçamentos)';
+      if (!achado) { // guarda o que a tela mostrou depois de salvar, para ensinar o robô a achar o número
+        const i = t.search(/salv|sucesso|or[çc]amento/i);
+        diagSalvar = { url: pg.url(), tela: t.slice(Math.max(0, i - 300), i + 900).replace(/\s+/g, ' ') };
+        console.log('Salvou, mas não achei o número WEB na tela. Guardei o texto da tela para análise.');
+      }
       await fecharAvisos();
       // PDF da Belenergy: baixa e devolve para anexar no orçamento
       try {
-        const bp = botao(/Baixar PDF/i);
+        const bp = botao(/Baixar PDF|Gerar PDF|Download PDF|Baixar proposta/i);
         if (await bp.count()) {
           const [d] = await Promise.all([pg.waitForEvent('download', { timeout: 45000 }), bp.click()]);
           const fs = await import('node:fs');
@@ -327,7 +400,7 @@ async function passoInterno(etapa, e = {}) {
     }
     // "Comprar Agora" NUNCA é clicado por este robô.
     if (!(valor || produtos)) { const f = await printErro('confirmacao'); throw new Error('Não achei o valor do kit na tela de confirmação' + (f ? ' · print salvo em ' + f : '')); }
-    return { etapa: 8, final: { valorKit: valor || produtos, valorProdutos: produtos, frete: Math.max((valor || produtos) - produtos, 0), numero, pdf } };
+    return { etapa: 8, final: { valorKit: valor || produtos, valorProdutos: produtos, frete: Math.max((valor || produtos) - produtos, 0), numero, pdf, diagSalvar } };
   }
   throw new Error('Etapa desconhecida: ' + etapa);
 }
@@ -356,7 +429,7 @@ http.createServer((req, res) => {
   if (!ok) { res.statusCode = 403; return res.end(JSON.stringify({ erro: 'Origem não autorizada' })); }
   let corpo = ''; req.on('data', (c) => { corpo += c; if (corpo.length > 2e5) req.destroy(); });
   req.on('end', () => {
-    if (req.url === '/status') return logado().then((l) => res.end(JSON.stringify({ ok: true, logado: l })));
+    if (req.url === '/status') return logado().then((l) => res.end(JSON.stringify({ ok: true, logado: l, versao: VERSAO })));
     const rodar = (fn) => { fila = fila.then(async () => { try { res.end(JSON.stringify(await fn())); } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ erro: String(e.message || e), diag: e.diag || null })); } }); };
     if (req.url === '/passo' && req.method === 'POST') { const { etapa, entrada } = JSON.parse(corpo || '{}'); return rodar(() => passo(+etapa, entrada)); }
     if (req.url === '/detalhes' && req.method === 'POST') { const { tipo } = JSON.parse(corpo || '{}'); return rodar(async () => ({ detalhes: await detalhes(tipo) })); }

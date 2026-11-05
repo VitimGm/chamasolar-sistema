@@ -82,7 +82,7 @@
     return tabela.find((f) => valor <= f.ate) || tabela[tabela.length - 1];
   }
 
-  function custosDiretos({ kit, placas, kwp, distanciaKm, trocaPadrao }, p) {
+  function custosDiretos({ kit, placas, kwp, distanciaKm, trocaPadrao, custosAjustados, custosExtras }, p) {
     const linhas = [
       { id: 'kit', nome: 'Kit solar (valor final Belenergy)', valor: kit },
       { id: 'terceiro', nome: `Instalação terceirizada (${placas} placas)`, valor: placas * p.maoDeObraPorPlaca },
@@ -94,7 +94,31 @@
       { id: 'padrao', nome: 'Troca de padrão de entrada', valor: trocaPadrao ? p.trocaPadrao : 0 },
       { id: 'garantia', nome: 'Reserva de garantia', valor: kit * p.reservaGarantia },
     ];
-    return linhas.map((l) => ({ ...l, valor: arred(l.valor) }));
+    // custos que o vendedor ajustou neste orçamento (ex.: o terceiro cobrou diferente) e custos extras
+    const aj = custosAjustados || {};
+    const base = linhas.map((l) => (aj[l.id] != null && aj[l.id] !== '' && Number.isFinite(+aj[l.id]) ? { ...l, valorPadrao: arred(l.valor), valor: +aj[l.id], ajustado: true } : l));
+    const extras = (custosExtras || []).filter((x) => Number(x && x.valor) > 0).map((x, i) => ({ id: 'extra' + i, nome: String(x.nome || 'Custo extra').slice(0, 60), valor: +x.valor, extra: true }));
+    return [...base, ...extras].map((l) => ({ ...l, valor: arred(l.valor) }));
+  }
+
+  /* Preço como a Groner calcula hoje (para comparar):
+     (kit + engenharia + mão de obra + ART + deslocamento + outros) ÷ (1 − (36,5% + Fator X + comissão)) */
+  function precoGroner(entrada, p) {
+    const G = { percentual: 0.365, maoDeObraPorPlaca: 100, art: 70, custoKm: 1, kmIdaVolta: 0, eng: [300, 500, 700], ...(p.groner || {}) };
+    const kwp = entrada.kwp || 0, eng = kwp <= 10 ? G.eng[0] : kwp <= 30 ? G.eng[1] : G.eng[2];
+    const outros = (entrada.custosExtras || []).reduce((s, x) => s + (Number(x && x.valor) > 0 ? +x.valor : 0), 0) + (entrada.trocaPadrao ? p.trocaPadrao || 0 : 0);
+    const linhas = [
+      { id: 'kit', nome: 'Kit', valor: entrada.kit },
+      { id: 'engenharia', nome: 'Engenharia', valor: eng },
+      { id: 'maoDeObra', nome: `Mão de obra (${entrada.placas} × ${G.maoDeObraPorPlaca})`, valor: entrada.placas * G.maoDeObraPorPlaca },
+      { id: 'art', nome: 'ART', valor: G.art },
+      { id: 'deslocamento', nome: 'Deslocamento', valor: (Number(entrada.distanciaKm) || 0) * (G.kmIdaVolta ? 2 : 1) * G.custoKm },
+      { id: 'outros', nome: 'Outros', valor: outros },
+    ].map((l) => ({ ...l, valor: arred(l.valor) }));
+    const custos = linhas.reduce((s, l) => s + l.valor, 0), cm = entrada.comissaoParceria || 0;
+    let X = 0, preco = 0;
+    for (let k = 0; k < 4; k++) { preco = custos / (1 - (G.percentual + X + cm)); const nx = preco <= 100000 ? 0 : preco <= 500000 ? 0.05 : 0.06; if (nx === X) break; X = nx; }
+    return { linhas, custos: arred(custos), percentual: G.percentual + X + cm, fatorX: X, preco: arred(preco), rsPorWp: arred(preco / (kwp * 1000 || 1), 2) };
   }
 
   function precificar(entrada, p) {
@@ -103,23 +127,32 @@
     const K = entrada.kit;
     // custo fixo: rateado por kWp vendido (justo com sistema pequeno) ou, se não houver meta em kWp, por obra
     const F = p.kwpPrevistosMes > 0 ? (p.custoFixoMes * entrada.kwp) / p.kwpPrevistosMes : p.custoFixoMes / p.obrasPrevistasMes;
-    const margem = faixaDe(p.margens, entrada.kwp).margem;
+    const margemTabela = faixaDe(p.margens, entrada.kwp).margem;
+    let margem = Number.isFinite(entrada.margemManual) ? entrada.margemManual : margemTabela;
     const t = entrada.kitFaturadoDireto ? p.impostoServico : p.impostoTotal;
     const pg = p.taxaPagamento[entrada.formaPagamento] ?? 0;
     const cm = entrada.comissaoParceria || 0;
     const rs = p.reservaNegociacao;
-    const den = 1 - (t + pg + cm + margem + rs);
-    if (den <= 0.05) throw new Error('Somatório de percentuais alto demais (≥ 95%). Revise os parâmetros.');
+    const alvo = Number(entrada.precoAlvo) > 0 ? +entrada.precoAlvo : 0;
 
-    let total, notaChama;
-    if (entrada.kitFaturadoDireto) {
-      notaChama = (C - K + F + (cm + margem + rs) * K) / den;
-      total = K + notaChama;
+    let total, notaChama, desconto;
+    if (alvo) {
+      // preço final escolhido (digitado ou o da Groner): a margem é o que sobra depois de custos, impostos, taxas, comissão e reserva
+      const baseN = entrada.kitFaturadoDireto ? alvo - K : alvo;
+      margem = (alvo - C - F - baseN * (t + pg) - alvo * (cm + rs)) / alvo;
+      total = alvo; notaChama = baseN; desconto = 0;
     } else {
-      total = (C + F) / den;
-      notaChama = total;
+      const den = 1 - (t + pg + cm + margem + rs);
+      if (den <= 0.05) throw new Error('Somatório de percentuais alto demais (≥ 95%). Revise os parâmetros.');
+      if (entrada.kitFaturadoDireto) {
+        notaChama = (C - K + F + (cm + margem + rs) * K) / den;
+        total = K + notaChama;
+      } else {
+        total = (C + F) / den;
+        notaChama = total;
+      }
+      desconto = Math.min(Math.max(entrada.descontoPct || 0, 0), rs);
     }
-    const desconto = Math.min(Math.max(entrada.descontoPct || 0, 0), rs);
     const totalFinal = total * (1 - desconto);
     const rsPorWp = totalFinal / (entrada.kwp * 1000);
     const sem = p.semaforo;
@@ -136,7 +169,7 @@
     };
     return {
       linhas, custosDiretos: arred(C), taxaFixa: arred(F),
-      percentuais: { impostos: t, pagamento: pg, comissao: cm, margem, reserva: rs },
+      percentuais: { impostos: t, pagamento: pg, comissao: cm, margem, reserva: rs }, margemTabela, margemManual: Number.isFinite(entrada.margemManual), precoAlvo: alvo ? arred(alvo) : 0,
       precoCheio: arred(total), descontoPct: desconto, precoFinal: arred(totalFinal),
       notaChamaSolar: arred(base),
       kitDireto: entrada.kitFaturadoDireto ? arred(K) : 0,
@@ -210,6 +243,13 @@
   }
 
   /* ---------- 7. Montar as 3 opções de kit ---------- */
+  /* preço final escolhido pelo vendedor: o da Groner, ou o digitado para esta opção */
+  function precoAlvoDe(orc, nivel, groner) {
+    if (orc.precoModo === 'groner') return groner.preco;
+    if (orc.precoModo === 'manual') { const v = Number((orc.precoManual || {})[nivel]); return v > 0 ? v : 0; }
+    return 0;
+  }
+
   /* Opção a partir de um KIT FECHADO cotado no "Personalize seu Gerador" da Belenergy.
      O valor final do kit (já com estrutura e componentes) é o custo do kit. */
   function opcaoKitFechado(orc, k, p) {
@@ -223,10 +263,11 @@
     const dim = { disponibilidade: disp, descontado, hspEfetivo: arred(hspEf, 2), alvoKwh: arred(alvoKwh, 0), kwpNecessario: arred((alvoKwh * (1 + (p.margemGeracao ?? 0))) / (hspEf * 30 * p.pr), 2), placas, kwpReal: arred(kwpReal, 2), geracaoMes: arred(geracaoMes, 0), cobertura: alvoKwh ? arred(geracaoMes / alvoKwh, 3) : 0 };
     const inversor = { id: k.inversor.sku, nome: k.inversor.nome, fabricante: k.inversor.fabricante || '', qtd: k.inversor.qtd || 1, potenciaUnKw: k.inversor.potenciaUnKw || k.inversor.potenciaKw, tipo: k.inversor.tipo, potenciaKw: k.inversor.potenciaKw, hibrido: k.inversor.tipo === 'hibrido', vMaxDc: k.inversor.vMaxDc || 0 };
     const relacao = inversor.potenciaKw ? kwpReal / inversor.potenciaKw : 0;
-    const preco = precificar({ ...orc, kit: k.valorKit, placas, kwp: kwpReal }, p);
+    const ent = { ...orc, kit: k.valorKit, placas, kwp: kwpReal }, groner = precoGroner(ent, p);
+    const preco = precificar({ ...ent, precoAlvo: precoAlvoDe(orc, k.nivel, groner) }, p);
     const eco = economia({ ...orc, geracaoMes, investimento: preco.precoFinal, anoInicio: p.anoBase }, p);
     const areaM2 = arred(placas * modulo.areaM2, 1);
-    return { nivel: k.nivel, destaque: k.nivel === 'Inversor' || k.nivel === 'Recomendada', descricao: k.descricao || 'Kit fechado Belenergy.', modulo, inversor, relacaoDcAc: arred(relacao, 2), dcAcOk: relacao >= p.faixaDcAc.min && relacao <= p.faixaDcAc.max,
+    return { groner, precoModo: orc.precoModo || 'chama', nivel: k.nivel, destaque: k.nivel === 'Inversor' || k.nivel === 'Recomendada', descricao: k.descricao || 'Kit fechado Belenergy.', modulo, inversor, relacaoDcAc: arred(relacao, 2), dcAcOk: relacao >= p.faixaDcAc.min && relacao <= p.faixaDcAc.max,
       bateria: k.bateria || null, dim, strings: { strings: k.estrutura?.linhas || 1, porString: k.estrutura?.modulosPorLinha || placas, avisos: [], vocFrio: 0, ok: true }, kit: k.valorKit, kitFechado: k, preco, eco, areaM2, cabeNoTelhado: !orc.areaDisponivel || areaM2 <= orc.areaDisponivel };
   }
 
@@ -246,15 +287,16 @@
       const kit = arred(
         dim.placas * modulo.preco + inv.inversor.preco + dim.placas * catalogo.estrutura[orc.telhado] + (bateria ? bateria.preco : 0)
       );
-      const preco = precificar({ ...orc, kit, placas: dim.placas, kwp: dim.kwpReal }, p);
+      const ent = { ...orc, kit, placas: dim.placas, kwp: dim.kwpReal }, groner = precoGroner(ent, p);
+      const preco = precificar({ ...ent, precoAlvo: precoAlvoDe(orc, nivel.nome, groner) }, p);
       const eco = economia({ ...orc, geracaoMes: dim.geracaoMes, investimento: preco.precoFinal, anoInicio: p.anoBase }, p);
       const areaM2 = arred(dim.placas * modulo.areaM2, 1);
-      res.push({ nivel: nivel.nome, destaque: nivel.destaque, descricao: nivel.descricao, modulo, inversor: inv.inversor, relacaoDcAc: inv.relacaoDcAc, dcAcOk: inv.dentroDaFaixa, bateria, dim, strings: str, kit, preco, eco, areaM2, cabeNoTelhado: !orc.areaDisponivel || areaM2 <= orc.areaDisponivel });
+      res.push({ groner, precoModo: orc.precoModo || 'chama', nivel: nivel.nome, destaque: nivel.destaque, descricao: nivel.descricao, modulo, inversor: inv.inversor, relacaoDcAc: inv.relacaoDcAc, dcAcOk: inv.dentroDaFaixa, bateria, dim, strings: str, kit, preco, eco, areaM2, cabeNoTelhado: !orc.areaDisponivel || areaM2 <= orc.areaDisponivel });
     }
     return res;
   }
 
-  const Motor = { DISPONIBILIDADE, FATOR_ORIENTACAO, dimensionar, escolherInversor, conferirStrings, custosDiretos, precificar, parcelaPrice, economia, fioBPct, tir, vpl, montarOpcoes, opcaoKitFechado };
+  const Motor = { DISPONIBILIDADE, FATOR_ORIENTACAO, dimensionar, escolherInversor, conferirStrings, custosDiretos, precificar, precoGroner, parcelaPrice, economia, fioBPct, tir, vpl, montarOpcoes, opcaoKitFechado };
   if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
   else raiz.Motor = Motor;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -24,6 +24,10 @@
       distanciaKm: Number(o.distanciaKm) || 0, trocaPadrao: !!o.trocaPadrao, areaDisponivel: Number(o.areaDisponivel) || 0,
       formaPagamento: o.formaPagamento || 'financiamento', comissaoParceria: (Number(o.comissaoParceria) || 0) / 100,
       kitFaturadoDireto: !!o.kitFaturadoDireto, descontoPct: (Number(o.descontoPct) || 0) / 100,
+      // ajustes do vendedor neste orçamento (todos opcionais)
+      margemManual: o.margemManual === '' || o.margemManual == null || !Number.isFinite(+o.margemManual) ? undefined : +o.margemManual / 100,
+      custosExtras: Array.isArray(o.custosExtras) ? o.custosExtras : [], custosAjustados: o.custosAjustados || {},
+      precoModo: o.precoModo || 'chama', precoManual: o.precoManual || {},
     };
   }
 

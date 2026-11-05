@@ -20,13 +20,16 @@
     if (!r.ok) { const x = new Error(j.erro || `O robô respondeu ${r.status}`); x.diag = j.diag || null; throw x; }
     return j;
   }
+  const ROBO_ESPERADO = '2026-11-05c'; // versão do robô que acompanha este sistema
+  let versaoRobo = null;
   async function conectado() {
     try {
       const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 1200);
       const r = await fetch(URL_ROBO + '/status', { signal: ctl.signal }); clearTimeout(t);
-      const j = await r.json(); return !!j.ok && !!j.logado;
+      const j = await r.json(); versaoRobo = j.versao || '0'; return !!j.ok && !!j.logado;
     } catch { return false; }
   }
+  const roboDesatualizado = () => versaoRobo !== null && versaoRobo < ROBO_ESPERADO;
 
   /* ---------- Dados reais do portal (listas) + simulação de valores ---------- */
   const PORTAL = {
@@ -110,6 +113,7 @@
       if (s.etapa === 2 && !(entrada && entrada.filtrar)) e.inversor = ant.inversores.find((x) => x.sku === e.inversorSku);
       if (s.etapa === 3) e.estrutura = { tipo: e.estruturaTipo, detalhe: e.estruturaDetalhe, linhas: +e.linhas, modulosPorLinha: +e.modulosPorLinha, orientacao: e.orientacao, semEstrutura: !!e.semEstrutura };
       const r = await chamar('/passo', { etapa: s.etapa, entrada });
+      s.tempos = s.tempos || []; if (r.ms) s.tempos.push({ etapa: s.etapa, ms: r.ms });
       s.etapa = r.etapa; s.opcoes = r.opcoes || {}; if (r.final) s.final = r.final;
       return s;
     }
@@ -215,7 +219,7 @@
   function paraKit(s, nivel) {
     const e = s.escolhas, f = s.final, ficha = raiz.Catalogo ? raiz.Catalogo.fichaModulo(e.modulo.potenciaW) : {};
     return {
-      nivel, origem: s.modo, numeroBelenergy: f.numero, pdfBelenergy: f.pdf ? f.pdf.nome : null, nomeOrcamento: e.nome, frete: e.frete, pagamento: e.pagamento, entrega: `${e.cidadeEntrega || ''}/${e.estadoEntrega || ''}`, cotadoEm: new Date().toISOString(),
+      nivel, origem: s.modo, numeroBelenergy: f.numero, pdfBelenergy: f.pdf ? f.pdf.nome : null, nomeOrcamento: e.nome, segundos: s.tempos ? Math.round(s.tempos.reduce((a, t) => a + t.ms, 0) / 1000) : null, frete: e.frete, pagamento: e.pagamento, entrega: `${e.cidadeEntrega || ''}/${e.estadoEntrega || ''}`, cotadoEm: new Date().toISOString(),
       valorKit: f.valorKit, valorProdutos: f.valorProdutos, valorFrete: f.frete,
       modulo: { sku: e.modulo.sku, nome: e.modulo.nome, marca: fabModulo(e.modulo.nome), potenciaW: e.modulo.potenciaW, qtd: e.modulo.qtd, ...ficha },
       inversor: { sku: e.inversor.sku, qtd: e.inversor.qtd || 1, potenciaUnKw: (e.inversor.potenciaKw || 0) / (e.inversor.qtd || 1), nome: e.inversor.nome + (e.inversor.qtd > 1 ? ` (${e.inversor.qtd} un.)` : ''), potenciaKw: e.inversor.potenciaKw, tipo: e.inversor.tipo, fabricante: e.inversor.fabricante, overload: e.inversor.overload },
@@ -224,5 +228,5 @@
     };
   }
 
-  raiz.Cotador = { ETAPAS, PORTAL, REGRAS, cotarAuto, fabModulo, detalhes, conectado, novaSessao, avancar, paraKit, URL_ROBO };
+  raiz.Cotador = { ETAPAS, PORTAL, REGRAS, cotarAuto, fabModulo, detalhes, conectado, novaSessao, avancar, paraKit, URL_ROBO, ROBO_ESPERADO, roboDesatualizado, versaoRobo: () => versaoRobo };
 })(window);

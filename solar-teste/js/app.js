@@ -362,7 +362,7 @@
   const salvarR = () => { B.rascunho.gravar(orc); B.rascunho.gravarEtapa(etapa); };
   const ETAPAS = [
     ['Cliente e conta', passo1, () => (orc.nome.trim() && C.consumoMedio(orc) > 0 && orc.cidade) ? '' : 'Preencha nome, cidade e o consumo.'],
-    ['Local e telhado', passo2, () => ''], ['Dimensionamento', passo3, () => ''], ['Kit Belenergy', passo4, () => (orc.kitsFechados && orc.kitsFechados[0]) ? '' : 'Toque em "Cotar as duas de uma vez" para montar os kits.'],
+    ['Local e telhado', passo2, () => ''], ['Dimensionamento', passo3, () => ''], ['Kit Belenergy', passo4, () => (orc.kitsFechados && orc.kitsFechados.some(Boolean)) ? '' : 'Cote pelo menos uma opção (inversor ou micro).'],
     ['Preço e pagamento', passo5, () => ''], ['Proposta Viva', passo6, () => ''],
   ];
   function novo() {
@@ -588,7 +588,10 @@
       ${r && !outra ? `<p class="mini" style="margin-top:8px">Geração no 3D: <b>${n(ger)} kWh/mês</b> (${n(r.geracaoAnual)} kWh/ano)${alvo ? ` · consumo a cobrir: ${n(alvo)} kWh/mês` : ''}.${r.placas >= qtd ? ' Já é a geração usada no preço e na proposta.' : ''}</p>` : ''}
     </div>`;
   }
+  const QUAIS = [['ambos', 'Os dois'], ['inversor', 'Só inversor'], ['micro', 'Só micro']];
   function passo4(el) {
+    const quais = orc.cotarQuais || 'ambos', vaiCotar = (i) => quais === 'ambos' || (quais === 'inversor' ? i === 0 : i === 1);
+    const faltam = NIVEIS_KIT.filter((_, i) => vaiCotar(i) && !(orc.kitsFechados || [])[i]);
     const p = P();
     orc.kitsFechados = [0, 1].map((i) => (orc.kitsFechados || [])[i] || null);
     if (cot) return assistente(el);
@@ -602,9 +605,10 @@
           <label class="campo"><span>Frete (vale para as duas)</span><select id="a-frete">${Cotador.PORTAL.fretes.map((f) => `<option ${f === (orc.freteAuto || 'Cliente Retira') ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></label>
           <p class="mini" style="margin:0">Escolha em cada opção só o módulo e o inversor. Estrutura, componentes e confirmação seguem automáticos, como o portal sugere.</p></div>
         <div class="linha-h" style="margin-top:12px"><label class="alternar" style="margin:10px 0 0"><span><b>Salvar na Belenergy e anexar o WEB e o PDF</b><br><span class="sutil">fica em "Meus Orçamentos". O robô nunca clica em "Comprar agora".</span></span><input type="checkbox" id="a-salvar" ${orc.salvarBel === false ? '' : 'checked'}></label>
-        <button class="btn sol" id="a-cotar" ${orc.kitsFechados.filter(Boolean).length === NIVEIS_KIT.length ? 'hidden' : ''}>⚡ Cotar ${orc.kitsFechados.filter(Boolean).length ? 'a que falta' : 'as duas de uma vez'}</button><span class="mini" id="a-prog"></span></div></div>
+        <div class="chips" style="margin-top:10px">${QUAIS.map(([v, t]) => `<button class="chip ${quais === v ? 'sel' : ''}" data-quais="${v}">${t}</button>`).join('')}</div>
+        <button class="btn sol" id="a-cotar" ${faltam.length ? '' : 'hidden'}>⚡ ${faltam.length === NIVEIS_KIT.length ? 'Cotar as duas de uma vez' : quais === 'ambos' ? 'Cotar a que falta' : `Cotar só o ${quais === 'micro' ? 'microinversor' : 'inversor'}`}</button><span class="mini" id="a-prog"></span></div></div>
       <div class="ops-v duas" style="margin-top:14px">${NIVEIS_KIT.map((nv, i) => { const k = orc.kitsFechados[i]; return `
-        <div class="op-v ${k ? 'sel' : ''}" style="cursor:default">
+        <div class="op-v ${k ? 'sel' : ''}" style="cursor:default;${!k && !vaiCotar(i) ? 'opacity:.55' : ''}">
           <span class="rotulo" style="color:var(--sol)">${i === PRINCIPAL ? 'Principal' : 'Opcional'}</span><h3 style="margin:4px 0">${nv}</h3>
           ${k ? `<div class="preco">${brl(k.valorKit, 2)}</div><span class="mini">valor do kit · ${k.origem === 'simulado' ? 'SIMULADO' : 'Belenergy ' + esc(k.numeroBelenergy)}</span>
             <ul><li><span>Módulos</span><span>${k.modulo.qtd} × ${esc(k.modulo.marca || k.modulo.nome)} ${k.modulo.potenciaW} W</span></li><li><span>${k.inversor.tipo === 'micro' ? 'Micro' : 'Inversor'}</span><span>${esc(C.equipamentos(M.opcaoKitFechado({ ...C.entrada(orc), kitsFechados: null }, k, p)).inversorCurto)}</span></li>
@@ -617,7 +621,7 @@
       <p class="mini" style="margin-top:12px">Potência sugerida pelo pré-dimensionamento: <b>${n(kwpSug, 2)} kWp</b> (${p.descontarDisponibilidade ? "consumo menos a taxa mínima" : "consumo total, sem descontar a taxa mínima"} + ${n((p.margemGeracao || 0) * 100)}% de margem${!orc.orientacao || orc.orientacao === '?' ? ` + perda de segurança de ${n((p.perdaOrientacao ?? 0.07) * 100)}% da orientação` : ''}).</p>
       ${painel3dKit()}`;
     ligar3d(el);
-    Cotador.conectado().then((ok) => { cotModo = ok ? 'conectado' : 'simulado'; const st = $('#cot-status'); if (st) st.innerHTML = ok ? '🟢 Robô conectado: a cotação é feita no site da Belenergy, com a sua sessão.' : '🟡 Robô não encontrado neste computador. Modo <b>simulado</b> (mesmas telas, valores de teste).'; });
+    Cotador.conectado().then((ok) => { cotModo = ok ? 'conectado' : 'simulado'; const st = $('#cot-status'); if (st) st.innerHTML = (ok ? '🟢 Robô conectado: a cotação é feita no site da Belenergy, com a sua sessão.' : '🟡 Robô não encontrado neste computador. Modo <b>simulado</b> (mesmas telas, valores de teste).') + (Cotador.roboDesatualizado() ? `<br><b style="color:var(--laranja)">🟠 O robô deste computador está desatualizado (${esc(Cotador.versaoRobo())}). Baixe o novo (${Cotador.ROBO_ESPERADO}) e troque a pasta solar-belenergy.</b>` : ''); });
     el.querySelectorAll('[data-montar]').forEach((b) => b.onclick = async () => {
       cotSlot = +b.dataset.montar; cot = Cotador.novaSessao(cotModo || 'simulado'); cot.escolhas.kwp = +kwpSug.toFixed(2); cot.escolhas.tipoInversor = TIPO_POR_OPCAO[cotSlot];
       cot.escolhas.ligacao = { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[orc.ligacao];
@@ -628,6 +632,7 @@
     el.querySelectorAll('[data-tirar]').forEach((b) => b.onclick = () => { orc.kitsFechados[+b.dataset.tirar] = null; salvarR(); novo(); });
     el.querySelectorAll('[data-sel]').forEach((x) => x.onchange = () => { const sk = orc.selKits[+x.dataset.sel]; sk[x.dataset.k] = x.value; if (x.dataset.k === 'fabMod') sk.potMod = ''; salvarR(); novo(); });
     $('#a-frete').onchange = (e) => { orc.freteAuto = e.target.value; salvarR(); };
+    el.querySelectorAll('[data-quais]').forEach((b) => b.onclick = () => { orc.cotarQuais = b.dataset.quais; salvarR(); novo(); });
     $('#a-cotar').onclick = async (ev) => {
       const btn = ev.target; btn.disabled = true;
       const prog = $('#a-prog'), modo = cotModo || 'simulado', inicio = Date.now(), erros = [];
@@ -635,7 +640,7 @@
       const base = { salvar: orc.salvarBel, kwp: +kwpSug.toFixed(2), ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[orc.ligacao], cidade: orc.cidade, frete: $('#a-frete').value,
         estruturaTipo: { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' }[orc.telhado] };
       for (let i = 0; i < NIVEIS_KIT.length; i++) {
-        if (orc.kitsFechados[i]) continue; // já cotada: use "Refazer" para cotar de novo
+        if (orc.kitsFechados[i] || !vaiCotar(i)) continue; // já cotada (use "Refazer") ou fora da escolha "só um"
         try {
           const pedido = { ...base, ...(orc.selKits || [])[i], tipoInversor: TIPO_POR_OPCAO[i] };
           // mesma potência, mesmas escolhas e mesmo frete nas últimas 24 h: usa a cotação guardada (instantâneo)
@@ -648,6 +653,7 @@
           orc.kitsFechados[i] = Cotador.paraKit(s, NIVEIS_KIT[i]);
           if (!(orc.kitsFechados[i].valorKit > 0)) { orc.kitsFechados[i] = null; throw new Error('o portal devolveu valor R$ 0,00; tente de novo'); }
           if (s.final && s.final.pdf) PDFS_PENDENTES[NIVEIS_KIT[i]] = s.final.pdf;
+          if (s.final && s.final.diagSalvar) B.registrarErroRobo({ orcamento: orc.id || null, opcao: NIVEIS_KIT[i], mensagem: 'Salvou na Belenergy, mas o robô não achou o número WEB na tela', diag: { etapa: 'salvar', nomeEtapa: 'número WEB', mensagem: 'sem número WEB', ...s.final.diagSalvar } }).catch(() => {});
           if (modo === 'conectado') { cache[chave] = { em: Date.now(), kit: orc.kitsFechados[i] }; Object.keys(cache).forEach((k) => { if (Date.now() - cache[k].em > 48 * 3600e3) delete cache[k]; }); try { localStorage.setItem('sol_cache_kits', JSON.stringify(cache)); } catch { /* */ } }
         } catch (e) {
           erros.push(`${NIVEIS_KIT[i]}: ${e.message}`);
@@ -655,9 +661,10 @@
           if (modo === 'conectado' && /etapa "(potência|módulo)"|sessão/.test(e.message)) { erros.push('A outra opção não foi tentada: o erro é no começo do portal e se repetiria.'); break; }
         }
       }
-      orc.opcaoEscolhida = orc.kitsFechados.filter(Boolean).findIndex((k) => k.nivel === NIVEIS_KIT[PRINCIPAL]);
+      orc.opcaoEscolhida = Math.max(0, orc.kitsFechados.filter(Boolean).findIndex((k) => k.nivel === NIVEIS_KIT[PRINCIPAL]));
       salvarR(); novo();
-      toast(erros.length ? `${orc.kitsFechados.filter(Boolean).length} de ${NIVEIS_KIT.length} cotadas` : `${NIVEIS_KIT.length} kits cotados em ${Math.round((Date.now() - inicio) / 1000)} s`);
+      const pedidas = NIVEIS_KIT.filter((_, i) => vaiCotar(i)).length;
+      toast(erros.length ? `${orc.kitsFechados.filter(Boolean).length} de ${pedidas} cotada(s)` : `${orc.kitsFechados.filter(Boolean).length} kit(s) cotado(s) em ${Math.round((Date.now() - inicio) / 1000)} s`);
       if (erros.length) $('#corpo').insertAdjacentHTML('afterbegin', `<div class="aviso ruim" style="margin-bottom:12px">${erros.map(esc).join('<br>')}</div>`);
     };
   }
@@ -790,34 +797,75 @@
   }
 
   function passo5(el) {
-    const p = P(), ops5 = C.opcoes(orc, p), op = ops5[C.indiceOpcao(orc, ops5)], pr = op.preco, sem = p.semaforo;
+    const p = P(), ops5 = C.opcoes(orc, p), op = ops5[C.indiceOpcao(orc, ops5)], pr = op.preco, sem = p.semaforo, g = op.groner;
     const pos = (v) => Math.min(Math.max((v - 1.8) / 1.7, 0), 1) * 100;
+    const modo = orc.precoModo || 'chama', extras = Array.isArray(orc.custosExtras) ? orc.custosExtras : [], aj = orc.custosAjustados || {};
+    const mg = pr.percentuais.margem, corMg = mg < 0 ? 'var(--vermelho)' : mg < 0.05 ? 'var(--amarelo)' : 'inherit';
+    // o que sobra para a empresa com o preço da Groner (mesmos custos e impostos nossos)
+    const comG = M.precificar({ ...C.entrada(orc), kit: op.kit, placas: op.dim.placas, kwp: op.dim.kwpReal, precoAlvo: g.preco }, p);
+    const nossa = modo === 'chama' ? pr : M.precificar({ ...C.entrada(orc), precoModo: 'chama', kit: op.kit, placas: op.dim.placas, kwp: op.dim.kwpReal }, p); // a nossa fórmula, mesmo quando o preço foi fixado
+    const AJUSTAVEIS = ['terceiro', 'projeto', 'art', 'materialCa', 'frete', 'deslocamento', 'padrao'];
+    const linhasBase = pr.linhas.filter((l) => !l.extra);
     el.innerHTML = `<div class="lado"><div>
       <div class="painel grade">
         <div class="campo"><span>Forma de pagamento</span><div class="chips">${[['financiamento', 'Financiamento'], ['avista', 'À vista / Pix'], ['cartao', 'Cartão 12x']].map(([v, t]) => `<button class="chip ${orc.formaPagamento === v ? 'sel' : ''}" data-pg="${v}">${t}</button>`).join('')}</div></div>
         <div class="grade g2"><label class="campo"><span>Comissão de parceiro (%)</span><input type="number" id="f-com" step="0.5" value="${orc.comissaoParceria}"></label>
-        <label class="campo"><span>Desconto: ${n(orc.descontoPct, 1)}% de ${pct(p.reservaNegociacao, 0)}</span><input type="range" id="f-desc" min="0" max="${p.reservaNegociacao * 100}" step="0.5" value="${orc.descontoPct}"></label></div>
+        ${modo === 'chama' ? `<label class="campo"><span>Desconto: ${n(orc.descontoPct, 1)}% de ${pct(p.reservaNegociacao, 0)}</span><input type="range" id="f-desc" min="0" max="${p.reservaNegociacao * 100}" step="0.5" value="${orc.descontoPct}"></label>` : '<span class="mini" style="align-self:end">Com o preço fixado, o desconto fica de fora: a margem é o que sobra.</span>'}</div>
         <label class="alternar"><span><b>Kit faturado direto pela Belenergy</b><br><span class="sutil">imposto só no serviço (validar com o contador)</span></span><input type="checkbox" id="f-dir" ${orc.kitFaturadoDireto ? 'checked' : ''}></label></div>
+      <div class="painel grade" id="ajPreco"><span class="rotulo">Ajustar o preço · só você vê</span>
+        <div class="chips">${[['chama', 'Nossa fórmula'], ['groner', 'Preço da Groner'], ['manual', 'Digitar o preço']].map(([v, t]) => `<button class="chip ${modo === v ? 'sel' : ''}" data-pmodo="${v}">${t}</button>`).join('')}</div>
+        ${modo === 'chama' ? `<label class="campo"><span>Margem desta proposta (%)<small style="display:block;font-weight:400;opacity:.75">tabela: ${n(pr.margemTabela * 100, 1)}% para ${n(op.dim.kwpReal, 2)} kWp${pr.margemManual ? ' · <button class="link" id="f-mg-limpar">voltar à tabela</button>' : ''}</small></span><input type="number" id="f-margem" step="0.5" placeholder="${n(pr.margemTabela * 100, 1)}" value="${pr.margemManual ? +(orc.margemManual) : ''}"></label>` : ''}
+        ${modo === 'manual' ? `<label class="campo"><span>Preço final da opção ${esc(op.nivel)} (R$)<small style="display:block;font-weight:400;opacity:.75">a margem passa a ser o que sobrar</small></span><input type="number" id="f-preco" step="10" min="0" value="${(orc.precoManual || {})[op.nivel] || ''}" placeholder="${Math.round(pr.precoFinal)}"></label>` : ''}
+        ${modo === 'groner' ? `<p class="mini" style="margin:0">Usando o preço que a Groner daria: <b>${brl(g.preco)}</b>. Os custos e impostos continuam os nossos; a margem é o que sobra.</p>` : ''}
+        <div class="campo"><span>Custos extras (opcional)<small style="display:block;font-weight:400;opacity:.75">somam no custo e entram nos impostos, taxas e margem</small></span>
+          ${extras.map((x, i) => `<div class="linha-h" style="gap:8px;margin-top:6px"><input type="text" data-ex-nome="${i}" value="${esc(x.nome || '')}" placeholder="ex.: reforço da estrutura" style="flex:2"><input type="number" data-ex-valor="${i}" value="${x.valor || ''}" placeholder="R$" step="10" style="flex:1;min-width:90px"><button class="link" data-ex-tirar="${i}" aria-label="Tirar">✕</button></div>`).join('')}
+          <button class="link" id="ex-add" style="margin-top:6px;justify-self:start">＋ adicionar custo extra</button></div>
+        <details ${Object.keys(aj).length ? 'open' : ''}><summary class="mini" style="cursor:pointer">Editar os custos desta obra${Object.keys(aj).length ? ` (${Object.keys(aj).length} ajustado${Object.keys(aj).length > 1 ? 's' : ''})` : ''}</summary>
+          <div class="grade g2" style="margin-top:8px">${linhasBase.filter((l) => AJUSTAVEIS.includes(l.id)).map((l) => `<label class="campo"><span>${esc(l.nome)}${l.ajustado ? ` <button class="link" data-aj-limpar="${l.id}">padrão ${brl(l.valorPadrao)}</button>` : ''}</span><input type="number" step="10" min="0" data-aj="${l.id}" value="${l.ajustado ? l.valor : ''}" placeholder="${Math.round(l.valorPadrao ?? l.valor)}"></label>`).join('')}</div></details>
+      </div>
       <div class="painel"><span class="rotulo">Composição do preço · ${esc(op.nivel)} · só você vê</span><p style="margin:8px 0 0;font-weight:600">${esc(C.equipamentos(op).modulo)} · ${esc(C.equipamentos(op).inversor)}</p><table style="margin-top:8px">
-        ${pr.linhas.filter((l) => l.valor).map((l) => `<tr><td>${esc(l.nome)}</td><td class="v">${brl(l.valor)}</td></tr>`).join('')}
+        ${pr.linhas.filter((l) => l.valor).map((l) => `<tr><td>${esc(l.nome)}${l.ajustado ? ' <span class="mini" style="color:var(--sol)">ajustado</span>' : ''}${l.extra ? ' <span class="mini" style="color:var(--sol)">extra</span>' : ''}</td><td class="v">${brl(l.valor)}</td></tr>`).join('')}
         <tr class="sub"><td>Custos diretos</td><td class="v">${brl(pr.custosDiretos)}</td></tr>
         <tr><td>${p.kwpPrevistosMes > 0 ? `Custo fixo (${brl(p.custoFixoMes)} ÷ ${n(p.kwpPrevistosMes)} kWp/mês × ${n(op.dim.kwpReal, 2)} kWp)` : `Taxa fixa (${brl(p.custoFixoMes)} ÷ ${p.obrasPrevistasMes} obras)`}</td><td class="v">${brl(pr.taxaFixa)}</td></tr>
         <tr><td>Impostos (${pct(pr.percentuais.impostos)})</td><td class="v">${brl(pr.decomp.impostos)}</td></tr>
         ${pr.decomp.taxaPagamento ? `<tr><td>Taxa do cartão</td><td class="v">${brl(pr.decomp.taxaPagamento)}</td></tr>` : ''}${pr.decomp.comissao ? `<tr><td>Comissão parceiro</td><td class="v">${brl(pr.decomp.comissao)}</td></tr>` : ''}
-        <tr><td>Margem (${pct(pr.percentuais.margem, 0)})</td><td class="v">${brl(pr.decomp.margem)}</td></tr>
+        <tr><td>Margem (${n(mg * 100, 1)}%${pr.precoAlvo ? ', o que sobrou' : pr.margemManual ? ', digitada' : ''})</td><td class="v" style="color:${corMg}">${brl(pr.decomp.margem)}</td></tr>
         <tr><td>Reserva de negociação restante</td><td class="v">${brl(pr.decomp.reservaRestante)}</td></tr>
-        <tr class="total"><td>Preço ao cliente</td><td class="v">${brl(pr.precoFinal)}</td></tr>
+        <tr class="total"><td>Preço ao cliente${modo === 'groner' ? ' (Groner)' : modo === 'manual' && pr.precoAlvo ? ' (digitado)' : ''}</td><td class="v">${brl(pr.precoFinal)}</td></tr>
         ${orc.kitFaturadoDireto ? `<tr class="sub"><td>↳ Nota Belenergy (kit)</td><td class="v">${brl(pr.kitDireto)}</td></tr><tr class="sub"><td>↳ Nota Chama Solar</td><td class="v">${brl(pr.notaChamaSolar)}</td></tr>` : ''}
-        <tr><td><b>Sobra para a empresa</b></td><td class="v"><b class="grad">${brl(pr.lucroLiquido)}</b></td></tr></table></div></div>
-      <div class="painel"><span class="rotulo">Preço × mercado</span><div style="margin-top:8px"><span class="semaforo ${pr.semaforo}">${NOME_SEMAFORO[pr.semaforo]}</span></div>
+        <tr><td><b>Sobra para a empresa</b></td><td class="v"><b class="${pr.lucroLiquido < 0 ? '' : 'grad'}" style="${pr.lucroLiquido < 0 ? 'color:var(--vermelho)' : ''}">${brl(pr.lucroLiquido)}</b></td></tr></table>
+        ${mg < 0 ? `<div class="aviso ruim" style="margin-top:8px">Este preço fica <b>abaixo do custo</b>: prejuízo de ${brl(-pr.decomp.margem)} antes da reserva.</div>` : mg < 0.05 ? '<div class="aviso" style="margin-top:8px">Margem abaixo de 5%: confira se vale fechar assim.</div>' : ''}</div></div>
+      <div><div class="painel"><span class="rotulo">Preço × mercado</span><div style="margin-top:8px"><span class="semaforo ${pr.semaforo}">${NOME_SEMAFORO[pr.semaforo]}</span></div>
         <div class="regua" style="background:linear-gradient(90deg,var(--verde) 0 ${pos(sem.verdeAte)}%,var(--amarelo) ${pos(sem.verdeAte)}% ${pos(sem.amareloAte)}%,var(--vermelho) ${pos(sem.amareloAte)}%)">
           <span class="ponteiro" style="left:${Math.min(Math.max(pos(pr.rsPorWp), 8), 92)}%">R$ ${n(pr.rsPorWp, 2)}/Wp</span>
           <div class="marcas"><span style="left:0;transform:none">1,80</span><span style="left:${pos(sem.verdeAte)}%">${n(sem.verdeAte, 2)}</span><span style="left:${pos(sem.amareloAte)}%">${n(sem.amareloAte, 2)}</span><span style="left:100%;transform:translateX(-100%)">3,50</span></div></div>
-        <p class="mini">Média nacional residencial: R$ ${n(sem.referencia, 2)}/Wp (1º tri 2026).</p></div></div>`;
+        <p class="mini">Média nacional residencial: R$ ${n(sem.referencia, 2)}/Wp (1º tri 2026).</p></div>
+      <div class="painel"><span class="rotulo">Nossa precificação × Groner · ${esc(op.nivel)}</span>
+        <table style="margin-top:8px"><tr><th></th><th class="v">Nossa${modo !== 'chama' ? ' (fórmula)' : ''}</th><th class="v">Groner</th></tr>
+          ${(() => { const val = (id) => (nossa.linhas.find((l) => l.id === id) || {}).valor || 0;
+            const linhasG = [['Kit', val('kit'), g.linhas[0].valor], ['Engenharia / projeto', val('projeto') + val('art'), g.linhas[1].valor + g.linhas[3].valor], ['Mão de obra', val('terceiro'), g.linhas[2].valor], ['Deslocamento e frete', val('deslocamento') + val('frete'), g.linhas[4].valor], ['Material CA, garantia, padrão e extras', nossa.custosDiretos - val('kit') - val('projeto') - val('art') - val('terceiro') - val('deslocamento') - val('frete'), g.linhas[5].valor], ['Custo fixo da empresa', nossa.taxaFixa, 0]];
+            return linhasG.map(([t, a, b]) => `<tr><td>${t}</td><td class="v">${brl(a)}</td><td class="v">${brl(b)}</td></tr>`).join('') +
+              `<tr class="sub"><td>Percentual sobre o preço</td><td class="v">${n((nossa.percentuais.impostos + nossa.percentuais.pagamento + nossa.percentuais.comissao + nossa.percentuais.margem + nossa.percentuais.reserva) * 100, 1)}%</td><td class="v">${n(g.percentual * 100, 1)}%${g.fatorX ? ` <span class="mini">(com Fator X ${n(g.fatorX * 100)}%)</span>` : ''}</td></tr>
+              <tr class="total"><td>Preço ao cliente</td><td class="v">${brl(nossa.precoFinal)}</td><td class="v">${brl(g.preco)}</td></tr>
+              <tr><td>R$/Wp</td><td class="v">R$ ${n(nossa.rsPorWp, 2)}</td><td class="v">R$ ${n(g.rsPorWp, 2)}</td></tr>
+              <tr><td><b>Sobra para a empresa</b> <span class="mini">(com os nossos impostos)</span></td><td class="v"><b>${brl(nossa.lucroLiquido)}</b></td><td class="v"><b style="${comG.lucroLiquido < 0 ? 'color:var(--vermelho)' : ''}">${brl(comG.lucroLiquido)}</b></td></tr>`; })()}
+        </table>
+        <p class="mini" style="margin-top:8px">Diferença: a Groner sai <b>${Math.abs(g.preco - nossa.precoFinal) < 1 ? 'igual' : g.preco > nossa.precoFinal ? brl(g.preco - nossa.precoFinal) + ' mais cara' : brl(nossa.precoFinal - g.preco) + ' mais barata'}</b> que a nossa fórmula (${n(Math.abs(g.preco / nossa.precoFinal - 1) * 100, 1)}%). Na Groner, os ${n((g.percentual - (g.fatorX || 0) - (op.preco.percentuais.comissao || 0)) * 100, 1)}% juntam imposto, lucro e comissão.</p>
+        <div class="acoes-r" style="justify-content:flex-start">${modo === 'groner' ? '<button class="btn vidro pequeno" data-pmodo="chama">Voltar para a nossa fórmula</button>' : '<button class="btn sol pequeno" data-pmodo="groner">Usar o preço da Groner</button>'}</div></div></div></div>`;
     el.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => { orc.formaPagamento = b.dataset.pg; salvarR(); novo(); });
+    el.querySelectorAll('[data-pmodo]').forEach((b) => b.onclick = () => { orc.precoModo = b.dataset.pmodo; if (orc.precoModo !== 'chama') orc.descontoPct = 0; salvarR(); novo(); });
     $('#f-com').onchange = (e) => { orc.comissaoParceria = +e.target.value || 0; salvarR(); novo(); };
-    $('#f-desc').onchange = (e) => { orc.descontoPct = +e.target.value; salvarR(); novo(); };
+    if ($('#f-desc')) $('#f-desc').onchange = (e) => { orc.descontoPct = +e.target.value; salvarR(); novo(); };
     $('#f-dir').onchange = (e) => { orc.kitFaturadoDireto = e.target.checked; salvarR(); novo(); };
+    if ($('#f-margem')) $('#f-margem').onchange = (e) => { const v = String(e.target.value).replace(',', '.'); orc.margemManual = v === '' ? null : +v; salvarR(); novo(); };
+    if ($('#f-mg-limpar')) $('#f-mg-limpar').onclick = () => { orc.margemManual = null; salvarR(); novo(); };
+    if ($('#f-preco')) $('#f-preco').onchange = (e) => { orc.precoManual = { ...(orc.precoManual || {}), [op.nivel]: +e.target.value || 0 }; salvarR(); novo(); };
+    $('#ex-add').onclick = () => { orc.custosExtras = [...extras, { nome: '', valor: '' }]; salvarR(); novo(); };
+    el.querySelectorAll('[data-ex-nome]').forEach((x) => x.onchange = () => { extras[+x.dataset.exNome].nome = x.value; orc.custosExtras = extras; salvarR(); novo(); });
+    el.querySelectorAll('[data-ex-valor]').forEach((x) => x.onchange = () => { extras[+x.dataset.exValor].valor = +x.value || 0; orc.custosExtras = extras; salvarR(); novo(); });
+    el.querySelectorAll('[data-ex-tirar]').forEach((x) => x.onclick = () => { extras.splice(+x.dataset.exTirar, 1); orc.custosExtras = extras; salvarR(); novo(); });
+    el.querySelectorAll('[data-aj]').forEach((x) => x.onchange = () => { const a2 = { ...(orc.custosAjustados || {}) }; if (x.value === '') delete a2[x.dataset.aj]; else a2[x.dataset.aj] = +x.value; orc.custosAjustados = a2; salvarR(); novo(); });
+    el.querySelectorAll('[data-aj-limpar]').forEach((x) => x.onclick = () => { const a2 = { ...(orc.custosAjustados || {}) }; delete a2[x.dataset.ajLimpar]; orc.custosAjustados = a2; salvarR(); novo(); });
   }
 
   function passo6(el) {
@@ -846,6 +894,8 @@
     app.innerHTML = `${cabCelular()}<div class="cab"><div><h1>Parâmetros</h1><p class="sutil">${B.nuvem ? 'Valores usados em todos os orçamentos. Cada vez que salvar, a versão anterior fica guardada.' : 'Valores de teste. Troque pelos reais quando tiver custo fixo, alíquota e preço do terceiro.'}</p></div></div>
       <div class="lado"><div>${CAMPOS.map(([t, cs]) => `<div class="painel"><span class="rotulo">${t}</span><div class="grade g2" style="margin-top:12px">${cs.map(([k, r, m]) => `<label class="campo"><span>${r}</span><input type="number" step="any" data-par="${k}" data-m="${m}" value="${+(p[k] * m).toFixed(4)}"></label>`).join('')}</div></div>`).join('')}</div>
       <div><div class="painel"><span class="rotulo">Margem por tamanho</span><table style="margin-top:8px">${p.margens.map((x, i) => `<tr><td>até ${x.ate >= 1e9 ? '∞' : x.ate} kWp</td><td class="v"><input type="number" step="0.5" data-mg="${i}" value="${+(x.margem * 100).toFixed(2)}" style="width:90px;padding:6px 8px;text-align:right"> %</td></tr>`).join('')}</table></div>
+        <div class="painel"><span class="rotulo">Comparação com a Groner</span><p class="sutil" style="margin:6px 0 8px">Como a Groner calcula: (kit + engenharia + mão de obra + ART + deslocamento + outros) ÷ (1 − (percentual + Fator X + comissão)). Fator X: 0% até R$ 100 mil, 5% até R$ 500 mil, 6% acima.</p>
+          <div class="grade g2">${[['percentual', 'Percentual (imposto + lucro + comissão) %', 100], ['maoDeObraPorPlaca', 'Mão de obra por placa (R$)', 1], ['art', 'ART (R$)', 1], ['custoKm', 'Deslocamento (R$/km)', 1], ['eng0', 'Engenharia até 10 kWp (R$)', 1], ['eng1', 'Engenharia até 30 kWp (R$)', 1], ['eng2', 'Engenharia acima de 30 kWp (R$)', 1], ['kmIdaVolta', 'Contar o km ida e volta (1 = sim)', 1]].map(([k, r, m]) => { const G = { percentual: 0.365, maoDeObraPorPlaca: 100, art: 70, custoKm: 1, kmIdaVolta: 0, eng: [300, 500, 700], ...(p.groner || {}) }; const v = /^eng\d$/.test(k) ? G.eng[+k.slice(3)] : G[k]; return `<label class="campo"><span>${r}</span><input type="number" step="any" data-gr="${k}" data-m="${m}" value="${+(v * m).toFixed(3)}"></label>`; }).join('')}</div></div>
         ${p.kwpPrevistosMes > 0 ? `<div class="painel"><span class="rotulo">Ponto de equilíbrio</span><p style="margin:8px 0 4px">Para pagar ${brl(p.custoFixoMes)} de custo fixo, a meta é vender <b>${n(p.kwpPrevistosMes)} kWp por mês</b>.</p><p class="sutil" style="margin:0">≈ ${Math.ceil(p.kwpPrevistosMes / 4.3)} obras de 4,3 kWp ou ${Math.ceil(p.kwpPrevistosMes / 10)} de 10 kWp. Vendendo menos, o custo fixo não fecha; vendendo mais, a margem vira lucro.</p></div>` : ''}${B.nuvem ? `<div class="painel"><span class="rotulo">Acessos das plataformas de monitoramento</span>
           <p class="sutil" style="margin:8px 0">Fica guardado no cofre do banco. Depois de salvo, ninguém consegue ver a senha pelo site: só o robô de leitura diária usa.</p>
           <div class="grade g2"><label class="campo"><span>Marca</span><select id="crMarca">${[...Usinas.MARCAS.filter((m) => m !== 'Outra'), 'Google Maps'].map((m) => `<option>${m}</option>`).join('')}</select></label>
@@ -865,6 +915,7 @@
     $('#salvarP').onclick = () => {
       const novoP = {}; app.querySelectorAll('[data-par]').forEach((i) => { novoP[i.dataset.par] = +i.value / +i.dataset.m; });
       novoP.margens = p.margens.map((x, i) => ({ ate: x.ate, margem: +app.querySelector(`[data-mg="${i}"]`).value / 100 }));
+      const gr = { eng: [300, 500, 700] }; app.querySelectorAll('[data-gr]').forEach((i) => { const v = +i.value / +i.dataset.m; if (/^eng\d$/.test(i.dataset.gr)) gr.eng[+i.dataset.gr.slice(3)] = v; else gr[i.dataset.gr] = v; }); novoP.groner = gr;
       novoP.empresaDoc = { ...(p.empresaDoc || {}) }; app.querySelectorAll('[data-emp]').forEach((i) => { novoP.empresaDoc[i.dataset.emp] = i.dataset.num ? +i.value || 0 : i.value.trim(); });
       B.salvarParametros(novoP); toast('Parâmetros salvos');
     };
@@ -1022,10 +1073,14 @@
     const tab = {}; ok.forEach((h) => { const c = h.cenario || {}; const k = (c.tipo || '') + '|' + c.kwp; (tab[k] = tab[k] || []).push(+h.rs_wp); });
     const linhasTab = Object.entries(tab).sort((a, b) => a[0].localeCompare(b[0], 'pt', { numeric: true })).map(([k, v]) => { const [t, kwp] = k.split('|'); const m = v.reduce((s, x) => s + x, 0) / v.length; return `<tr><td>${esc(t)}</td><td class="v">${n(+kwp, 1)} kWp</td><td class="v">R$ ${n(m, 2)}/Wp</td><td class="v">${v.length}</td></tr>`; }).join('');
     const tempo = ok.length ? ok.reduce((s, h) => s + (+h.segundos || 0), 0) / ok.length : 0;
+    // onde o tempo vai: média de cada etapa do portal (só nos treinos com o robô novo, que mede)
+    const porEt = {}; ok.forEach((h) => ((h.kit && h.kit.tempos) || []).forEach((t) => { (porEt[t.etapa] = porEt[t.etapa] || []).push(t.ms / 1000); }));
+    const tempoEtapas = Object.entries(porEt).map(([e, v]) => [((Cotador.ETAPAS || [])[+e] || 'etapa ' + e), v.reduce((a, b) => a + b, 0) / v.length]).filter((x) => x[1] > 0);
     app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Treino do robô</h1><p class="sutil">O robô cota sozinho todas as combinações, sem salvar na Belenergy. Cada erro vem com print para correção; cada acerto vira preço de referência.</p></div></div>
       <div class="kpis"><div class="kpi destaque"><span class="rotulo">Acertos</span><b>${hist.length ? n(ok.length / hist.length * 100) + '%' : '—'}</b><span class="sutil">${ok.length} de ${hist.length} cotações</span></div>
         <div class="kpi"><span class="rotulo">Tempo médio</span><b>${tempo ? n(tempo) + ' s' : '—'}</b><span class="sutil">por kit</span></div>
         <div class="kpi"><span class="rotulo">Falhas</span><b>${falhas.length}</b><span class="sutil">${Object.entries(porEtapa).map(([k, v]) => esc(k) + ': ' + v).join(' · ') || 'nenhuma'}</span></div></div>
+      ${tempoEtapas.length ? `<div class="painel"><span class="rotulo">Onde o tempo vai (média por etapa do portal)</span><div class="progresso-lista" style="margin-top:8px">${tempoEtapas.map(([t, sg]) => `<div class="entre" style="padding:4px 0"><span>${esc(t)}</span><b>${n(sg, 1)} s</b></div>`).join('')}</div><p class="mini">A maior parte é o portal carregando. Etapa com tempo alto e sem erro: dá para o robô esperar menos nela.</p></div>` : ''}
       <div class="painel"><span class="rotulo">Rodar treino</span>
         <div class="grade g2" style="margin-top:10px">
           <label class="campo"><span>Potências (kWp)</span><input id="trKwp" value="3, 5, 8, 12, 18, 25"></label>
@@ -1058,7 +1113,7 @@
           const s = await Cotador.cotarAuto('conectado', { kwp: c.kwp, ligacao: LIG[c.ligacao] || c.ligacao, cidade: 'Ribeirão Preto', frete: 'Cliente Retira', estruturaTipo: TEL[c.telhado] || c.telhado, tipoInversor: c.tipo === 'Microinversor' ? 'MICROINVERSOR' : 'INVERSOR STRING ON-GRID', nome: 'TREINO ' + c.tipo + ' ' + c.kwp, salvar: false }, prog);
           const k = Cotador.paraKit(s, c.tipo), wp = k.modulo.qtd * k.modulo.potenciaW;
           if (!(k.valorKit > 0)) throw new Error('valor R$ 0,00');
-          await B.treinoGravar({ lote, cenario: c, ok: true, segundos: Math.round((Date.now() - ini) / 1000), valor_kit: k.valorKit, rs_wp: Math.round(k.valorKit / wp * 1000) / 1000, kit: { modulo: k.modulo, inversor: k.inversor, estrutura: k.estrutura } }).catch(() => {});
+          await B.treinoGravar({ lote, cenario: c, ok: true, segundos: Math.round((Date.now() - ini) / 1000), valor_kit: k.valorKit, rs_wp: Math.round(k.valorKit / wp * 1000) / 1000, kit: { modulo: k.modulo, inversor: k.inversor, estrutura: k.estrutura, tempos: s.tempos || [] } }).catch(() => {});
           acertos++;
         } catch (e) {
           const etapa = (String(e.message).match(/etapa "([^"]+)"/) || [])[1] || 'regra do sistema';

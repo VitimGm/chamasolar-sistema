@@ -53,6 +53,8 @@
       { ate: Infinity, margem: 0.10 },
     ],
     reservaNegociacao: 0.03,            // desconto máximo que o vendedor pode dar
+    // Groner (só para comparar e, se o vendedor quiser, usar o preço dela)
+    groner: { percentual: 0.365, maoDeObraPorPlaca: 100, art: 70, custoKm: 1, kmIdaVolta: 0, eng: [300, 500, 700] },
 
     // Semáforo de mercado (R$/Wp) — média nacional residencial 1º tri 2026: R$ 2,45
     semaforo: { verdeAte: 2.60, amareloAte: 3.00, referencia: 2.45 },

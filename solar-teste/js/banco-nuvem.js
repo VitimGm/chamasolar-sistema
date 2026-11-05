@@ -74,6 +74,7 @@
     z.taxaPagamento = Object.fromEntries(Object.keys(p.taxaPagamento || {}).map((k) => [k, 0]));
     z.margens = (p.margens || []).map((m) => ({ ...m, margem: 0 }));
     z.engenharia = (p.engenharia || []).map((f) => ({ ...f, valor: 0 }));
+    delete z.groner;
     return z;
   }
   function vitrineDe(o) {
@@ -86,7 +87,8 @@
       const { numeroBelenergy, valorProdutos, ...resto } = k; // eslint-disable-line no-unused-vars
       return { ...resto, valorKit: op ? Math.round(op.preco.precoFinal * 100) / 100 : 0, frete: '' };
     });
-    const cliente = { ...o, kitsFechados: kits, comissaoParceria: 0, descontoPct: 0, kitFaturadoDireto: false, distanciaKm: 0 };
+    const cliente = { ...o, kitsFechados: kits, comissaoParceria: 0, descontoPct: 0, kitFaturadoDireto: false, distanciaKm: 0, trocaPadrao: false };
+    ['custosExtras', 'custosAjustados', 'margemManual', 'precoModo', 'precoManual'].forEach((c) => delete cliente[c]); // o preço final já inclui tudo isso
     ['whatsapp', 'email', 'documento', 'endereco', 'selKits', 'freteAuto', 'motivoPerda', 'origem', 'interacoes', 'aceite', 'contrato', 'indicadoPor', 'posVenda', 'presenteEntregue', 'mensagem', 'contaInformada'].forEach((c) => delete cliente[c]);
     if (cliente.projeto3d) { // o 3D vai; o endereço exato e os ids internos não
       const { endereco, lng, precisao, ...p3 } = cliente.projeto3d; void endereco; void lng; void precisao;
