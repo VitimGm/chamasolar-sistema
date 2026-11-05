@@ -249,7 +249,7 @@
     if (!ehSolar) { document.body.innerHTML = '<div style="max-width:520px;margin:15vh auto;padding:24px;font:18px system-ui;color:#fff;text-align:center">Seu usuário ainda não tem acesso ao Chama Solar.<br><br><a style="color:#ffb066" href="' + LOGIN_CHAMAE + '">Voltar ao Chamae</a></div>'; throw new Error('sem-acesso'); }
     await Banco.carregar();
     // atualiza o painel quando o cliente mexe na proposta
-    setInterval(async () => { if (pendentes) return; try { const antes = eventos.length; await Banco.carregar(); if (eventos.length !== antes) { avisarNovos(eventos.slice(antes)); dispatchEvent(new StorageEvent('storage', { key: 'sol2_eventos' })); } } catch { /* */ } }, 60000);
+    setInterval(async () => { if (pendentes) return; try { const antes = eventos.length, ids = new Set(orcs.map((o) => o.id)); await Banco.carregar(); orcs.filter((o) => !ids.has(o.id) && o.veioDoSite).forEach((o) => { try { if ('Notification' in raiz && Notification.permission === 'granted') { const nt = new Notification('Chama Solar · lead novo', { body: o.nome + ' pediu simulação pelo site. Responda em até 5 minutos.', tag: 'lead' + o.id, icon: 'marca/logo-cor.webp' }); nt.onclick = () => { raiz.focus(); location.hash = '#lead-' + o.id; }; } } catch { /* */ } }); if (eventos.length !== antes) { avisarNovos(eventos.slice(antes)); dispatchEvent(new StorageEvent('storage', { key: 'sol2_eventos' })); } } catch { /* */ } }, 60000);
   }
   /* aviso no computador/celular quando o cliente mexe na proposta (com a central aberta) */
   const FRASE = { abriu: 'abriu a proposta agora', simulou: 'está simulando parcelas', compartilhou: 'mandou a proposta para a família', whatsapp: 'clicou para falar com você', aceite: 'ACEITOU a proposta', duvida: 'tem uma dúvida' };

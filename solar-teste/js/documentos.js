@@ -78,6 +78,17 @@
       <h1>Proposta de energia solar para ${esc(o.nome)}</h1>
       <p class="mini">${esc(o.id)} · ${esc(o.cidade || '')} · válida até ${validade} (o preço do kit muda com o fornecedor)</p>
       <div class="tres"><div><span>Sua conta hoje</span><b>${brl(op.eco.contaAtual, 0)}</b></div><div><span>Com energia solar</span><b>${brl(op.eco.contaDepois, 0)}</b></div><div><span>Economia por mês</span><b>${brl(op.eco.economiaMes1, 0)}</b></div></div>
+      ${(o.segmento === 'grandes' || o.segmento === 'comercial' || o.segmento === 'rural') ? `<h2>${o.segmento === 'grandes' ? 'Resumo executivo' : 'Retorno do investimento'}</h2>
+      <table><tr><th>Indicador</th><th class="v">Valor</th></tr>
+        <tr><td>Investimento</td><td class="v">${brl(op.preco.precoFinal, 0)}</td></tr>
+        <tr><td>Geração anual estimada</td><td class="v">${n(op.dim.geracaoMes * 12)} kWh</td></tr>
+        <tr><td>Economia no 1º ano</td><td class="v">${brl(op.eco.economiaMes1 * 12, 0)}</td></tr>
+        <tr><td>Retorno (payback)</td><td class="v">${op.eco.paybackAnos ? n(op.eco.paybackAnos, 1) + ' anos' : '—'}</td></tr>
+        <tr><td>TIR</td><td class="v">${n(op.eco.tir * 100, 1)}% ao ano</td></tr>
+        <tr><td>VPL (taxa de ${n((p.taxaDesconto || 0) * 100, 1)}% a.a.)</td><td class="v">${brl(op.eco.vpl, 0)}</td></tr>
+        <tr><td>Custo da energia gerada (LCOE)</td><td class="v">R$ ${n(C().analisar(o, p).energia.rsKwh, 2)}/kWh (rede: R$ ${n(p.tarifaKwh, 2)})</td></tr>
+        <tr><td>Economia em 25 anos</td><td class="v">${brl(op.eco.economia25, 0)}</td></tr>
+        ${o.segmento === 'grandes' ? `<tr><td>Geração garantida em contrato</td><td class="v">${n(op.dim.geracaoMes * 12 * 0.9)} kWh/ano (90% da simulada, média de 12 meses)</td></tr>` : ''}</table>` : ''}
       <h2>O sistema</h2>
       <table><tr><th>Item</th><th>Detalhe</th></tr>
         <tr><td>Placas solares</td><td>${esc(eq.modulo)}</td></tr><tr><td>${eq.tipo === 'micro' ? 'Microinversores' : 'Inversor'}</td><td>${esc(eq.inversor)}</td></tr>

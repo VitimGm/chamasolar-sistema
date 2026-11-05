@@ -208,3 +208,9 @@ details.item .explica { padding: 0 16px 16px 70px; color: var(--tinta-2); font-s
 .num-card b, .num-card small { grid-column: 1 / -1; }
 .num-card b { font-size: 2rem; }
 @media (min-width: 640px) { .num-card, .num-card:is(.hoje, .depois, .sobra) { grid-template-columns: auto 1fr; } }
+
+/* resumo executivo (grandes contas) */
+.tab-exe { width: 100%; border-collapse: collapse; font-size: 1rem; }
+.tab-exe td { padding: 9px 4px; border-bottom: 1px solid var(--linha, #e3e6ec); vertical-align: top; }
+.tab-exe td:first-child { color: var(--texto-2, #5b6478); }
+.tab-exe td:last-child { text-align: right; }

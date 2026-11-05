@@ -29,7 +29,9 @@
   const registrar = (tipo, dados) => { if (!vendedor) B.evento(o.token, tipo, dados); };
   let a = C.analisar({ ...o, opcaoEscolhida: est.opcao }, p, est.prazo);
 
-  const ehEmpresa = /padaria|auto|peças|ltda|comércio|mercado|loja|restaurante/i.test(o.nome);
+  /* Tipo de cliente muda a proposta: residencial (conta e parcela), comercial (retorno), grandes contas (resumo executivo), rural (produção) */
+  const SEG = o.segmento || (/padaria|auto|peças|ltda|comércio|mercado|loja|restaurante/i.test(o.nome) ? 'comercial' : 'residencial');
+  const ehEmpresa = SEG !== 'residencial' && !/^(dona|seu|sr|sra)\b/i.test(o.nome);
   const nomeCurto = ehEmpresa ? o.nome : String(o.nome).split(' ')[0];
   const validade = new Date(+new Date(o.enviadoEm || o.criadoEm) + p.validadeDias * 864e5);
   const link = location.href.replace(/[?&]v=1/, '');
@@ -39,7 +41,7 @@
   /* ---------- Estrutura fixa da página ---------- */
   raiz.innerHTML = `
     ${vendedor ? `<div class="faixa">MODO VENDEDOR · suas visitas não contam · <a href="index.html#lead-${esc(o.id)}">voltar para a central</a></div>` : ''}
-    <div class="faixa" style="background:#e9edf5;color:#46526b">Versão de teste · números simulados</div>
+    ${B.nuvem ? '' : '<div class="faixa" style="background:#e9edf5;color:#46526b">Versão de teste · números simulados</div>'}
     <header class="topo"><div class="pv">
       <img src="marca/logo-cor.webp" alt="Chama Solar" width="123" height="52">
       <div class="ferramentas">
@@ -58,11 +60,28 @@
         </div>
       </section>
 
+      ${SEG === 'grandes' ? `<section class="bloco" data-secao="executivo" aria-labelledby="t-exe">
+        <h2 id="t-exe"><i class="bolha">${Icone('documento')}</i>Resumo executivo</h2>
+        <div id="executivo"></div>
+      </section>` : ''}
       <section class="bloco" data-secao="resumo" aria-labelledby="t-resumo">
         <h2 id="t-resumo"><i class="bolha">${Icone('grafico')}</i>Resumo em três números</h2>
         <div class="tres" id="tres"></div>
       </section>
 
+      ${SEG !== 'residencial' ? `<section class="bloco" data-secao="retorno" aria-labelledby="t-ret">
+        <h2 id="t-ret"><i class="bolha">${Icone('grafico')}</i>${SEG === 'rural' ? 'Quanto a energia solar devolve para a propriedade' : 'Retorno do investimento'}</h2>
+        <p class="apoio">O sistema se paga com a economia na conta. Depois disso, a economia vira lucro por mais de 20 anos.</p>
+        <div id="retorno"></div>
+      </section>` : ''}
+      ${SEG === 'rural' ? `<section class="bloco" data-secao="rural" aria-labelledby="t-rur">
+        <h2 id="t-rur"><i class="bolha">${Icone('sol')}</i>Energia para a produção</h2>
+        <div class="itens">
+          ${'<details class="item"><summary><i class="bolha">' + Icone('relogio') + '</i><span class="txt"><b>Irrigação e bombeamento</b><span>O sol gera de dia e o crédito paga a bomba à noite</span></span><span class="abrir" aria-hidden="true">' + Icone('mais') + '</span></summary><div class="explica">A energia que sobra de dia vira crédito e abate o consumo da irrigação noturna e dos motores. Se a propriedade tem desconto de irrigante, consideramos isso no cálculo.</div></details>'}
+          ${'<details class="item"><summary><i class="bolha">' + Icone('casa') + '</i><span class="txt"><b>Barracão ou solo</b><span>Usamos o telhado do barracão ou uma área de terra sem uso</span></span><span class="abrir" aria-hidden="true">' + Icone('mais') + '</span></summary><div class="explica">Em área de solo a estrutura fica na inclinação ideal, sem sombra, e a manutenção é mais fácil.</div></details>'}
+          ${'<details class="item"><summary><i class="bolha">' + Icone('cofre') + '</i><span class="txt"><b>Crédito rural</b><span>Linhas com juros menores e carência de safra</span></span><span class="abrir" aria-hidden="true">' + Icone('mais') + '</span></summary><div class="explica">Ajudamos a montar a documentação para o banco ou cooperativa da propriedade. As condições dependem da linha e do enquadramento do produtor.</div></details>'}
+        </div>
+      </section>` : ''}
       <section class="bloco" data-secao="conta" aria-labelledby="t-conta">
         <h2 id="t-conta"><i class="bolha">${Icone('conta')}</i>Quanto você pagou de luz no último ano?</h2>
         <p class="apoio">Cada barra é um mês da sua conta. A mais escura foi a mais cara.</p>
@@ -133,6 +152,30 @@
       <div class="num-card depois"><i class="bolha">${Icone('sol')}</i><span>Com energia solar</span><b>${brl(eco.contaDepois)}</b><small>por mês (taxa mínima da CPFL)</small></div>
       <div class="num-card sobra"><i class="bolha">${Icone('cofre')}</i><span>Sobra no seu bolso</span><b>${brl(sobra)}</b><small>por mês, depois de pago o sistema</small></div>`;
 
+    if ($('#retorno')) {
+      const tab = eco.tabela, maxA = Math.max(...tab.map((t) => Math.abs(t.acumulado)), op.preco.precoFinal);
+      $('#retorno').innerHTML = `<div class="tres">
+          <div class="num-card"><i class="bolha">${Icone('relogio')}</i><span>Se paga em</span><b>${eco.paybackAnos ? n(eco.paybackAnos, 1) + ' anos' : '—'}</b><small>com a economia na conta</small></div>
+          <div class="num-card"><i class="bolha">${Icone('grafico')}</i><span>Rendimento (TIR)</span><b>${n(eco.tir * 100, 1)}% ao ano</b><small>compare com a poupança ou o CDI</small></div>
+          <div class="num-card sobra"><i class="bolha">${Icone('cofre')}</i><span>Economia em 25 anos</span><b>${brl(eco.economia25)}</b><small>já com reajuste da tarifa</small></div></div>
+        <p class="apoio" style="margin:14px 0 6px">Caixa acumulado, ano a ano (vermelho: ainda pagando o sistema; verde: lucro):</p>
+        <div aria-hidden="true" style="display:flex;align-items:center;gap:2px;height:130px;position:relative;border-left:1px solid var(--linha,#e3e6ec)">${(() => { const neg = Math.max(...tab.map((t) => (t.acumulado < 0 ? -t.acumulado : 0)), op.preco.precoFinal), pos = Math.max(...tab.map((t) => (t.acumulado > 0 ? t.acumulado : 0)), 1), zero = neg / (neg + pos) * 100; return `<div style="position:absolute;left:0;right:0;top:${100 - zero}%;border-top:1px solid var(--linha,#c9ced9)"></div>` + [{ acumulado: -op.preco.precoFinal }, ...tab].map((t) => `<div style="flex:1;height:100%;position:relative"><i style="position:absolute;left:0;right:0;border-radius:2px;${t.acumulado < 0 ? `top:${100 - zero}%;height:${-t.acumulado / (neg + pos) * 100}%;background:var(--ruim)` : `bottom:${zero}%;height:${t.acumulado / (neg + pos) * 100}%;background:var(--bom)`}"></i></div>`).join(''); })()}</div>
+        <div style="display:flex;justify-content:space-between;font-size:.8rem;color:var(--texto-2,#5b6478);margin-top:4px"><span>hoje</span><span>ano 5</span><span>ano 10</span><span>ano 15</span><span>ano 20</span><span>ano 25</span></div>
+        <p class="frase" style="font-size:1rem">Cada kWh do sistema sai por <b>R$ ${n(a.energia.rsKwh, 2)}</b> ao longo de 25 anos, contra <b>R$ ${n(p.tarifaKwh, 2)}</b> da CPFL hoje.</p>`;
+    }
+    if ($('#executivo')) {
+      $('#executivo').innerHTML = `<table class="tab-exe"><tbody>
+        <tr><td>Investimento</td><td><b>${brl(op.preco.precoFinal)}</b></td></tr>
+        <tr><td>Potência</td><td><b>${n(op.dim.kwpReal, 2)} kWp</b> · ${op.dim.placas} placas</td></tr>
+        <tr><td>Geração anual estimada</td><td><b>${n(op.dim.geracaoMes * 12)} kWh</b></td></tr>
+        <tr><td>Economia no 1º ano</td><td><b>${brl(eco.economiaMes1 * 12)}</b></td></tr>
+        <tr><td>Retorno (payback)</td><td><b>${eco.paybackAnos ? n(eco.paybackAnos, 1) + ' anos' : '—'}</b></td></tr>
+        <tr><td>TIR · VPL (${n(p.taxaDesconto * 100, 1)}% a.a.)</td><td><b>${n(eco.tir * 100, 1)}% a.a. · ${brl(eco.vpl)}</b></td></tr>
+        <tr><td>Custo da energia gerada (LCOE)</td><td><b>R$ ${n(a.energia.rsKwh, 2)}/kWh</b> contra R$ ${n(p.tarifaKwh, 2)} da rede</td></tr>
+        <tr><td>Prazo de execução</td><td><b>${(p.empresaDoc && p.empresaDoc.prazoInstalacaoDias) || 60} dias</b> após a aprovação da CPFL</td></tr>
+      </tbody></table>
+      <p class="apoio" style="margin-top:10px">Geração garantida em contrato: ${n(op.dim.geracaoMes * 12 * 0.9)} kWh por ano (90% da simulada), apurada pela média de 12 meses.</p>`;
+    }
     const v = a.raioX.mensal, max = Math.max(...v), iMax = v.indexOf(max);
     $('#barras').innerHTML = v.map((x, i) => `<div class="b ${i === iMax ? 'max' : ''}"><i style="height:${Math.max((x / max) * 100, 4)}%"></i><em>${MESES[i]}</em></div>`).join('');
     $('#frase-conta').innerHTML = `No total foram <b class="destaque-ruim">${brl(a.raioX.pago12)}</b> para a CPFL. A conta mais cara foi em ${MESES_LONGOS[iMax]}: <b>${brl(max)}</b>.`;
@@ -161,7 +204,7 @@
     const consumoZerar = Math.max(C.consumoMedio(o) - op.dim.disponibilidade, 0);
     const eq = C.equipamentos(op);
     $('#sistema').innerHTML = `
-      <p class="apoio">A opção que recomendamos para a sua casa:</p>
+      <p class="apoio">A opção que recomendamos para ${SEG === 'residencial' ? 'a sua casa' : SEG === 'rural' ? 'a propriedade' : 'a empresa'}:</p>
       <div class="itens">
         ${item('painel', esc(eq.modulo), `Ocupam cerca de ${n(op.areaM2)} m² do telhado`, `As placas transformam a luz do sol em energia. As placas ${esc(eq.marcaMod)} têm garantia de fábrica do produto e de rendimento. Os prazos de cada modelo vêm na ficha técnica que entregamos com o contrato.`)}
         ${item(eq.tipo === 'micro' ? 'micro' : 'inversor', esc(eq.inversor), eq.tipo === 'micro' ? 'Um para cada grupo de placas' : eq.tipo === 'hibrido' ? 'Converte a energia e carrega a bateria' : 'O "cérebro" do sistema', eq.tipo === 'micro' ? 'Cada microinversor cuida de poucas placas. Se uma placa pegar sombra, as outras continuam gerando normalmente, e o sistema é desligado placa por placa, o que é mais seguro.' : eq.tipo === 'hibrido' ? 'Além de transformar a energia do sol, ele guarda energia na bateria e mantém o essencial ligado quando a luz da rua cai.' : 'Transforma a energia das placas na energia da tomada da sua casa e manda o que sobrar para a CPFL, que vira crédito na sua conta.')}

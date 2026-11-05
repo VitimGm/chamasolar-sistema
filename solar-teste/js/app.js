@@ -59,6 +59,7 @@
         <div class="kpi"><span class="rotulo">Propostas abertas</span><b>${enviados.length ? pct(abertas / enviados.length, 0) : '—'}</b><span class="sutil">${abertas} de ${enviados.length} enviadas</span></div>
         <div class="kpi"><span class="rotulo">Fechamento</span><b>${pct(f.taxa, 0)}</b><span class="sutil">${f.fechados} ganho(s) · ${f.perdidos} perdido(s) · Groner: 5,7%</span></div>
       </div>
+      ${resultadoMes(info, p)}
       <div class="secao-t"><h2>Agenda de hoje</h2><span class="sutil">${ag.length ? ag.length + ' contato(s) · do mais quente para o resto' : 'nada vencido: bom momento para pedir indicação'} ${'Notification' in window && Notification.permission !== 'granted' ? '<button class="link" id="ativarAvisos">ativar avisos</button>' : ''}</span></div>
       <div class="agora">${ag.slice(0, 12).map(({ o, passo }) => { const x = info.find((y) => y.o.id === o.id); return `
         <div class="acao p${passo.quente ? 5 : passo.atrasoDias > 0 ? 4 : 3} entra" style="cursor:default"><div class="ic">${passo.quente ? '🔥' : passo.canal === 'ligacao' ? '📞' : '💬'}</div>
@@ -137,6 +138,57 @@
     $o('#rr-nome').focus();
   }
 
+  /* ---------- Resultado do mês (visão do dono), obras e indicações ---------- */
+  function resultadoMes(info, p) {
+    const mes = new Date().toISOString().slice(0, 7);
+    const quando = (o) => String(o.ganhoEm || (o.aceite && o.aceite.em) || o.atualizadoEm || '').slice(0, 7);
+    const ganhos = info.filter((x) => x.o.status === 'ganho' && quando(x.o) === mes);
+    const kwp = ganhos.reduce((s, x) => s + x.a.op.dim.kwpReal, 0), receita = ganhos.reduce((s, x) => s + x.a.op.preco.precoFinal, 0);
+    const meta = Number(p.kwpPrevistosMes) || 0;
+    const origens = {}; info.forEach((x) => { const k = x.o.origem || 'sem origem'; origens[k] = origens[k] || { leads: 0, ganhos: 0 }; origens[k].leads++; if (x.o.status === 'ganho') origens[k].ganhos++; });
+    const obras = info.filter((x) => x.o.status === 'ganho').map((x) => ({ x, et: posVendaEtapa(x.o) })).filter((y) => y.et);
+    const inds = info.filter((x) => x.o.indicadoPor);
+    return `<div class="secao-t"><h2>Resultado do mês</h2><span class="sutil">meta de ${n(meta)} kWp cobre o custo fixo (ponto de equilíbrio)</span></div>
+      <div class="kpis"><div class="kpi ${meta && kwp >= meta ? 'destaque' : ''}"><span class="rotulo">kWp vendidos</span><b>${n(kwp, 1)} / ${n(meta)}</b><div class="progresso"><i style="width:${meta ? Math.min(kwp / meta * 100, 100) : 0}%"></i></div><span class="sutil">${meta ? n(Math.min(kwp / meta, 9.99) * 100) + '% do ponto de equilíbrio' : 'defina a meta em Parâmetros'}</span></div>
+        <div class="kpi"><span class="rotulo">Vendido no mês</span><b>${brl(receita)}</b><span class="sutil">${ganhos.length} contrato(s)</span></div>
+        <div class="kpi"><span class="rotulo">Obras em andamento</span><b>${obras.length}</b><span class="sutil">${obras.filter((y) => { const pr = y.et.e[2], d = y.et.desde ? diasEntre(y.et.desde, new Date().toISOString()) : 0; return pr && d > pr; }).length} passou(aram) do prazo</span></div>
+        <div class="kpi"><span class="rotulo">Indicações</span><b>${inds.length}</b><span class="sutil">${inds.filter((x) => x.o.status === 'ganho' && !x.o.presenteEntregue).length} presente(s) a entregar</span></div></div>
+      <div class="ops-v duas" style="margin-top:12px">
+        <div class="painel"><span class="rotulo">De onde vêm as vendas</span><table style="margin-top:8px"><tr><th>Origem</th><th class="v">Leads</th><th class="v">Fechados</th><th class="v">Conversão</th></tr>${Object.entries(origens).sort((a, b) => b[1].leads - a[1].leads).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="v">${v.leads}</td><td class="v">${v.ganhos}</td><td class="v">${v.leads ? pct(v.ganhos / v.leads, 0) : '—'}</td></tr>`).join('')}</table></div>
+        <div class="painel"><span class="rotulo">Obras e indicações</span>
+          ${obras.map(({ x, et }) => `<div class="entre" style="padding:6px 0;border-top:1px dashed var(--linha)"><a href="#lead-${x.o.id}" style="color:inherit"><b>${esc(x.o.nome)}</b></a><span class="mini">${esc(et.e[1])}</span></div>`).join('') || '<p class="mini" style="margin:6px 0">Nenhuma obra em andamento.</p>'}
+          ${inds.map((x) => `<div class="entre" style="padding:6px 0;border-top:1px dashed var(--linha)"><span><a href="#lead-${x.o.id}" style="color:inherit"><b>${esc(x.o.nome)}</b></a> <span class="mini">indicado por ${esc(x.o.indicadoPor)}</span></span>${x.o.status === 'ganho' ? (x.o.presenteEntregue ? '<span class="mini">🎁 presente entregue</span>' : `<button class="link" data-presente="${x.o.id}">🎁 marcar presente entregue</button>`) : `<span class="mini">${esc(x.o.status)}</span>`}</div>`).join('')}</div></div>`;
+  }
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-presente]'); if (!b) return; const o = B.obter(b.dataset.presente); if (!o) return; o.presenteEntregue = new Date().toISOString(); B.salvar(o); B.interacao(o.id, 'nota', 'Presente de indicação entregue a ' + o.indicadoPor); toast('Presente marcado'); render(); });
+
+  /* ---------- PÓS-VENDA: da assinatura até a usina ligada ---------- */
+  // [chave, etapa, prazo de referência em dias depois da etapa anterior, mensagem ao cliente]
+  const POS_VENDA = [
+    ['contrato', 'Contrato assinado', 0, '{nome}, contrato assinado! 🎉 Agora começa a parte boa. Vou te avisando aqui de cada etapa.'],
+    ['projeto', 'Projeto e ART prontos', 5, '{nome}, o projeto da sua usina está pronto e assinado pelo engenheiro. Próximo passo: pedido na CPFL.'],
+    ['protocolo', 'Pedido protocolado na CPFL', 2, '{nome}, já protocolamos o pedido da sua usina na CPFL. Agora é aguardar a aprovação (parecer de acesso).'],
+    ['parecer', 'Parecer de acesso aprovado', 15, '{nome}, a CPFL aprovou o projeto! ✅ Já vamos agendar a instalação.'],
+    ['kit', 'Kit entregue no local', 10, '{nome}, os equipamentos chegaram. Vamos combinar o melhor dia para a instalação?'],
+    ['instalacao', 'Instalação concluída', 7, '{nome}, instalação concluída! ☀️ Agora pedimos a vistoria da CPFL para trocar o medidor.'],
+    ['vistoria', 'Vistoria e troca do medidor', 7, '{nome}, a CPFL trocou o medidor. Sua usina está oficialmente ligada! Te mando o app para acompanhar a geração.'],
+    ['ligada', 'Usina ligada e cadastrada no monitoramento', 3, '{nome}, cadastrei sua usina no nosso monitoramento. Todo mês te mando o relatório da economia. 🙌'],
+  ];
+  const diasEntre = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);
+  function posVendaEtapa(o) { const pv = o.posVenda || {}; const i = POS_VENDA.findIndex(([k]) => !pv[k]); return i < 0 ? null : { i, e: POS_VENDA[i], desde: i ? pv[POS_VENDA[i - 1][0]] : ((o.aceite && o.aceite.em) || o.atualizadoEm || o.criadoEm || '').slice(0, 10) }; }
+  function posVendaHtml(o) {
+    const pv = o.posVenda || {}, atual = posVendaEtapa(o);
+    return `<div class="painel" style="margin-top:14px"><div class="entre"><span class="rotulo">Pós-venda · da assinatura à usina ligada</span><span class="mini">${atual ? `agora: <b>${esc(atual.e[1])}</b>` : '✅ concluído'}</span></div>
+      <div style="display:grid;gap:4px;margin-top:10px">${POS_VENDA.map(([k, t, prazo], i) => {
+        const feito = pv[k], ehAtual = atual && atual.i === i, dias = ehAtual && atual.desde ? diasEntre(atual.desde, new Date().toISOString()) : 0;
+        return `<div class="entre" style="padding:6px 0;border-top:1px dashed var(--linha)"><label class="chk" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-pv="${k}" ${feito ? 'checked' : ''} ${!feito && atual && i > atual.i ? 'disabled' : ''}> <span style="${feito ? 'opacity:.6' : ehAtual ? 'font-weight:700' : ''}">${esc(t)}</span></label>
+          <span class="mini">${feito ? feito.split('-').reverse().join('/') : ehAtual ? `${dias} dia(s)${prazo && dias > prazo ? ` <span style="color:var(--laranja)">· passou do prazo de referência (${prazo} d)</span>` : prazo ? ` · ref. ${prazo} d` : ''}` : ''} ${feito ? `<button class="link" data-pv-zap="${k}">avisar cliente</button>` : ''}</span></div>`;
+      }).join('')}</div>
+      <p class="mini" style="margin:8px 0 0">Prazos de referência para você ser avisado de atraso; a CPFL tem os prazos dela conforme o tipo de ligação.</p></div>`;
+  }
+  /* indicação: link pessoal do cliente para o formulário público */
+  const linkIndicacao = (o) => new URL('captacao.html?ind=' + encodeURIComponent(o.nome), location.href).href;
+  const msgIndicacao = (o) => `${String(o.nome).split(' ')[0]}, que bom ter você com a gente! ☀️ Se conhecer alguém que paga caro de luz, manda esse link pra pessoa: ${linkIndicacao(o)}\nSe ela fechar, você ganha um presente de agradecimento 🎁`;
+
   function ficha(id) {
     const o = B.obter(id);
     if (!o) { app.innerHTML = '<p>Orçamento não encontrado.</p>'; return; }
@@ -162,6 +214,10 @@
           <button class="btn vidro pequeno" id="editar">Editar orçamento</button>
         </div>
       </div>
+      ${o.status === 'ganho' ? posVendaHtml(o) : ''}
+      ${o.status === 'ganho' ? `<div class="painel" style="margin-top:14px"><div class="entre"><span class="rotulo">Indicação</span><span class="mini">${B.orcamentos().filter((x) => x.indicadoPor && x.indicadoPor.trim().toLowerCase() === String(o.nome).trim().toLowerCase()).length} indicação(ões) deste cliente</span></div>
+        <p class="sutil" style="margin:6px 0 8px">Link pessoal: quem entrar por ele já chega marcado como indicação de ${esc(String(o.nome).split(' ')[0])}.</p>
+        <div class="acoes-r"><button class="btn vidro pequeno" id="copiarInd">Copiar link de indicação</button><a class="btn zap pequeno" target="_blank" rel="noopener" href="https://wa.me/55${String(o.whatsapp).replace(/\D/g, '').replace(/^55/, '')}?text=${encodeURIComponent(msgIndicacao(o))}">Mandar no WhatsApp</a></div></div>` : ''}
       <div class="painel" style="margin-top:14px">
         <div class="entre"><span class="rotulo">Documentos</span><span class="mini">${(() => { const f = Documentos.faltando(o, p); return f.length ? 'Falta: ' + esc(f.join(', ')) : 'Tudo pronto para contrato e procuração'; })()}</span></div>
         <div class="acoes-r" style="margin-top:10px">
@@ -227,6 +283,9 @@
     app.querySelectorAll('[data-ag]').forEach((b) => b.onclick = () => { agenteAtual = b.dataset.ag; app.querySelectorAll('[data-ag]').forEach((x) => x.classList.toggle('sel', x === b)); rodarAgente(); });
     rodarAgente();
     $('#copiarLink').onclick = () => copiar(link);
+    if ($('#copiarInd')) $('#copiarInd').onclick = () => copiar(linkIndicacao(o));
+    app.querySelectorAll('[data-pv]').forEach((c) => c.onchange = () => { o.posVenda = { ...(o.posVenda || {}) }; if (c.checked) o.posVenda[c.dataset.pv] = new Date().toISOString().slice(0, 10); else delete o.posVenda[c.dataset.pv]; B.salvar(o); B.interacao(o.id, 'nota', `Pós-venda · ${POS_VENDA.find((x) => x[0] === c.dataset.pv)[1]}${c.checked ? '' : ' (desmarcado)'}`); ficha(id); });
+    app.querySelectorAll('[data-pv-zap]').forEach((b) => b.onclick = () => { const e = POS_VENDA.find((x) => x[0] === b.dataset.pvZap); window.open('https://wa.me/55' + String(o.whatsapp).replace(/\D/g, '').replace(/^55/, '') + '?text=' + encodeURIComponent(e[3].replace('{nome}', String(o.nome).split(' ')[0])), '_blank', 'noopener'); B.interacao(o.id, 'whatsapp', 'Pós-venda · avisou: ' + e[1]); });
     B.anexos(o.id).then((l) => { const el = $('#anexosBel'); if (!el || !l || !l.length) return; el.innerHTML = l.map((a) => `<button class="btn vidro pequeno" data-anexo="${a.id}">📎 ${esc(a.nome)}</button>`).join(' ');
       el.querySelectorAll('[data-anexo]').forEach((b) => b.onclick = async () => { const a = await B.anexo(b.dataset.anexo); if (!a) return toast('Anexo não encontrado'); const bin = atob(a.conteudo_b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); window.open(URL.createObjectURL(new Blob([u8], { type: a.tipo })), '_blank'); }); }).catch(() => {});
     $('#docPdf').onclick = () => { Documentos.proposta(o, p, o.status !== 'novo' ? link : null); B.interacao(o.id, 'nota', 'Gerou a proposta em PDF'); };
@@ -237,7 +296,7 @@
     $('#abrirPV').onclick = () => { try { sessionStorage.setItem('sol2_abrir', JSON.stringify({ t: o.token, v: 1 })); } catch { /* sem armazenamento */ } };
     $('#enviarZap').onclick = () => { if (o.status === 'novo') { o.status = 'proposta'; o.enviadoEm = new Date().toISOString(); B.salvar(o); } B.interacao(o.id, 'whatsapp', 'Proposta enviada'); };
     $('#editar').onclick = () => { B.rascunho.gravar(o); B.rascunho.gravarEtapa(0); location.hash = '#novo'; };
-    $('#status').onchange = (e) => { o.status = e.target.value; if (o.status !== 'novo' && !o.enviadoEm) o.enviadoEm = new Date().toISOString(); B.salvar(o); ficha(id); };
+    $('#status').onchange = (e) => { o.status = e.target.value; if (o.status !== 'novo' && !o.enviadoEm) o.enviadoEm = new Date().toISOString(); if (o.status === 'ganho' && !o.ganhoEm) o.ganhoEm = new Date().toISOString(); B.salvar(o); ficha(id); };
     const mot = $('#motivo'); if (mot) mot.onchange = (e) => { o.motivoPerda = e.target.value; B.salvar(o); toast('Motivo salvo'); };
   }
 
@@ -295,7 +354,8 @@
   }
 
   /* ======================= NOVO ORÇAMENTO (6 passos) ======================= */
-  const novoOrc = () => ({ nome: '', whatsapp: '', cep: '', cidade: '', distanciaKm: 0, ligacao: 'bi', consumos: Array(12).fill(''), tarifaKwh: P().tarifaKwh, lidoPorIA: false, modo: 'pdf', telhado: 'ceramico', orientacao: '?', areaDisponivel: '', trocaPadrao: false, opcaoEscolhida: 1, formaPagamento: 'financiamento', comissaoParceria: 0, kitFaturadoDireto: false, descontoPct: 0, origem: 'WhatsApp', status: 'novo' });
+  const SEGMENTOS = [['residencial', '🏠 Residencial'], ['comercial', '🏪 Comercial'], ['grandes', '🏭 Grandes contas / indústria'], ['rural', '🌾 Rural']];
+  const novoOrc = () => ({ segmento: 'residencial', nome: '', whatsapp: '', cep: '', cidade: '', distanciaKm: 0, ligacao: 'bi', consumos: Array(12).fill(''), tarifaKwh: P().tarifaKwh, lidoPorIA: false, modo: 'pdf', telhado: 'ceramico', orientacao: '?', areaDisponivel: '', trocaPadrao: false, opcaoEscolhida: 1, formaPagamento: 'financiamento', comissaoParceria: 0, kitFaturadoDireto: false, descontoPct: 0, origem: 'WhatsApp', status: 'novo' });
   let orc = B.rascunho.ler() || novoOrc();
   let etapa = B.rascunho.etapa();
   const PDFS_PENDENTES = {}; // PDF da Belenergy de cada opção, anexado quando o orçamento ganha número
@@ -363,7 +423,9 @@
         <label class="campo"><span>Cidade da obra</span><select id="f-cid"><option value="">Escolha a cidade</option>${Object.keys(D.cidades).sort((a, b) => a.localeCompare(b, 'pt')).map((c) => `<option ${orc.cidade === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}${orc.cidade && !D.cidades[orc.cidade] ? `<option selected>${esc(orc.cidade)}</option>` : ''}<option value="__outra">Outra cidade…</option></select></label></div>
         <div class="grade g2"><label class="campo"><span>Distância da base (km, ida)</span><input type="number" id="f-km" value="${orc.distanciaKm || ''}" inputmode="numeric"></label>
         <label class="campo"><span>CEP (opcional)</span><input type="text" id="f-cep" value="${esc(orc.cep)}" inputmode="numeric"></label></div>
+        <div class="campo"><span>Tipo de cliente (muda a proposta)</span><div class="chips">${SEGMENTOS.map(([v, t]) => `<button class="chip ${(orc.segmento || 'residencial') === v ? 'sel' : ''}" data-seg="${v}">${t}</button>`).join('')}</div></div>
         <div class="campo"><span>Origem do lead</span><div class="chips">${['WhatsApp', 'Instagram', 'Indicação', 'Site', 'Google', 'Parceiro'].map((x) => `<button class="chip ${orc.origem === x ? 'sel' : ''}" data-orig="${x}">${x}</button>`).join('')}</div></div>
+        ${orc.origem === 'Indicação' ? `<label class="campo"><span>Quem indicou (cliente ou parceiro)</span><input type="text" id="f-indicou" list="lista-clientes" value="${esc(orc.indicadoPor || '')}" placeholder="nome de quem indicou"><datalist id="lista-clientes">${B.orcamentos().filter((x) => x.status === 'ganho').map((x) => `<option value="${esc(x.nome)}">`).join('')}</datalist></label>` : ''}
         <div class="campo"><span>Tipo de ligação</span><div class="chips">${[['mono', 'Monofásica', '30 kWh'], ['bi', 'Bifásica', '50 kWh'], ['tri', 'Trifásica', '100 kWh']].map(([v, t, d]) => `<button class="chip ${orc.ligacao === v ? 'sel' : ''}" data-lig="${v}">${t}<small>${d}</small></button>`).join('')}</div></div>
       </div></div>
       <div class="painel"><span class="rotulo">Consumo dos últimos 12 meses (kWh)</span>
@@ -387,6 +449,8 @@
       salvarR(); novo();
     });
     el.querySelectorAll('[data-orig]').forEach((b) => b.onclick = () => { orc.origem = b.dataset.orig; salvarR(); novo(); });
+    el.querySelectorAll('[data-seg]').forEach((b) => b.onclick = () => { orc.segmento = b.dataset.seg; salvarR(); novo(); });
+    const ind = $('#f-indicou'); if (ind) ind.oninput = (e) => { orc.indicadoPor = e.target.value; salvarR(); };
     const fm = $('#f-media'); if (fm) fm.oninput = () => preencher(+fm.value);
     const fg = $('#f-ger'); if (fg) fg.oninput = () => preencher(+fg.value ? +fg.value + disp : 0);
     el.querySelectorAll('[data-conta]').forEach((b) => b.onclick = () => {
@@ -739,10 +803,13 @@
             <label class="campo"><span>Chave de API / App ID (se tiver)</span><input id="crChave" type="text" autocomplete="off"></label>
             <label class="campo"><span>Segredo da API / App Secret (se tiver)</span><input id="crSegredo" type="password" autocomplete="new-password"></label>
             <label class="campo"><span>Observação (ex.: servidor, empresa)</span><input id="crObs" type="text"></label></div>
-          <div class="acoes-r" style="margin-top:8px"><button class="btn sol pequeno" id="crSalvar">Guardar acesso</button><span class="mini" id="crStatus">carregando…</span></div></div>` : ''}<div class="painel" id="depPainel"><div class="entre"><span class="rotulo">Depoimentos e casos reais (Instagram)</span><button class="btn vidro pequeno" id="depNovo">＋ Adicionar</button></div>
+          <div class="acoes-r" style="margin-top:8px"><button class="btn sol pequeno" id="crSalvar">Guardar acesso</button><span class="mini" id="crStatus">carregando…</span></div></div>` : ''}<div class="painel"><span class="rotulo">Formulário de captação (bio do Instagram, Google, WhatsApp)</span><p class="sutil" style="margin:6px 0 8px">Quem preencher vira lead novo na hora, já com a conta estimada e o tipo de cliente, e aparece no Meu dia como "Primeira resposta".</p>
+        <div class="entrada-ag"><input type="text" readonly id="capLink" value="${esc(new URL('captacao.html', location.href).href)}"></div>
+        <div class="acoes-r" style="margin-top:8px"><button class="btn vidro pequeno" id="capCopiar">Copiar link</button><a class="btn vidro pequeno" target="_blank" rel="noopener" href="captacao.html">Ver como o cliente vê</a></div></div>
+      <div class="painel" id="depPainel"><div class="entre"><span class="rotulo">Depoimentos e casos reais (Instagram)</span><button class="btn vidro pequeno" id="depNovo">＋ Adicionar</button></div>
         <p class="sutil" style="margin:6px 0 8px">Aparecem na Proposta Viva em "Quem já tem perto de você?" e nas mensagens de prova social. Só casos reais, com autorização do cliente.</p>
         ${(p.depoimentos || []).map((d, i) => `<div class="entre" style="padding:8px 0;border-top:1px dashed var(--linha)"><span><b>${esc(d.nome)}</b> <span class="mini">${esc(d.cidade || '')}${d.contaAntes ? ' · ' + brl(d.contaAntes) + ' → ' + brl(d.contaDepois) : ''}</span><br><span class="mini">${esc(String(d.texto || '').slice(0, 90))}</span></span><span><button class="link" data-dep-ed="${i}">editar</button> · <button class="link" data-dep-rm="${i}">tirar</button></span></div>`).join('') || '<p class="mini">Nenhum ainda. Comece pelos 3 melhores posts de cliente do Instagram.</p>'}</div>
-      <div class="painel"><div class="entre"><span class="rotulo">Treino do robô Belenergy</span><a class="btn vidro pequeno" href="#treino">Abrir treino ›</a></div><p class="sutil" style="margin:6px 0 0">Cotações automáticas em todas as combinações para achar e corrigir erros antes do cliente.</p></div><div class="painel"><span class="rotulo">Dados da empresa para contrato e procuração</span><div class="grade g2" style="margin-top:10px">${[['razao', 'Razão social'], ['cnpj', 'CNPJ'], ['endereco', 'Endereço da sede'], ['cidadeForo', 'Foro (cidade/UF)'], ['respTecnico', 'Responsável técnico'], ['crea', 'CREA'], ['garantiaInstalacaoAnos', 'Garantia da instalação (anos)', 1], ['prazoInstalacaoDias', 'Prazo de instalação (dias)', 1], ['anosRegiao', 'Anos de empresa na região (selo da proposta)', 1], ['seloConfianca', 'Selo de confiança (ex.: nota no Google), só se for real']].map(([c, r, num]) => `<label class="campo"><span>${r}</span><input type="${num ? 'number' : 'text'}" data-emp="${c}" ${num ? 'data-num="1"' : ''} value="${esc(Documentos.empresaDe(p)[c] ?? '')}"></label>`).join('')}</div></div><div class="painel"><span class="rotulo">Fórmula</span><p class="sutil" style="margin-top:8px">Preço = (custos diretos + taxa fixa) ÷ (1 − (impostos + taxa de pagamento + comissão + margem + reserva))</p></div>
+      <div class="painel"><div class="entre"><span class="rotulo">Treino do robô Belenergy</span><a class="btn vidro pequeno" href="#treino">Abrir treino ›</a></div><p class="sutil" style="margin:6px 0 0">Cotações automáticas em todas as combinações para achar e corrigir erros antes do cliente.</p></div><div class="painel"><span class="rotulo">Dados da empresa para contrato e procuração</span><div class="grade g2" style="margin-top:10px">${[['razao', 'Razão social'], ['cnpj', 'CNPJ'], ['endereco', 'Endereço da sede'], ['cidadeForo', 'Foro (cidade/UF)'], ['respTecnico', 'Responsável técnico'], ['crea', 'CREA'], ['garantiaInstalacaoAnos', 'Garantia da instalação (anos)', 1], ['prazoInstalacaoDias', 'Prazo de instalação (dias)', 1], ['anosRegiao', 'Anos de empresa na região (selo da proposta)', 1], ['seloConfianca', 'Selo de confiança (ex.: nota no Google), só se for real'], ['linkAvaliacao', 'Link para avaliar no Google (Perfil da Empresa)']].map(([c, r, num]) => `<label class="campo"><span>${r}</span><input type="${num ? 'number' : 'text'}" data-emp="${c}" ${num ? 'data-num="1"' : ''} value="${esc(Documentos.empresaDe(p)[c] ?? '')}"></label>`).join('')}</div></div><div class="painel"><span class="rotulo">Fórmula</span><p class="sutil" style="margin-top:8px">Preço = (custos diretos + taxa fixa) ÷ (1 − (impostos + taxa de pagamento + comissão + margem + reserva))</p></div>
         <div class="acoes-r" style="margin-top:14px"><button class="btn sol" id="salvarP">Salvar</button>${B.nuvem ? '' : '<button class="btn vidro" id="resetP">Voltar ao teste</button>'}</div></div></div>`;
     $('#salvarP').onclick = () => {
       const novoP = {}; app.querySelectorAll('[data-par]').forEach((i) => { novoP[i.dataset.par] = +i.value / +i.dataset.m; });
@@ -778,6 +845,7 @@
       };
     };
     $('#depNovo').onclick = () => depForm(-1);
+    $('#capCopiar').onclick = () => copiar($('#capLink').value);
     app.querySelectorAll('[data-dep-ed]').forEach((b) => b.onclick = () => depForm(+b.dataset.depEd));
     app.querySelectorAll('[data-dep-rm]').forEach((b) => b.onclick = () => { const lista = (p.depoimentos || []).filter((_, k) => k !== +b.dataset.depRm); B.salvarParametros({ depoimentos: lista }); parametrosPag(); });
     if ($('#resetP')) $('#resetP').onclick = () => { B.zerarParametros(); parametrosPag(); toast('Voltou aos valores de teste'); };

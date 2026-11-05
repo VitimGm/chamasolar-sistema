@@ -34,6 +34,7 @@
     const nm = primeiro(o.nome), v = D().empresa.vendedor, link = ctx.link || '', a = ctx.a || {};
     const op = a.op || {}, eco = op.eco || {}, b = a.boleto || {}, esp = a.espera || {}, viz = a.vizinhos || {}, rx = a.raioX || {};
     const cidade = o.cidade || 'Ribeirão';
+    const aval = ((raiz.Banco && raiz.Banco.parametros && raiz.Banco.parametros().empresaDoc) || {}).linkAvaliacao || '[cole aqui o link de avaliação do Google]';
     const conta = brl(eco.contaAtual), econ = brl(eco.economiaMes1), parcela = b.parcela ? `${b.prazo}x de ${brl(b.parcela)}` : '';
     const validade = (raiz.Banco && raiz.Banco.parametros && raiz.Banco.parametros().validadeDias) || 7;
     const vizTxt = viz.total && viz.economiaMedia && (viz.reais || !(raiz.Banco && raiz.Banco.nuvem)) ? `nossos clientes aqui da região estão pagando em média ${brl(viz.economiaMedia)} a menos de luz por mês` : `nossos clientes aqui de ${cidade} já estão pagando só a taxa mínima`;
@@ -102,6 +103,11 @@
         ['rapport', 'Boas-vindas', `${nm}, bem-vindo(a) à Chama Solar! 🎉 Próximos passos: projeto e pedido na CPFL (até 15 dias), instalação, vistoria e troca do medidor. Te aviso a cada etapa por aqui.`],
         ['audio', 'Áudio de agradecimento', `[ÁUDIO, 30 s] "${nm}, obrigado pela confiança! Agora é com a gente: te mando cada etapa por aqui, e qualquer dúvida pode me chamar direto."`],
         ['reciproc', 'O que esperar', `${nm}, para você ficar tranquilo(a): no dia da instalação a equipe chega cedo e termina no mesmo dia na maioria das casas. Precisa só deixar o acesso ao telhado e ao quadro de luz livres.`],
+      ],
+      G5: [
+        ['reciproc', 'Pedido de avaliação', `${nm}, posso te pedir um favor rápido? Uma avaliação da Chama Solar no Google ajuda muito outras famílias a confiarem na gente. Leva 1 minutinho: ${aval} Obrigado! 🙏`],
+        ['rapport', 'Agradecer e pedir', `${nm}, obrigado pela confiança na Chama Solar! Se você ficou satisfeito(a) com o atendimento até aqui, conta isso no Google? ${aval}`],
+        ['micro', 'Pedido em duas etapas', `${nm}, de 0 a 10, quanto você recomendaria a Chama Solar para um amigo?`],
       ],
       G2: [
         ['indicacao', 'Primeira conta + indicação', `${nm}, chegou a primeira conta com o solar? Me manda uma foto que eu confiro se está tudo certo. E se tiver alguém da família ou vizinho pagando caro de luz, me indica: tem um presente de agradecimento para você 🎁`],

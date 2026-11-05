@@ -30,6 +30,7 @@
     ],
     ganho: [
       { id: 'G1', dia: 2, canal: 'whatsapp', titulo: 'Boas-vindas e próximos passos', porque: 'Cliente que sabe o que vem não liga ansioso.' },
+      { id: 'G5', dia: 10, canal: 'whatsapp', titulo: 'Pedir avaliação no Google', porque: 'Nota alta no Google traz lead sem pagar anúncio.' },
       { id: 'G2', dia: 45, canal: 'whatsapp', titulo: 'Primeira conta com solar + indicação', porque: 'Com a conta nova na mão, o cliente indica sozinho.' },
       { id: 'G3', dia: 180, canal: 'whatsapp', titulo: 'Relatório de 6 meses', porque: 'Mostra que você acompanha. Pede depoimento.' },
       { id: 'G4', dia: 365, canal: 'whatsapp', titulo: 'Limpeza anual', porque: 'Receita recorrente e mais uma chance de indicação.' },
@@ -58,6 +59,7 @@
       P7: `Oi ${nome}! Chegou a conta de luz deste mês? Se quiser, atualizo sua proposta com o valor novo, sem compromisso.`,
       P8: `${nome}, a CPFL reajustou de novo e o verão está chegando. Quer que eu refaça a sua simulação? Os equipamentos baixaram de preço este ano.`,
       G1: `${nome}, bem-vindo(a) à Chama Solar! 🎉 Próximos passos: projeto e pedido na CPFL (até 15 dias), instalação, vistoria e troca do medidor. Te aviso a cada etapa por aqui.`,
+      G5: `${nome}, posso te pedir um favor rápido? Uma avaliação da Chama Solar no Google ajuda muito outras famílias a confiarem na gente. Leva 1 minutinho: ${((raiz.Banco && raiz.Banco.parametros && raiz.Banco.parametros().empresaDoc) || {}).linkAvaliacao || '[link de avaliação]'} Obrigado! 🙏`,
       G2: `${nome}, chegou a primeira conta com o solar? Me manda uma foto que eu confiro se está tudo certo. E se tiver alguém da família ou vizinho pagando caro de luz, me indica: tem um presente de agradecimento para você.`,
       G3: `${nome}, seu sistema completou 6 meses! Se puder, me manda um áudio curtinho contando como está a conta. Ajuda muito outras famílias a decidirem.`,
       G4: `${nome}, já faz um ano da sua usina! A limpeza anual ajuda a manter a geração lá em cima. Quer agendar? Aproveito e faço a revisão completa.`,
@@ -69,7 +71,7 @@
   /* Próximo passo da cadência para um orçamento */
   function proximo(o, eventos, interacoes, agora = Date.now()) {
     const g = grupo(o.status), lista = PASSOS[g];
-    const base = new Date((g === 'proposta' ? o.enviadoEm : g === 'ganho' ? (o.aceite && o.aceite.em) || o.atualizadoEm : g === 'perdido' ? o.atualizadoEm : o.criadoEm) || o.criadoEm).getTime();
+    const base = new Date((g === 'proposta' ? o.enviadoEm : g === 'ganho' ? o.ganhoEm || (o.aceite && o.aceite.em) || o.atualizadoEm : g === 'perdido' ? o.atualizadoEm : o.criadoEm) || o.criadoEm).getTime();
     const feitos = new Set((interacoes || []).map((i) => (String(i.texto || '').match(/^Cadência (\w\d)/) || [])[1]).filter(Boolean));
     if (o.enviadoEm) feitos.add('P0'); // proposta já enviada pela ficha
     if (g !== 'novo' && o.estimativa) { feitos.add('N0'); }
