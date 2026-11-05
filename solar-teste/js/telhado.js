@@ -29,10 +29,10 @@
     if (modAnt && modAnt.c && (!modulo || (modAnt.nome === nomeKit && modAnt.potW === modulo.potenciaW))) proj.layout.modulo = modAnt;
     else { const w = (modulo && modulo.potenciaW) || (modAnt && modAnt.potW) || 615, med = U.medidasModulo(modulo ? `${modulo.sku || ''} ${modulo.nome || ''}` : modAnt && modAnt.nome, w); proj.layout.modulo = { nome: nomeKit || (modAnt && modAnt.nome) || `Placa ${w} W`, potW: w, c: med.c, l: med.l, estimada: true }; }
     if (qtd) proj.layout.qtd = qtd; else proj.layout.qtd = proj.layout.qtd || 12;
-    proj.layout.arranjo = proj.layout.arranjo || 'fileiras';
+    proj.layout.arranjo = proj.layout.arranjo || 'fileiras'; proj.layout.manuais = proj.layout.manuais || []; proj.layout.oriFace = proj.layout.oriFace || {};
     const cid = (raiz.DadosTeste && raiz.DadosTeste.cidades) || {}, hsp = (cid[orc.cidade] || cid['Ribeirão Preto'] || { hsp: 5.4 }).hsp, pr = P.pr || 0.776;
     proj.cabos = Object.assign({ modo: 'seguro', nStrings: 0, inv: null, quadro: null }, proj.cabos || {});
-    const st = { aba: aba || (proj.blocos.length ? 'telhados' : 'foto'), ferr: null, sel: null, des: [], ponteiro: null, view: { esc: 14, ox: 0, oz: 0 }, vagas: [], escolhidas: [], analisado: false, ocupado: false, ver: 0, di: 6, hora: 9.5, play: false, regua: [], alfaDrone: 1, corPlacas: 'tsrf', mapas: false, imgsNovas: {} };
+    const st = { aba: aba || (proj.blocos.length ? 'telhados' : 'foto'), ferr: null, sel: null, des: [], ponteiro: null, view: { esc: 14, ox: 0, oz: 0 }, vagas: [], escolhidas: [], analisado: false, ocupado: false, ver: 0, di: 6, hora: 9.5, play: false, regua: [], alfaDrone: 1, corPlacas: 'tsrf', mapas: false, imgsNovas: {}, oriMao: 'retrato' };
 
     const ov = document.createElement('div'); ov.className = 't3-ov';
     ov.innerHTML = `<div class="t3-caixa" role="dialog" aria-label="Projeto 3D do telhado">
@@ -42,7 +42,8 @@
       <div class="t3-corpo">
         <div class="t3-esq">
           <div class="t3-foto" id="t3Tela"><canvas id="t3Cv"></canvas>
-            <div class="t3-zoom"><button data-zoom="1" aria-label="Aproximar">＋</button><button data-zoom="-1" aria-label="Afastar">－</button><button data-zoom="0" aria-label="Centralizar">⌖</button></div></div>
+            <div class="t3-zoom"><button data-zoom="1" aria-label="Aproximar">＋</button><button data-zoom="-1" aria-label="Afastar">－</button><button data-zoom="0" aria-label="Centralizar">⌖</button></div>
+            <div class="t3-flut" id="t3Flut" hidden></div></div>
           <div class="t3-painel" id="t3Painel"></div>
         </div>
         <div class="t3-dir">
@@ -116,7 +117,9 @@
       // placas
       if (st.aba === 'placas' || st.aba === 'sol' || st.aba === 'cabos') {
         const esc2 = new Set(st.escolhidas.map((s) => s.k));
-        st.vagas.forEach((s) => { caminho(s.cantos); if (esc2.has(s.k)) { g.fillStyle = st.analisado && s.analise ? U.corTsrf(s.analise.tsrf) : '#1c3a7a'; g.globalAlpha = 0.9; g.fill(); g.globalAlpha = 1; g.strokeStyle = '#0d1a38'; g.lineWidth = 1; g.stroke(); } else { g.strokeStyle = '#ffffff55'; g.lineWidth = 1; g.stroke(); } });
+        const mans = st.escolhidas.filter((v) => v.manual), bate = new Set(); mans.forEach((x, i) => mans.slice(i + 1).forEach((y) => { if (U.cruzam(x.cantos, y.cantos)) { bate.add(x.k); bate.add(y.k); } }));
+        st.vagas.forEach((s) => { if (bate.has(s.k)) s.fora = true; caminho(s.cantos); if (esc2.has(s.k)) { g.fillStyle = st.analisado && s.analise ? U.corTsrf(s.analise.tsrf) : '#1c3a7a'; g.globalAlpha = 0.9; g.fill(); g.globalAlpha = 1; g.strokeStyle = s.manual ? (s.fora ? '#ff3d3d' : '#ffffff') : '#0d1a38'; g.lineWidth = s.manual ? 2 : 1; g.stroke(); } else if (st.ferr !== 'mao') { g.strokeStyle = '#ffffff55'; g.lineWidth = 1; g.stroke(); } });
+        if (st.aba === 'placas') U.notaFaces(proj, st.vagas).filter((f) => f.incl <= 45).forEach((f, i) => { const fc = U.faces(proj).find((x) => x.id === f.id); if (!fc) return; const c = m2tela(U.centroide(fc.pts)); rotulo(`${i === 0 ? '★ ' : ''}${n(f.nota * 100)}%`, c[0], c[1] - 6, i === 0 ? '#ffd23d' : '#fff'); });
       }
       // desenho em andamento
       if (st.des.length) {
@@ -162,6 +165,7 @@
       else if (A && A.tipo === 'bloco') { const b = bloco(A.id); b.pts = b.pts.map((p) => [p[0] + dm[0], p[1] + dm[1]]); sujar(); }
       else if (A && A.tipo === 'obst') { const o = obst(A.id); o.x += dm[0]; o.z += dm[1]; sujar(); }
       else if (A && A.tipo === 'drone') { proj.drone.cx += dm[0]; proj.drone.cz += dm[1]; sujar(true); }
+      else if (A && A.tipo === 'placa') { const mm = proj.layout.manuais.find((x) => x.id === A.id); if (mm) { mm.x += dm[0]; mm.z += dm[1]; st.vagas = U.vagas(proj); st.escolhidas = U.escolher(st.vagas, proj.layout.qtd, proj.layout); } }
       else { st.view.ox -= dm[0]; st.view.oz -= dm[1]; }
       desenhar();
     });
@@ -169,6 +173,7 @@
       toques.delete(e.pointerId); if (toques.size < 2) pinca = null;
       if (!arrasto) return; const a = arrasto; arrasto = null;
       if (!a.moveu) tocar(tela2m(...a.ini), a.ini, a.alvo);
+      else if (a.alvo && a.alvo.tipo === 'placa') { const L = proj.layout, mm = L.manuais.find((x) => x.id === a.alvo.id); if (mm) { const outras = st.escolhidas.filter((v) => v.mid !== mm.id), nv = U.alinharManual(proj, outras, mm); Object.assign(mm, { x: nv.x, z: nv.z, b: nv.b }); if (!U.faceEm(proj, [mm.x, mm.z])) { L.manuais = L.manuais.filter((x) => x !== mm); msg('A placa saiu do telhado e foi tirada.', true); } } sujar(); painel(); }
       else if (a.alvo) { if (a.alvo.tipo === 'vertice') { const b = bloco(a.alvo.id); if (b && (b.forma || '1') !== '1') { b.pts = U.retanguloDe(b.pts).cantos; sujar(); desenhar(); } } painel(); refazer(); }
     };
     cv.addEventListener('pointerup', fim); cv.addEventListener('pointercancel', fim);
@@ -183,6 +188,7 @@
       }
       if (st.aba === 'obst' && st.ferr === 'ajustar') { const o = proj.obst.find((x) => U.dentro(m, U.pegadaObst(x, 0.3))); if (o) return { tipo: 'obst', id: o.id }; }
       if (st.aba === 'foto' && st.ferr === 'moverDrone' && proj.drone) return { tipo: 'drone' };
+      if (st.aba === 'placas' && st.ferr === 'mao') { const s = st.vagas.find((v) => v.manual && U.dentro(m, v.cantos)); if (s) return { tipo: 'placa', id: s.mid }; }
       return null;
     }
     function encaixar(m, sp, ignorarBloco, ignorarK) { // imã nos cantos dos outros telhados e no ângulo da casa
@@ -212,6 +218,7 @@
         if (st.ferr && st.ferr !== 'ajustar') { const T = U.OBST[st.ferr], o = { id: U.novoId('o'), tipo: st.ferr, x: m[0], z: m[1], h: T.h }; if (T.redondo) o.r = T.r; else { o.w = T.w; o.d = T.d; o.rot = 0; } proj.obst.push(o); st.sel = { t: 'o', id: o.id }; st.ferr = 'ajustar'; sujar(); painel(); desenhar(); return; }
         const o = proj.obst.find((x) => U.dentro(m, U.pegadaObst(x, 0.3))); st.sel = o ? { t: 'o', id: o.id } : null; painel(); desenhar(); return;
       }
+      if (st.aba === 'placas' && (st.ferr === 'mao' || st.ferr === 'girar')) { tocarMao(m); return; }
       if (st.aba === 'placas') {
         const s = st.vagas.find((v) => U.dentro(m, v.cantos)); if (!s) return;
         const L = proj.layout, esta = st.escolhidas.some((x) => x.k === s.k), aqui = { b: s.b, x: Math.round(s.c[0] * 100) / 100, z: Math.round(s.c[1] * 100) / 100 };
@@ -219,6 +226,30 @@
         L.forcarOn = (L.forcarOn || []).filter(longe); L.forcarOff = (L.forcarOff || []).filter(longe);
         (esta ? L.forcarOff : L.forcarOn).push(aqui); recompor(); painel(); return;
       }
+    }
+    /* placas à mão: tocar no telhado põe (encosta na vizinha), tocar na placa tira, arrastar move; "girar" troca retrato/paisagem */
+    function tocarMao(m) {
+      const L = proj.layout, noVaga = st.escolhidas.find((v) => U.dentro(m, v.cantos));
+      if (st.ferr === 'girar') {
+        if (!noVaga) return msg('Toque numa placa para girar.', true);
+        const ori = (noVaga.ori || (noVaga.w > noVaga.hs ? 'paisagem' : 'retrato')) === 'paisagem' ? 'retrato' : 'paisagem';
+        let mm = noVaga.manual ? L.manuais.find((x) => x.id === noVaga.mid) : null;
+        if (mm) mm.ori = ori; else { mm = { id: U.novoId('p'), b: noVaga.b, x: noVaga.c[0], z: noVaga.c[1], ori }; L.manuais.push(mm); }
+        if (L.soMao === undefined) L.soMao = true;
+        const pl = U.placaManual(proj, mm), bate = pl && st.escolhidas.some((v) => v.manual && v.mid !== mm.id && U.cruzam(v.cantos, pl.cantos));
+        sujar(); painel(); msg(`Placa ${ori === 'paisagem' ? 'deitada (paisagem)' : 'em pé (retrato)'}.${bate ? ' <b>Ficou encostando noutra placa</b> (borda vermelha): arraste para um espaço livre.' : ''}`, bate); return;
+      }
+      if (noVaga && noVaga.manual) { L.manuais = L.manuais.filter((x) => x.id !== noVaga.mid); sujar(); painel(); return; }
+      if (noVaga && !noVaga.manual) { // placa automática: vira placa à mão no mesmo lugar (aí dá para arrastar)
+        L.manuais.push({ id: U.novoId('p'), b: noVaga.b, x: noVaga.c[0], z: noVaga.c[1], ori: noVaga.w > noVaga.hs ? 'paisagem' : 'retrato' }); if (L.soMao === undefined) L.soMao = true; sujar(); painel(); return;
+      }
+      const f = U.faceEm(proj, m); if (!f) return msg('Toque em cima de um telhado para pôr a placa.', true);
+      const nova = U.alinharManual(proj, st.escolhidas, { id: U.novoId('p'), x: m[0], z: m[1], ori: st.oriMao }), pl = U.placaManual(proj, nova);
+      if (!pl) return;
+      if (st.escolhidas.some((v) => v.manual && U.cruzam(v.cantos, pl.cantos))) return msg('Ali já tem placa. Toque num espaço livre ou arraste a placa.', true);
+      if (L.soMao === undefined) L.soMao = true;
+      L.manuais.push(nova); sujar(); painel();
+      msg(`${L.manuais.length} placa(s) à mão${L.manuais.length > L.qtd ? ` · <b>o kit tem ${L.qtd}</b>` : ` de ${L.qtd} do kit`}. ${pl.fora ? '<b>Esta passou da borda do telhado</b>: arraste para dentro. ' : ''}Toque para pôr a próxima (ela encosta na vizinha), na placa para tirar, ou arraste para mover.`, pl.fora);
     }
     function fecharDesenho(pts) {
       const T = proj.tipoTelhado, ref = st.sel && st.sel.t === 'b' ? bloco(st.sel.id) : proj.blocos[proj.blocos.length - 1];
@@ -260,7 +291,8 @@
       if (viewer) { viewer.cor(st.aba === 'sol' && st.corPlacas === 'agora' ? 'agora' : 'tsrf'); viewer.atualizar(st.escolhidas); }
       desenhar(); lado(); grafico();
       const fracas = st.escolhidas.filter((s) => s.analise && s.analise.tsrf < 0.8).length, falta = proj.layout.qtd - st.escolhidas.length;
-      msg(`${falta > 0 ? `<b>Só couberam ${st.escolhidas.length} das ${proj.layout.qtd} placas.</b> ` : `Pronto: as ${st.escolhidas.length} placas estão nas melhores posições pelo sol do ano inteiro. `}${fracas ? `<b>${fracas} com aproveitamento abaixo de 80%</b> (laranja/vermelho). ` : ''}Toque numa placa para tirar ou num espaço vazio para pôr.`, falta > 0);
+      if (proj.layout.soMao) { msg(`${st.escolhidas.length} placa(s) colocadas à mão${st.escolhidas.length !== proj.layout.qtd ? ` · <b>o kit tem ${proj.layout.qtd}</b>` : ' · igual ao kit ✓'}. ${fracas ? `<b>${fracas} com aproveitamento abaixo de 80%</b> (laranja/vermelho). ` : ''}`, st.escolhidas.length !== proj.layout.qtd); return; }
+      msg(`${falta > 0 ? `<b>Só couberam ${st.escolhidas.length} das ${proj.layout.qtd} placas.</b> Use <b>✋ Colocar à mão</b> para pôr onde quiser. ` : `Pronto: as ${st.escolhidas.length} placas estão nas melhores posições pelo sol do ano inteiro. `}${fracas ? `<b>${fracas} com aproveitamento abaixo de 80%</b> (laranja/vermelho). ` : ''}Toque numa placa para tirar ou num espaço vazio para pôr.`, falta > 0);
     }
 
     /* ---------- abas ---------- */
@@ -277,7 +309,7 @@
     ov.addEventListener('click', (e) => {
       if (e.target.closest('[data-x]')) { fechar(); return; }
       const ab = e.target.closest('[data-aba]'); if (ab) { irAba(ab.dataset.aba); return; }
-      const f = e.target.closest('[data-ferr]'); if (f) { st.ferr = f.dataset.ferr; st.des = []; st.regua = []; st.enc = []; painel(); desenhar(); if (/^(posInv|posQuadro|regua|encaixar|ret|pol)$/.test(st.ferr)) { const r = tela.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) tela.scrollIntoView({ block: 'center', behavior: 'smooth' }); } return; }
+      const f = e.target.closest('[data-ferr]'); if (f) { st.ferr = f.dataset.ferr || null; st.des = []; st.regua = []; st.enc = []; painel(); desenhar(); if (/^(posInv|posQuadro|regua|encaixar|ret|pol|mao|girar)$/.test(st.ferr)) { const r = tela.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) tela.scrollIntoView({ block: 'center', behavior: 'smooth' }); } return; }
       const ac = e.target.closest('[data-acao]'); if (ac) acao(ac.dataset.acao, ac);
     });
     const ehEscolha = (t) => t.type === 'checkbox' || t.type === 'radio' || t.type === 'file' || t.tagName === 'SELECT';
@@ -290,7 +322,13 @@
       else if (e.key === 'Enter' && st.ferr === 'pol' && st.des.length >= 3) { fecharDesenho(st.des); e.preventDefault(); }
     });
 
+    function barraMao() {
+      const fl = $('#t3Flut', ov); if (!fl) return; const on = st.aba === 'placas' && (st.ferr === 'mao' || st.ferr === 'girar'); fl.hidden = !on; if (!on) return;
+      const L = proj.layout;
+      fl.innerHTML = `<button data-acao="oriMao" data-v="retrato" aria-pressed="${st.ferr === 'mao' && st.oriMao === 'retrato'}">▯ Retrato</button><button data-acao="oriMao" data-v="paisagem" aria-pressed="${st.ferr === 'mao' && st.oriMao === 'paisagem'}">▭ Paisagem</button><button data-ferr="girar" aria-pressed="${st.ferr === 'girar'}">🔄 Girar</button><span>${L.manuais.length}/${L.qtd}</span><button data-ferr="">✓ Pronto</button>`;
+    }
     function painel() {
+      barraMao();
       const el = $('#t3Painel', ov), A = st.aba;
       if (A === 'foto') {
         const d = proj.drone;
@@ -337,7 +375,13 @@
             <label class="campo"><span>Afastamento da borda/platibanda (m)</span><input type="number" step="0.05" data-l="bordaM" value="${L.bordaM}"></label>
             <label class="campo"><span>Corredor de manutenção (m)</span><input type="number" step="0.05" data-l="corredorM" value="${L.corredorM}"></label>
             <label class="campo"><span>Corredor a cada (fileiras)<small>0 = sem corredor</small></span><input type="number" step="1" min="0" data-l="corredorCada" value="${L.corredorCada}"></label></div>
-          <div class="t3-linha"><span class="mini">Arranjo:</span><div class="t3-chips">${[['fileiras', 'Em fileiras (como se monta)'], ['sol', 'Placa a placa pelo sol']].map(([v, t]) => `<button class="t3-chip" data-acao="arranjo" data-v="${v}" aria-pressed="${(L.arranjo || 'fileiras') === v}">${t}</button>`).join('')}</div></div>
+          <div class="t3-ferr" style="margin-top:4px"><button data-ferr="mao" aria-pressed="${st.ferr === 'mao'}">✋ Colocar à mão</button><button data-ferr="girar" aria-pressed="${st.ferr === 'girar'}">🔄 Girar placa</button>${st.ferr === 'mao' || st.ferr === 'girar' ? '<button data-ferr="" aria-pressed="false">✓ Pronto</button>' : ''}</div>
+          ${st.ferr === 'mao' ? `<div class="t3-linha"><span class="mini">Placa nova:</span><div class="t3-chips">${[['retrato', '▯ Retrato (em pé)'], ['paisagem', '▭ Paisagem (deitada)']].map(([v, t]) => `<button class="t3-chip" data-acao="oriMao" data-v="${v}" aria-pressed="${st.oriMao === v}">${t}</button>`).join('')}</div></div>
+            <p class="mini">Toque no telhado para pôr: a placa segue a inclinação e o caimento daquela água e encosta na vizinha. Toque numa placa para tirar; arraste para mover.</p>` : ''}
+          ${st.ferr === 'girar' ? '<p class="mini">Toque numa placa para trocar entre retrato e paisagem.</p>' : ''}
+          ${L.manuais.length ? `<div class="t3-linha"><label class="chk"><input type="checkbox" id="t3SoMao" ${L.soMao ? 'checked' : ''}> só as placas que eu colocar (não completar sozinho)</label><span class="mini">${L.manuais.length} à mão${L.manuais.length !== L.qtd ? ` · kit: ${L.qtd}` : ' ✓'}</span><button class="link" data-acao="limparMao">tirar as placas à mão</button></div>` : ''}
+          ${rankingAguas()}
+          <div class="t3-linha"><span class="mini">Arranjo automático:</span><div class="t3-chips">${[['fileiras', 'Em fileiras (como se monta)'], ['sol', 'Placa a placa pelo sol']].map(([v, t]) => `<button class="t3-chip" data-acao="arranjo" data-v="${v}" aria-pressed="${(L.arranjo || 'fileiras') === v}">${t}</button>`).join('')}</div></div>
           <div class="t3-linha"><button class="btn sol pequeno" data-acao="calcular">☀️ Calcular o melhor sol</button>${(L.forcarOn || []).length + (L.forcarOff || []).length ? `<span class="mini">${(L.forcarOn || []).length + (L.forcarOff || []).length} ajuste(s) à mão</span><button class="link" data-acao="limparManual">desfazer ajustes à mão</button>` : '<span class="mini">Toque numa placa para tirar, ou num espaço vazio para pôr: o ajuste fica mesmo se você mexer no desenho.</span>'}</div>`;
       } else if (A === 'cabos') {
         const C2 = proj.cabos, str = temKit('string') || !kits.length, mic = temKit('micro');
@@ -357,12 +401,23 @@
         grafico();
       }
     }
+    /* qual telhado é melhor: sol do ano pela direção e inclinação (e a sombra, depois do cálculo) */
+    function rankingAguas() {
+      const ls = U.notaFaces(proj, st.vagas).filter((f) => f.incl <= 45); if (!ls.length) return '';
+      const L = proj.layout, melhor = ls[0].nota, cor = (t) => U.corTsrf(t);
+      return `<div class="t3-rank"><span class="mini"><b>Melhores telhados</b> (${ls.some((f) => f.comSombra) ? 'sol do ano com a sombra medida' : 'pela direção e inclinação; a sombra entra depois do cálculo'}):</span>
+        ${ls.map((f, i) => { const ori = (L.oriFace[f.id] || (bloco(f.pai) || {}).orientacao || 'retrato');
+          return `<div class="t3-rank-l"><i style="background:${cor(f.nota)}"></i><span class="t3-rank-n">${i === 0 ? '★ ' : ''}${esc(f.nome)}<small>${ponto(f.az)} · ${pct(f.incl)}% · ${n(f.nota * 100)}%${!f.usar ? ' · marcado sem placas' : ''}${f.cabem ? ` · cabem ${f.cabem}` : f.manuais ? '' : ' · não coube na grade: use "Colocar à mão"'}${f.manuais ? ` · ${f.manuais} à mão` : ''}</small></span>
+            <button class="t3-chip" data-acao="oriFace" data-id="${esc(f.id)}" title="placas desta água em retrato ou paisagem">${ori === 'paisagem' ? '▭ paisagem' : '▯ retrato'}</button>
+            <button class="t3-chip" data-acao="preferir" data-id="${esc(f.id)}" aria-pressed="${L.preferir === f.id}">${L.preferir === f.id ? '✓ começa aqui' : 'começar aqui'}</button></div>`; }).join('')}
+        ${melhor < 0.8 ? '<p class="mini" style="color:var(--laranja)">Nenhuma água pega mais de 80% do sol ideal: confira o caimento (passo 2).</p>' : ''}</div>`;
+    }
     function lado() {
       const el = $('#t3Lado', ov); if (!el) return;
       const r = st.analisado ? U.gerar(proj, st.escolhidas, { pvgis: proj.pvgis, hsp, pr }) : null, L = proj.layout;
       const cabem = st.vagas.length;
       el.innerHTML = `<div class="kpis" style="margin:8px 0">
-        <div class="kpi"><span class="rotulo">Placas</span><b>${st.escolhidas.length}${st.escolhidas.length < L.qtd ? ' / ' + L.qtd : ''}</b><span class="sutil">${st.escolhidas.length < L.qtd ? `<span style="color:var(--laranja)">faltou lugar para ${L.qtd - st.escolhidas.length}</span>` : `cabem até ${cabem}`}</span></div>
+        <div class="kpi"><span class="rotulo">Placas</span><b>${st.escolhidas.length}${st.escolhidas.length < L.qtd ? ' / ' + L.qtd : ''}</b><span class="sutil">${st.escolhidas.length < L.qtd ? `<span style="color:var(--laranja)">${L.soMao ? 'kit: ' + L.qtd : 'faltou lugar para ' + (L.qtd - st.escolhidas.length)}</span>` : `cabem até ${cabem}`}</span></div>
         <div class="kpi"><span class="rotulo">Sombra</span><b>${r ? n(r.perdaSombra * 100, 1) + '%' : '—'}</b><span class="sutil">perda no ano</span></div>
         <div class="kpi"><span class="rotulo">Aproveitamento</span><b>${r ? n(r.tsrfMedio * 100) + '%' : '—'}</b><span class="sutil">sol + direção (TSRF)</span></div>
         <div class="kpi"><span class="rotulo">Geração</span><b>${r ? n(r.geracaoAnual / 12) + ' kWh' : '—'}</b><span class="sutil">${r ? 'por mês · ' + (proj.pvgis ? 'PVGIS' : 'estimada') : 'calcule no passo 4'}</span></div></div>
@@ -392,6 +447,7 @@
       if (t.id === 't3Hora') { st.hora = +t.value; $('#t3HoraO', ov).textContent = hhmm(st.hora); if (viewer) viewer.sol(st.di, st.hora); grafico(); return; }
       if (t.name === 't3Cor') { st.corPlacas = t.value; if (viewer) viewer.cor(t.value); return; }
       if (t.id === 't3Mapa') { st.mapas = t.checked; mapasSombra(); }
+      if (t.id === 't3SoMao') { proj.layout.soMao = t.checked; recompor(); painel(); }
     }
     async function acao(a, el) {
       if (a === 'buscar') return buscar({ endereco: $('#t3End', ov).value });
@@ -416,6 +472,10 @@
       if (a === 'apagarB') { proj.blocos = proj.blocos.filter((b) => b.id !== st.sel.id); st.sel = null; sujar(); painel(); desenhar(); return; }
       if (a === 'apagarO') { proj.obst = proj.obst.filter((o) => o.id !== st.sel.id); st.sel = null; sujar(); painel(); desenhar(); return; }
       if (a === 'calcular') { st.analisado = false; return analisar(); }
+      if (a === 'oriMao') { st.oriMao = el.dataset.v; st.ferr = 'mao'; painel(); return; }
+      if (a === 'limparMao') { proj.layout.manuais = []; proj.layout.soMao = undefined; sujar(); painel(); return; }
+      if (a === 'oriFace') { const L = proj.layout, id = el.dataset.id, f = U.faces(proj).find((x) => x.id === id), atual = L.oriFace[id] || (f && f.orientacao) || 'retrato'; L.oriFace[id] = atual === 'paisagem' ? 'retrato' : 'paisagem'; sujar(); painel(); return; }
+      if (a === 'preferir') { const L = proj.layout; L.preferir = L.preferir === el.dataset.id ? null : el.dataset.id; if (L.soMao) L.soMao = false; recompor(); painel(); return; }
       if (a === 'limparManual') { proj.layout.forcarOn = []; proj.layout.forcarOff = []; recompor(); painel(); return; }
       if (a === 'modoCabo') { proj.cabos.modo = el.dataset.v; painel(); desenhar(); return; }
       if (a === 'arranjo') { proj.layout.arranjo = el.dataset.v; recompor(); painel(); return; }

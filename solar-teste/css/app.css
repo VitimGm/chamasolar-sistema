@@ -234,3 +234,13 @@ body.com-barra { padding-bottom: 150px; }
 .ga-tab td { padding: 2px 4px; }
 .ga-tab .v { text-align: right; }
 .ga-tab input { padding: 5px 8px; text-align: right; max-width: 100%; }
+/* passo Placas: ranking das águas */
+.t3-rank { display: grid; gap: 6px; margin: 8px 0; }
+.t3-rank-l { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border-radius: 10px; background: #ffffff0a; }
+.t3-rank-l > i { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.t3-rank-n { flex: 1; min-width: 160px; font-size: 13px; font-weight: 600; }
+.t3-rank-n small { display: block; font-weight: 400; opacity: .75; }
+.t3-flut { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); display: flex; gap: 4px; align-items: center; padding: 5px; border-radius: 999px; background: #0d1424e6; border: 1px solid #ffffff2a; z-index: 3; flex-wrap: nowrap; justify-content: center; max-width: calc(100% - 64px); overflow-x: auto; }
+.t3-flut button { border: 0; background: transparent; color: #fff; font: 600 12px system-ui; padding: 6px 9px; white-space: nowrap; border-radius: 999px; cursor: pointer; }
+.t3-flut button[aria-pressed="true"] { background: var(--sol, #ff8a3d); color: #1a1205; }
+.t3-flut span { color: #fffc; font: 600 12px system-ui; padding: 0 6px; }

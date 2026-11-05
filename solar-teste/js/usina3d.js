@@ -272,7 +272,7 @@
       if (!b.usar || b.incl > 45 || b.pts.length < 3) return;
       const util = recuar(internoDe(b), borda); if (areaPol(util) < 1) return;
       const d = desce(b.az), a = [-d[1], d[0]], cosI = Math.cos(rad(b.incl));
-      const retr = (b.orientacao || 'retrato') === 'retrato', w = retr ? mod.l : mod.c, hs = retr ? mod.c : mod.l, hg = hs * cosI;
+      const retr = (((L.oriFace || {})[b.id]) || b.orientacao || 'retrato') === 'retrato', w = retr ? mod.l : mod.c, hs = retr ? mod.c : mod.l, hg = hs * cosI;
       const us = util.map((p) => p[0] * a[0] + p[1] * a[1]), vs = util.map((p) => p[0] * d[0] + p[1] * d[1]);
       const u0 = Math.min(...us), u1 = Math.max(...us), v0 = Math.min(...vs), v1 = Math.max(...vs);
       // cada fileira usa o trecho do telhado que cabe nela (no trapézio do 4 águas a fileira de cima é menor)
@@ -308,7 +308,56 @@
       melhor.forEach((s) => { s.y = alturaEm(b, s.c) + 0.1; s.n = normalPlano(b.incl, b.az); });
       out.push(...melhor);
     });
-    return out;
+    const mans = (L.manuais || []).map((m) => placaManual(proj, m, todos)).filter(Boolean);
+    if (!mans.length) return out;
+    return [...mans, ...out.filter((v) => !mans.some((m) => cruzam(m.cantos, v.cantos)))];
+  }
+
+  /* ---------- placas colocadas à mão ----------
+     Em qualquer ponto de uma água, em retrato ou paisagem, sempre no plano do telhado
+     (mesma inclinação e caimento da água onde caiu o centro da placa). */
+  function segCruza(p1, p2, p3, p4) { const d = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]); const d1 = d(p3, p4, p1), d2 = d(p3, p4, p2), d3 = d(p1, p2, p3), d4 = d(p1, p2, p4); return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0)); }
+  function cruzam(A, B) { // dois retângulos (na planta) se tocam?
+    if (A.some((q) => dentro(q, B)) || B.some((q) => dentro(q, A))) return true;
+    for (let i = 0; i < A.length; i++) for (let j = 0; j < B.length; j++) if (segCruza(A[i], A[(i + 1) % A.length], B[j], B[(j + 1) % B.length])) return true;
+    return false;
+  }
+  /* a água em que o ponto cai (a mais alta, se houver telhado em cima de telhado) */
+  function faceEm(proj, p, todos) { let melhor = null, y = -1; (todos || faces(proj)).forEach((f) => { if (f.pts.length >= 3 && dentro(p, f.pts)) { const h = alturaEm(f, p); if (h > y) { y = h; melhor = f; } } }); return melhor; }
+  function placaManual(proj, m, todos) {
+    const L = proj.layout || {}, mod = L.modulo || { c: 2.382, l: 1.134 }, lista = todos || faces(proj);
+    let b = lista.find((f) => f.id === m.b); if (!b || !dentro([m.x, m.z], b.pts)) b = faceEm(proj, [m.x, m.z], lista);
+    if (!b) return null;
+    const d = desce(b.az), a = [-d[1], d[0]], cosI = Math.cos(rad(b.incl)), retr = m.ori !== 'paisagem', w = retr ? mod.l : mod.c, hs = retr ? mod.c : mod.l, hg = hs * cosI, c = [m.x, m.z];
+    const cantos = [[-w / 2, -hg / 2], [w / 2, -hg / 2], [w / 2, hg / 2], [-w / 2, hg / 2]].map(([du, dv]) => [c[0] + du * a[0] + dv * d[0], c[1] + du * a[1] + dv * d[1]]);
+    return { k: 'm:' + m.id, manual: true, mid: m.id, ori: retr ? 'retrato' : 'paisagem', bi: -1, b: b.id, c, cantos, i: 0, linha: 0, w, hs, a, d, incl: b.incl, az: b.az,
+      y: alturaEm(b, c) + 0.1, n: normalPlano(b.incl, b.az), fora: !cantos.every((q) => dentro(q, b.pts)) };
+  }
+  /* imã: a placa nova encosta na vizinha da mesma água (mesma fileira ou coluna, com o espaço do grampo) */
+  function alinharManual(proj, vizinhas, m) {
+    const L = proj.layout || {}, mod = L.modulo || { c: 2.382, l: 1.134 }, b = faceEm(proj, [m.x, m.z]); if (!b) return m;
+    const d = desce(b.az), a = [-d[1], d[0]], cosI = Math.cos(rad(b.incl)), retr = m.ori !== 'paisagem', w = retr ? mod.l : mod.c, hg = (retr ? mod.c : mod.l) * cosI;
+    const gU = (L.entrePlacasMm ?? 20) / 1000, gV = ((L.entreFileirasMm ?? 20) / 1000) * cosI;
+    let melhor = null, dm = Infinity;
+    vizinhas.filter((s) => s.b === b.id).forEach((s) => {
+      const du = (m.x - s.c[0]) * a[0] + (m.z - s.c[1]) * a[1], dv = (m.x - s.c[0]) * d[0] + (m.z - s.c[1]) * d[1], pu = (s.w + w) / 2 + gU, pv = (s.hs * cosI + hg) / 2 + gV;
+      const cand = [];
+      if (Math.abs(dv) < pv * 0.6 && Math.abs(du) < pu * 1.6) cand.push([Math.sign(du || 1) * pu, 0]); // ao lado, na mesma fileira
+      if (Math.abs(du) < pu * 0.6 && Math.abs(dv) < pv * 1.6) cand.push([0, Math.sign(dv || 1) * pv]); // acima ou abaixo, na mesma coluna
+      cand.forEach(([cu, cv]) => { const dist = Math.hypot(du - cu, dv - cv); if (dist < dm) { dm = dist; melhor = [s.c[0] + cu * a[0] + cv * d[0], s.c[1] + cu * a[1] + cv * d[1]]; } });
+    });
+    return melhor ? { ...m, x: Math.round(melhor[0] * 1000) / 1000, z: Math.round(melhor[1] * 1000) / 1000, b: b.id } : { ...m, b: b.id };
+  }
+  /* nota de cada água: sol do ano pela direção e inclinação (sem sombra), em relação à melhor posição possível */
+  function notaFaces(proj, vagasLista) {
+    const am = amostras(proj.lat || -21.18, proj.kd || KD_PADRAO, proj.H || H_PADRAO);
+    const E = (n, incl) => { const cb = Math.cos(rad(incl)); return am.reduce((t, x) => t + x.peso * (x.dni * Math.max(0, dot3(x.dir, n)) + x.dhi * (1 + cb) / 2 + x.ghi * ALBEDO * (1 - cb) / 2), 0); };
+    const lat = Math.abs(proj.lat || 21.18), ideal = Math.max(E(normalPlano(lat, (proj.lat || -21) < 0 ? 0 : 180), lat), 1);
+    return faces(proj).filter((f) => f.pts.length >= 3).map((f) => {
+      const vs = (vagasLista || []).filter((s) => s.b === f.id), an = vs.filter((s) => s.analise), dir = E(normalPlano(f.incl, f.az), f.incl) / ideal;
+      const sol = an.length ? an.reduce((t, s) => t + s.analise.tsrf, 0) / an.length : null;
+      return { id: f.id, pai: f.pai, nome: f.nome, az: f.az, incl: f.incl, usar: f.usar !== false, area: areaPol(f.pts), direcao: dir, nota: sol ?? dir, comSombra: sol != null, cabem: vs.filter((s) => !s.manual).length, manuais: vs.filter((s) => s.manual).length };
+    }).sort((x, y) => y.nota - x.nota);
   }
 
   /* ---------- sol: 7 dias que representam o ano (simetria da declinação) ---------- */
@@ -476,7 +525,9 @@
      "sol": placa a placa pelo melhor sol, em faixas de 2,5% (pode sair salteado). */
   function escolher(lista, qtd, L = {}) {
     const on = marcados(lista, L.forcarOn), off = marcados(lista, L.forcarOff);
-    const ok = lista.filter((s) => !off.has(s.k)), fixas = ok.filter((s) => on.has(s.k)), livres = ok.filter((s) => !on.has(s.k));
+    const ok = lista.filter((s) => !off.has(s.k)), fixas = ok.filter((s) => s.manual || on.has(s.k)), livres = ok.filter((s) => !s.manual && !on.has(s.k));
+    if (L.soMao) return fixas; // o vendedor coloca todas: nada é completado sozinho
+    if (L.preferir) { const pref = livres.filter((s) => s.b === L.preferir || String(s.b).split('~')[0] === L.preferir); if (pref.length) { const resto = escolher(livres.filter((s) => !pref.includes(s)), Math.max(0, qtd - fixas.length - pref.length), { ...L, preferir: null, forcarOn: [], forcarOff: [] }); return [...fixas, ...escolher(pref, Math.max(0, qtd - fixas.length), { ...L, preferir: null, forcarOn: [], forcarOff: [] }), ...resto].slice(0, Math.max(qtd, fixas.length)); } }
     const t = (s) => (s.analise ? s.analise.tsrf : 1), faixa = (s) => Math.round(t(s) * 40), n = Math.max(qtd, fixas.length);
     const notaAguas = (ls) => { const porB = {}; ls.forEach((s) => { (porB[s.b] = porB[s.b] || []).push(s); }); return Object.entries(porB).map(([b, v]) => { const ts = v.map(t).sort((x, y) => y - x), k = Math.max(1, Math.min(ts.length, qtd)); return { b, v, media: ts.slice(0, k).reduce((a, c) => a + c, 0) / k, cap: v.length }; }).sort((x, y) => Math.round(y.media * 50) - Math.round(x.media * 50) || y.cap - x.cap); };
     if (L.arranjo === 'sol') {
@@ -685,5 +736,5 @@
     };
   }
 
-  raiz.Usina3D = { marcados, faces, retanguloDe, pontoDe, pistasGoogle, carregarThree, fotoSatelite, reduzir, lerMetadados, colocarDrone, resolucao, paraMetros, paraLatLng, medidasModulo, centroide, dentro, areaPol, recuar, retangulo3, desce, alturaEm, topoTelhado, topoParede, normalPlano, novoId, blocosDoGoogle, migrar, OBST, baseObst, pegadaObst, vagas, DIAS, KD_PADRAO, H_PADRAO, posSol, amostras, oclusores, bate, pontosPlaca, analisar, escolher, gerar, chaveFace, corTsrf, mapaSombra, criar };
+  raiz.Usina3D = { marcados, faces, retanguloDe, pontoDe, pistasGoogle, carregarThree, fotoSatelite, reduzir, lerMetadados, colocarDrone, resolucao, paraMetros, paraLatLng, medidasModulo, centroide, dentro, areaPol, recuar, retangulo3, desce, alturaEm, topoTelhado, topoParede, normalPlano, novoId, blocosDoGoogle, migrar, OBST, baseObst, pegadaObst, vagas, DIAS, KD_PADRAO, H_PADRAO, posSol, amostras, oclusores, bate, pontosPlaca, analisar, escolher, gerar, placaManual, alinharManual, cruzam, faceEm, notaFaces, chaveFace, corTsrf, mapaSombra, criar };
 })(window);
