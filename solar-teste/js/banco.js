@@ -5,6 +5,7 @@
    ===================================================================== */
 (function (raiz) {
   'use strict';
+  const AVULSO = (o) => !!o && (o.tipo === 'servico' || o.tipo === 'manutencao');
   const D = raiz.DadosTeste;
   const PREFIXO = 'sol2_';
 
@@ -28,14 +29,16 @@
     salvarParametros(p) { gravar('parametros', { ...ler('parametros', {}), ...json(p) }); },
     zerarParametros() { gravar('parametros', {}); },
 
-    orcamentos() { return ler('orcamentos', []); },
-    obter(id) { return this.orcamentos().find((o) => o.id === id) || null; },
-    porToken(token) { return this.orcamentos().find((o) => o.token === token) || null; },
+    todos() { return ler('orcamentos', []); },
+    orcamentos() { return this.todos().filter((o) => !AVULSO(o)); }, // serviços e manutenções ficam fora das listas de energia solar
+    avulsos() { return this.todos().filter(AVULSO); },
+    obter(id) { return this.todos().find((o) => o.id === id) || null; },
+    porToken(token) { return this.todos().find((o) => o.token === token) || null; },
     salvar(o) {
-      const lista = this.orcamentos();
+      const lista = this.todos();
       if (!o.id) {
-        const n = lista.reduce((m, x) => Math.max(m, +String(x.id).replace(/\D/g, '') || 0), 0) + 1;
-        o.id = 'ORC-' + String(n).padStart(4, '0');
+        const pre = AVULSO(o) ? 'SRV-' : 'ORC-', n = lista.filter((x) => String(x.id).startsWith(pre)).reduce((m, x) => Math.max(m, +String(x.id).replace(/\D/g, '') || 0), 0) + 1;
+        o.id = pre + String(n).padStart(4, '0');
         o.token = o.token || novoToken();
         o.criadoEm = o.criadoEm || agora();
       }

@@ -1342,13 +1342,104 @@
     };
   }
 
+  /* ======================= SERVIÇOS E MANUTENÇÃO (orçamentos avulsos) ======================= */
+  const AV = () => window.Avulso;
+  const linkServico = (o, vendedor) => new URL(`proposta-servico.html?t=${o.token}${vendedor ? '&v=1' : ''}`, location.href).href;
+  const ST_AV = { novo: ['Rascunho', 'var(--texto-3)'], proposta: ['Enviada', 'var(--azul, #3db4ff)'], aceito: ['Aceita ✓', 'var(--verde, #3ddc97)'], perdido: ['Perdida', 'var(--laranja)'] };
+  function servicosPag() {
+    const lista = B.avulsos().filter((o) => !o.apagado).sort((x, y) => String(y.atualizadoEm || '').localeCompare(String(x.atualizadoEm || '')));
+    const tot = (o) => AV().calcular(o, P()).total, abertos = lista.filter((o) => o.status === 'proposta'), aceitos = lista.filter((o) => o.status === 'aceito');
+    app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Serviços e manutenção</h1><p class="sutil">Orçamentos fora do kit solar: manutenção por placa, inversor híbrido, materiais e mão de obra. Cada um vira uma proposta com link.</p></div>
+        <div class="linha-h"><a class="btn vidro" href="#servico-novo-manutencao">🧽 Nova manutenção</a><a class="btn sol" href="#servico-novo-servico">🔧 Novo serviço / itens</a></div></div>
+      <div class="kpis entra"><div class="kpi destaque"><span class="rotulo">Em aberto</span><b>${abertos.length}</b><span class="sutil">${brl(abertos.reduce((t, o) => t + tot(o), 0))} em propostas</span></div>
+        <div class="kpi"><span class="rotulo">Aceitas</span><b>${aceitos.length}</b><span class="sutil">${brl(aceitos.reduce((t, o) => t + tot(o), 0))}</span></div>
+        <div class="kpi"><span class="rotulo">Manutenções</span><b>${lista.filter((o) => o.tipo === 'manutencao').length}</b><span class="sutil">R$ ${n(P().manutencaoPorPlaca || 25)} por placa</span></div>
+        <div class="kpi"><span class="rotulo">Serviços</span><b>${lista.filter((o) => o.tipo === 'servico').length}</b><span class="sutil">itens fora do kit</span></div></div>
+      <div class="ops-v duas">${lista.map((o) => { const c = AV().calcular(o, P()), [stt, cor] = ST_AV[o.status] || ST_AV.novo, ev = B.eventos(o.token), viu = ev.filter((e) => e.tipo === 'abriu').length;
+        return `<a class="op-v" href="#servico-${o.id}" style="text-decoration:none;color:inherit"><div class="entre"><b style="font-size:17px">${o.tipo === 'manutencao' ? '🧽' : '🔧'} ${esc(o.nome || 'Sem nome')}</b><span class="mini" style="color:${cor};font-weight:700">${stt}</span></div>
+          <span class="mini">${esc(o.id)} · ${esc(o.titulo || '')} · ${esc(o.cidade || '')}</span><div class="preco" style="margin-top:8px">${brl(c.total, 2)}</div>
+          <span class="mini">${o.tipo === 'manutencao' ? `${c.placas} placas${c.plano ? ` · plano a cada ${c.plano.meses} meses` : ''}` : `margem real ${n(c.margemReal * 100, 1)}% · lucro ${brl(c.lucro)}`}${viu ? ` · cliente abriu ${viu}×` : ''}</span></a>`; }).join('') || '<p class="sutil">Nenhum ainda. Comece por uma manutenção ou um serviço.</p>'}</div>`;
+  }
+  let avDeb = null;
+  function servicoEd(arg) {
+    let o;
+    if (arg.startsWith('novo-')) { o = AV().novo(arg.slice(5) === 'manutencao' ? 'manutencao' : 'servico', P()); B.salvar(o); history.replaceState(null, '', '#servico-' + o.id); }
+    else o = B.obter(arg);
+    if (!o) { app.innerHTML = '<p class="sutil">Orçamento não encontrado.</p>'; return; }
+    const M = o.tipo === 'manutencao', cid = Object.keys(D.cidades || {});
+    const campo = (k, rot, tipo = 'text', extra = '') => `<label class="campo"><span>${rot}</span><input type="${tipo}" data-av="${k}" value="${esc(o[k] ?? '')}" ${tipo === 'number' ? 'step="any" min="0"' : ''} ${extra}></label>`;
+    const itensHtml = () => M ? '' : `<div class="painel"><div class="entre"><span class="rotulo">Itens (digite o custo; o preço sai com margem e imposto)</span><button class="link" data-av-add="item">＋ item</button></div>
+        <div class="av-itens">${(o.itens || []).map((i, k) => `<div class="av-item"><input type="text" data-it="${k}" data-k="desc" value="${esc(i.desc)}" placeholder="Descrição (ex.: Inversor híbrido Deye 5 kW)">
+          <select data-it="${k}" data-k="cat">${Object.entries(AV().CATS).map(([v, t]) => `<option value="${v}" ${i.cat === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+          <input type="number" step="any" min="0" data-it="${k}" data-k="qtd" value="${i.qtd}" title="quantidade"><input type="text" data-it="${k}" data-k="un" value="${esc(i.un || '')}" placeholder="un" title="unidade">
+          <input type="number" step="any" min="0" data-it="${k}" data-k="custo" value="${i.custo || ''}" placeholder="custo unit. R$"><button class="link" data-av-del="${k}" title="tirar">✕</button></div>`).join('')}</div>
+        <div class="grade g2" style="margin-top:10px"><label class="campo"><span>Margem (%)<small style="display:block;font-weight:400;opacity:.75">imposto de venda ${n((P().impostoTotal ?? 0.1) * 100, 1)}% · de serviço ${n((P().impostoServico ?? 0.06) * 100, 1)}%</small></span><input type="number" step="any" min="0" data-av="margem" data-pct="1" value="${Math.round((o.margem ?? 0.2) * 1000) / 10}"></label><label class="campo"><span>O que está incluso (um por linha)</span><textarea data-av="inclui" rows="3">${esc((o.inclui || []).join('\n'))}</textarea></label></div></div>`;
+    const manutHtml = () => !M ? '' : `<div class="painel"><span class="rotulo">Manutenção</span>
+        <div class="grade g2" style="margin-top:8px">${campo('placas', 'Quantas placas o sistema tem', 'number')}${campo('porPlaca', 'Preço por placa (R$)', 'number')}${campo('kwp', 'Potência do sistema (kWp, opcional)', 'number')}${campo('marcaInversor', 'Inversor (marca, opcional)')}</div>
+        <div class="entre" style="margin-top:10px"><span class="rotulo">O que você observou (custos extras)</span><button class="link" data-av-add="extra">＋ extra</button></div>
+        <div class="av-itens">${(o.extras || []).map((x, k) => `<div class="av-item av-extra"><input type="text" data-ex="${k}" data-k="desc" value="${esc(x.desc)}" placeholder="ex.: telhado alto, precisa de andaime / troca de 2 conectores MC4"><input type="number" step="any" min="0" data-ex="${k}" data-k="valor" value="${x.valor || ''}" placeholder="R$"><button class="link" data-av-delx="${k}">✕</button></div>`).join('') || '<p class="mini">Nada a mais? Deixe vazio.</p>'}</div>
+        <div class="grade g2" style="margin-top:10px"><label class="campo"><span>O que a manutenção inclui (um por linha)</span><textarea data-av="checklist" rows="5">${esc((o.checklist || []).join('\n'))}</textarea></label>
+          <div><label class="alternar"><span><b>Oferecer plano recorrente</b><br><span class="sutil">limpeza periódica com desconto</span></span><input type="checkbox" id="avPlano" ${o.plano && o.plano.ativo ? 'checked' : ''}></label>
+          ${o.plano && o.plano.ativo ? `<div class="grade g2" style="margin-top:8px"><label class="campo"><span>A cada (meses)</span><input type="number" min="1" data-pl="meses" value="${o.plano.meses}"></label><label class="campo"><span>Desconto (%)</span><input type="number" min="0" data-pl="desconto" value="${Math.round((o.plano.desconto || 0) * 100)}"></label></div>` : ''}</div></div></div>`;
+    const resumo = () => { const c = AV().calcular(o, P());
+      return `<div class="painel av-resumo"><span class="rotulo">Valor da proposta</span><div class="preco" style="font-size:34px;margin:6px 0">${brl(c.total, 2)}</div>
+        ${c.linhas.map((l) => `<div class="entre mini"><span>${esc(l.desc)}${l.qtd > 1 && !M ? ` × ${n(l.qtd)}` : ''}</span><b>${brl(l.total, 2)}</b></div>`).join('')}
+        ${M ? (c.plano ? `<p class="mini" style="margin-top:8px">Plano: ${brl(c.plano.porVisita, 2)} por visita, ${c.plano.visitasAno}× por ano = ${brl(c.plano.porAno, 2)}/ano</p>` : '') : `<div class="numeros4" style="margin-top:10px"><div><span>Custo</span><b>${brl(c.custo)}</b></div><div><span>Impostos</span><b>${brl(c.imposto)}</b></div><div><span>Lucro</span><b style="color:${c.lucro < 0 ? 'var(--laranja)' : 'inherit'}">${brl(c.lucro)}</b></div><div><span>Margem real</span><b>${n(c.margemReal * 100, 1)}%</b></div></div>`}
+        <label class="campo" style="margin-top:10px"><span>Ajustar o preço final (opcional)</span><input type="number" step="any" min="0" data-av="precoManual" value="${o.precoManual || ''}" placeholder="${n(c.calculado, 2)}"></label>
+        <p class="mini">Cartão: ${c.pagamento.parcelas}× de ${brl(c.pagamento.parcela, 2)} (${brl(c.pagamento.cartaoTotal, 2)}) · PIX ${brl(c.pagamento.pix, 2)}</p>
+        <div class="acoes-r" style="margin-top:12px;flex-wrap:wrap"><button class="btn sol" id="avEnviar">📲 Enviar no WhatsApp</button><a class="btn vidro" href="${linkServico(o, true)}" target="_blank" id="avVer">👁 Ver a proposta</a><button class="btn vidro" id="avCopiar">🔗 Copiar link</button></div>
+        <div class="chips" style="margin-top:10px">${Object.entries(ST_AV).map(([v, [t]]) => `<button class="chip ${o.status === v ? 'sel' : ''}" data-avst="${v}">${t}</button>`).join('')}</div>
+        ${(() => { const ac = B.eventos(o.token).find((e) => e.tipo === 'aceite'); return ac ? `<div class="aviso ok" style="margin-top:8px">✓ O cliente aceitou em ${new Date(ac.em).toLocaleString('pt-BR')}: ${(ac.dados || {}).pagamento === 'cartao' ? 'cartão' : 'PIX'}${(ac.dados || {}).plano ? ', com plano' : ''}, ${brl((ac.dados || {}).valor || 0, 2)}.${o.status !== 'aceito' ? ' Toque em "Aceita ✓" abaixo para fechar.' : ''}</div>` : ''; })()}
+        <p class="mini" style="margin-top:8px">${B.eventos(o.token).filter((e) => e.tipo === 'abriu').length ? `O cliente abriu a proposta ${B.eventos(o.token).filter((e) => e.tipo === 'abriu').length}×.` : 'O cliente ainda não abriu.'}</p></div>`; };
+    const tela = () => {
+      app.innerHTML = `${cabCelular()}<div class="cab entra"><div><a class="link" href="#servicos">← Serviços</a><h1>${M ? '🧽 Manutenção' : '🔧 Serviço / itens avulsos'} <span class="sutil" style="font-size:16px">${esc(o.id)}</span></h1></div>
+          <div class="linha-h"><button class="btn vidro pequeno" id="avApagar">Apagar</button></div></div>
+        <div class="av-grade"><div>
+          <div class="painel"><span class="rotulo">Cliente</span><div class="grade g2" style="margin-top:8px">${campo('nome', 'Nome')}${campo('whatsapp', 'WhatsApp', 'tel')}
+            <label class="campo"><span>Cidade</span><input type="text" data-av="cidade" list="avCid" value="${esc(o.cidade || '')}"><datalist id="avCid">${cid.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></label>
+            ${campo('distanciaKm', 'Distância da Chama Solar (km)', 'number')}${campo('deslocamento', `Deslocamento (R$) <small style="font-weight:400;opacity:.75">vazio = km × 2 × R$ ${n(P().custoKm || 1, 2)}</small>`, 'number')}${campo('titulo', 'Título da proposta')}</div></div>
+          ${manutHtml()}${itensHtml()}
+          <div class="painel"><span class="rotulo">Condições</span><div class="grade g2" style="margin-top:8px">${campo('prazo', 'Prazo')}${campo('validadeDias', 'Validade (dias)', 'number')}${campo('parcelasCartao', 'Parcelas no cartão', 'number')}
+            <label class="campo"><span>Observações para o cliente</span><textarea data-av="observacoes" rows="3">${esc(o.observacoes || '')}</textarea></label></div></div>
+        </div><div class="av-lado" id="avResumo">${resumo()}</div></div>`;
+      ligar();
+    };
+    const salvar = (redesenhar) => { B.salvar(o); clearTimeout(avDeb); if (redesenhar) tela(); else avDeb = setTimeout(() => { const r = $('#avResumo'); if (r) { r.innerHTML = resumo(); ligarResumo(); } }, 250); };
+    const ligarResumo = () => {
+      app.querySelectorAll('#avResumo [data-av]').forEach((x) => x.oninput = () => { o.precoManual = +x.value || null; B.salvar(o); clearTimeout(avDeb); avDeb = setTimeout(() => { const foco = document.activeElement === x; const r = $('#avResumo'); r.innerHTML = resumo(); ligarResumo(); if (foco) { const y = r.querySelector('[data-av="precoManual"]'); y.focus(); y.setSelectionRange(y.value.length, y.value.length); } }, 700); });
+      $('#avCopiar').onclick = async () => { if (o.status === 'novo') { o.status = 'proposta'; o.enviadoEm = new Date().toISOString(); B.salvar(o); } try { await navigator.clipboard.writeText(linkServico(o)); toast('Link copiado'); } catch { toast(linkServico(o)); } };
+      $('#avEnviar').onclick = () => { const c = AV().calcular(o, P()); if (o.status === 'novo') { o.status = 'proposta'; o.enviadoEm = new Date().toISOString(); } B.salvar(o);
+        const txt = `Olá, ${(o.nome || '').split(' ')[0] || 'tudo bem'}! Aqui é o Victor, da Chama Solar. Preparei a proposta de ${M ? 'manutenção do seu sistema solar' : (o.titulo || 'serviço').toLowerCase()}: ${brl(c.total, 2)}. Está tudo explicado neste link, é só abrir: ${linkServico(o)}`;
+        const tel = String(o.whatsapp || '').replace(/\D/g, '').replace(/^55/, ''); window.open('https://wa.me/' + (tel ? '55' + tel : '') + '?text=' + encodeURIComponent(txt), '_blank', 'noopener'); B.interacao && B.interacao(o.id, 'whatsapp', 'Proposta de serviço enviada'); };
+      app.querySelectorAll('[data-avst]').forEach((b) => b.onclick = () => { o.status = b.dataset.avst; if (o.status === 'proposta' && !o.enviadoEm) o.enviadoEm = new Date().toISOString(); salvar(true); });
+    };
+    const ligar = () => {
+      app.querySelectorAll('.av-grade > div:first-child [data-av]').forEach((x) => x.oninput = () => { const k = x.dataset.av; let v = x.value;
+        if (k === 'inclui' || k === 'checklist') v = v.split('\n').map((t) => t.trim()).filter(Boolean);
+        else if (x.type === 'number') v = x.value === '' ? (k === 'deslocamento' ? null : 0) : +x.value;
+        if (x.dataset.pct) v = (+x.value || 0) / 100;
+        if (k === 'cidade' && D.cidades && D.cidades[x.value]) { o.distanciaKm = D.cidades[x.value].km; const dk = app.querySelector('[data-av="distanciaKm"]'); if (dk) dk.value = o.distanciaKm; }
+        o[k] = v; salvar(); });
+      app.querySelectorAll('[data-it]').forEach((x) => { const ev = x.tagName === 'SELECT' ? 'onchange' : 'oninput'; x[ev] = () => { const i = o.itens[+x.dataset.it]; i[x.dataset.k] = x.type === 'number' ? +x.value || 0 : x.value; salvar(); }; });
+      app.querySelectorAll('[data-ex]').forEach((x) => x.oninput = () => { const e = o.extras[+x.dataset.ex]; e[x.dataset.k] = x.type === 'number' ? +x.value || 0 : x.value; salvar(); });
+      app.querySelectorAll('[data-av-add]').forEach((b) => b.onclick = () => { if (b.dataset.avAdd === 'item') o.itens.push({ desc: '', cat: 'material', qtd: 1, un: 'un', custo: 0 }); else (o.extras = o.extras || []).push({ desc: '', valor: 0 }); salvar(true); });
+      app.querySelectorAll('[data-av-del]').forEach((b) => b.onclick = () => { o.itens.splice(+b.dataset.avDel, 1); salvar(true); });
+      app.querySelectorAll('[data-av-delx]').forEach((b) => b.onclick = () => { o.extras.splice(+b.dataset.avDelx, 1); salvar(true); });
+      const pl = $('#avPlano'); if (pl) pl.onchange = () => { o.plano = { ...(o.plano || { meses: 6, desconto: 0.1 }), ativo: pl.checked }; salvar(true); };
+      app.querySelectorAll('[data-pl]').forEach((x) => x.oninput = () => { o.plano[x.dataset.pl] = x.dataset.pl === 'desconto' ? (+x.value || 0) / 100 : +x.value || 6; salvar(); });
+      $('#avApagar').onclick = (ev) => { const b = ev.currentTarget; if (!b.dataset.c) { b.dataset.c = 1; b.textContent = 'Tocar de novo para apagar'; return; } o.status = 'perdido'; o.apagado = true; B.salvar(o); location.hash = '#servicos'; };
+      ligarResumo();
+    };
+    tela();
+  }
+
   /* ======================= ROTAS ======================= */
   function render() {
     const h = location.hash.slice(1) || 'dia';
-    const [rota, arg] = h.startsWith('lead-') ? ['lead', h.slice(5)] : [h, null];
-    document.querySelectorAll('[data-rota]').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === (rota === 'lead' ? 'painel' : rota)));
+    const [rota, arg] = h.startsWith('lead-') ? ['lead', h.slice(5)] : h.startsWith('servico-') ? ['servico', h.slice(8)] : [h, null];
+    document.querySelectorAll('[data-rota]').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === (rota === 'lead' ? 'painel' : rota === 'servico' ? 'servicos' : rota)));
     if (rota !== 'novo') { document.body.classList.remove('com-barra'); $('#barra').hidden = true; }
-    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') diaPag(); else if (rota === 'parametros') parametrosPag(); else painel(); };
+    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') diaPag(); else if (rota === 'servicos') servicosPag(); else if (rota === 'servico') servicoEd(arg); else if (rota === 'parametros') parametrosPag(); else painel(); };
     if (document.startViewTransition) {
       const t = document.startViewTransition(ir);
       [t.ready, t.finished, t.updateCallbackDone].forEach((pr) => pr && pr.catch(() => {})); // navegação rápida cancela a animação, sem problema

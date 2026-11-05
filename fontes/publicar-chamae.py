@@ -46,6 +46,9 @@ idx = idx.replace('</head>', '  <meta name="robots" content="noindex">\n</head>'
 prop = (ORIGEM / 'proposta.html').read_text(encoding='utf-8')
 (DEST / 'proposta.html').write_text(carregar_depois(prop, 'proposta.js', 'proposta'), encoding='utf-8')
 
+serv = (ORIGEM / 'proposta-servico.html').read_text(encoding='utf-8')
+(DEST / 'proposta-servico.html').write_text(carregar_depois(serv, 'proposta-servico.js', 'proposta'), encoding='utf-8')
+
 # formulário público de captação de leads (só usa a função sol_novo_lead)
 shutil.copy2(ORIGEM / 'captacao.html', DEST / 'captacao.html')
 

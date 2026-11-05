@@ -9,6 +9,7 @@
    ===================================================================== */
 (function (raiz) {
   'use strict';
+  const AVULSO = (o) => !!o && (o.tipo === 'servico' || o.tipo === 'manutencao');
   const D = raiz.DadosTeste;
   const SB = 'https://jmpvmyyokikpwphwylob.supabase.co';
   const KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImptcHZteXlva2lrcHdwaHd5bG9iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIyMTc1MzEsImV4cCI6MjEwNzc5MzUzMX0.e5XT2R7eOj3x-ZYcRFkY4OFg0QEr3_guxT6-W0xpnfY';
@@ -78,6 +79,11 @@
     return z;
   }
   function vitrineDe(o) {
+    if (AVULSO(o)) { // serviço/manutenção: só os preços finais, nunca custo e margem
+      const p = Banco.parametros(), c = raiz.Avulso ? raiz.Avulso.calcular(o, p) : null; if (!c) return null;
+      const cliente = raiz.Avulso.publico(o, c);
+      return { orc: json(cliente), parametros: { tarifaKwh: p.tarifaKwh, taxaPagamento: { cartao: (p.taxaPagamento || {}).cartao ?? 0.09 } }, geradoEm: agora() };
+    }
     const C = raiz.Conversao;
     if (!C || !o.kitsFechados || !o.kitsFechados.some(Boolean)) return null;
     const p = Banco.parametros();
@@ -130,14 +136,16 @@
     },
     zerarParametros() { this.salvarParametros({}); },
 
-    orcamentos() { return publico ? [publico.orc] : orcs; },
-    obter(id) { return this.orcamentos().find((o) => o.id === id) || null; },
-    porToken(t) { return this.orcamentos().find((o) => o.token === t) || null; },
+    todos() { return publico ? [publico.orc] : orcs; },
+    orcamentos() { return this.todos().filter((o) => !AVULSO(o)); }, // serviços e manutenções ficam fora das listas de energia solar
+    avulsos() { return this.todos().filter(AVULSO); },
+    obter(id) { return this.todos().find((o) => o.id === id) || null; },
+    porToken(t) { return this.todos().find((o) => o.token === t) || null; },
     salvar(o) {
       if (publico) return o;
       if (!o.id) {
-        const n = orcs.reduce((m, x) => Math.max(m, +String(x.id).replace(/\D/g, '') || 0), 0) + 1;
-        o.id = 'ORC-' + String(n).padStart(4, '0');
+        const pre = AVULSO(o) ? 'SRV-' : 'ORC-', n = orcs.filter((x) => String(x.id).startsWith(pre)).reduce((m, x) => Math.max(m, +String(x.id).replace(/\D/g, '') || 0), 0) + 1;
+        o.id = pre + String(n).padStart(4, '0');
         o.token = o.token && o.token.length >= 20 ? o.token : novoToken();
         o.criadoEm = o.criadoEm || agora();
       }
@@ -290,7 +298,7 @@
     novos.filter((e) => FRASE[e.tipo]).forEach((e) => {
       const chave = e.token + e.tipo; if (vistos.has(chave)) return; vistos.add(chave);
       const o = orcs.find((x) => x.token === e.token); if (!o) return;
-      try { const nt = new Notification('Chama Solar · ' + o.nome, { body: o.nome.split(' ')[0] + ' ' + FRASE[e.tipo] + '. Toque para abrir a ficha.', tag: chave, icon: 'marca/logo-cor.webp' }); nt.onclick = () => { raiz.focus(); location.hash = '#lead-' + o.id; }; } catch { /* */ }
+      try { const nt = new Notification('Chama Solar · ' + o.nome, { body: o.nome.split(' ')[0] + ' ' + FRASE[e.tipo] + '. Toque para abrir a ficha.', tag: chave, icon: 'marca/logo-cor.webp' }); nt.onclick = () => { raiz.focus(); location.hash = (AVULSO(o) ? '#servico-' : '#lead-') + o.id; }; } catch { /* */ }
     });
   }
   Banco.pronto = raiz.SOLAR_SEM_INICIO ? Promise.resolve() : iniciar();
