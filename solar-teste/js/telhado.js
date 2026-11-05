@@ -35,9 +35,11 @@
     /* MPPT: ficha do inversor (datasheet ou típica, corrigível) e a placa (tensão e corrente) */
     const kitDe = (t) => kits.find((k) => k && k.inversor && (k.inversor.tipo === 'micro' ? 'micro' : 'string') === t);
     proj.mppt = proj.mppt || {}; if (!proj.mppt.kit || !kitDe(proj.mppt.kit)) proj.mppt.kit = kitDe('string') ? 'string' : kitDe('micro') ? 'micro' : null;
-    const fichaPadrao = () => { const k = kitDe(proj.mppt.kit); return k && raiz.Mppt ? raiz.Mppt.fichaDe(k.inversor) : null; };
+    const fichaPadrao = () => { const k = kitDe(proj.mppt.kit); if (!k || !raiz.Mppt) return null; const base = raiz.Mppt.fichaDe(k.inversor), cad = raiz.Fichas && raiz.Fichas.buscar('inversores', k.inversor.nome);
+      if (!cad) return base; const lim = Object.fromEntries(Object.entries(cad).filter(([c, v]) => v != null && !['em', 'lidos', 'coluna'].includes(c))); return { ...base, ...lim, conferida: true, fonte: 'ficha cadastrada (PDF)' }; };
     const chaveKit = () => { const k = kitDe(proj.mppt.kit); return k ? `${k.inversor.nome}|${k.inversor.qtd || 1}` : ''; };
     if (!proj.mppt.ficha || proj.mppt.chave !== chaveKit()) { proj.mppt.ficha = fichaPadrao(); proj.mppt.chave = chaveKit(); }
+    { const cadM = raiz.Fichas && raiz.Fichas.buscar('modulos', proj.layout.modulo.nome); if (cadM && (!proj.mppt.mod || proj.mppt.mod.estimada)) { proj.mppt.mod = { potW: proj.layout.modulo.potW, voc: cadM.voc, vmp: cadM.vmp, isc: cadM.isc, imp: cadM.imp, estimada: false, cadastro: true }; if (cadM.c && proj.layout.modulo.estimada) Object.assign(proj.layout.modulo, { c: cadM.c, l: cadM.l, estimada: false }); } }
     if (!proj.mppt.mod || proj.mppt.mod.potW !== proj.layout.modulo.potW) { const fm = raiz.Catalogo && raiz.Catalogo.fichaModulo ? raiz.Catalogo.fichaModulo(proj.layout.modulo.potW) : { voc: 45, vmp: 37.5, isc: 14 }; proj.mppt.mod = { potW: proj.layout.modulo.potW, voc: fm.voc, vmp: fm.vmp, isc: fm.isc, estimada: true }; }
     const limiteAguas = () => { const f = proj.mppt.ficha; proj.layout.maxAguas = f && f.tipo === 'string' && raiz.Mppt ? raiz.Mppt.totalEntradas(f) : 0; };
     limiteAguas();
@@ -217,6 +219,7 @@
       if (st.aba === 'foto' && st.ferr === 'regua') { st.regua.push(m); if (st.regua.length > 2) st.regua = [m]; desenhar(); painel(); return; }
       if (st.aba === 'telhados') {
         if (alvo && alvo.tipo === 'caimento') { const b = bloco(alvo.id); if ((b.forma || '1') !== '1') return; b.az = azDe(normalFora(b, alvo.k)); sujar(); painel(); desenhar(); return; }
+        if (st.ferr === 'magica') { varinha(m); return; }
         if (st.ferr === 'ret' || st.ferr === 'pol') {
           const p = encaixar(m, sp);
           if (st.ferr === 'pol' && st.des.length >= 3) { const q = m2tela(st.des[0]); if (Math.hypot(q[0] - sp[0], q[1] - sp[1]) < 14) { fecharDesenho(st.des); return; } }
@@ -275,6 +278,65 @@
       if (L.soMao === undefined) L.soMao = true;
       L.manuais.push(nova); sujar(); painel();
       msg(`${L.manuais.length} placa(s) à mão${L.manuais.length > L.qtd ? ` · <b>o kit tem ${L.qtd}</b>` : ` de ${L.qtd} do kit`}. ${pl.fora ? '<b>Esta passou da borda do telhado</b>: arraste para dentro. ' : ''}Toque para pôr a próxima (ela encosta na vizinha), na placa para tirar, ou arraste para mover.`, pl.fora);
+    }
+    /* ---------- 🪄 tocar no telhado: o sistema acha o contorno daquele telhado na foto ----------
+       Cresce a área a partir do toque pela cor (tom da telha, aceitando a água no sol e a água na sombra),
+       ajusta o menor retângulo que cobre e chuta a forma: cerâmica com fiadas em duas direções = 4 águas;
+       cerâmica com fiadas numa direção = 2 águas; fibrocimento/metal = 1 água. O vendedor confere. */
+    let fotoPx = null;
+    function pixelsDaFoto() {
+      const usaDrone = !!(imgDrone && proj.drone), im = usaDrone ? imgDrone : imgFundo; if (!im) return null;
+      const chave = (usaDrone ? 'd' : 'f') + im.src.length + ':' + (usaDrone ? [proj.drone.escala, proj.drone.rot, proj.drone.cx, proj.drone.cz].join(',') : proj.fundo.ladoM);
+      if (fotoPx && fotoPx.chave === chave) return fotoPx;
+      const W0 = im.naturalWidth || im.width, H0 = im.naturalHeight || im.height, f = Math.min(1, 1000 / Math.max(W0, H0)), w = Math.round(W0 * f), h = Math.round(H0 * f);
+      const c = document.createElement('canvas'); c.width = w; c.height = h; const cx = c.getContext('2d', { willReadFrequently: true }); cx.drawImage(im, 0, 0, w, h);
+      let dados; try { dados = cx.getImageData(0, 0, w, h).data; } catch { return null; }
+      let paraPx, paraM;
+      if (usaDrone) { const d = proj.drone, k = d.w / w, r = (d.rot || 0) * Math.PI / 180, co = Math.cos(r), si = Math.sin(r);
+        paraM = (px, py) => { const u = (px * k - d.w / 2) * d.escala, v = (py * k - d.h / 2) * d.escala; return [(d.cx || 0) + u * co - v * si, (d.cz || 0) + u * si + v * co]; };
+        paraPx = (m) => { const dx = m[0] - (d.cx || 0), dz = m[1] - (d.cz || 0); return [((dx * co + dz * si) / d.escala + d.w / 2) / k, ((-dx * si + dz * co) / d.escala + d.h / 2) / k]; };
+      } else { const L = proj.fundo.ladoM; paraM = (px, py) => [px / w * L - L / 2, py / h * L - L / 2]; paraPx = (m) => [(m[0] + L / 2) / L * w, (m[1] + L / 2) / L * h]; }
+      fotoPx = { chave, w, h, dados, paraM, paraPx, mPorPx: usaDrone ? proj.drone.escala * proj.drone.w / w : proj.fundo.ladoM / w }; return fotoPx;
+    }
+    function varinha(m) {
+      const F = pixelsDaFoto(); if (!F) return msg('Envie a foto do drone ou busque o satélite (passo 1).', true);
+      const { w, h, dados } = F, s0 = F.paraPx(m).map(Math.round); if (s0[0] < 2 || s0[1] < 2 || s0[0] >= w - 2 || s0[1] >= h - 2) return msg('Toque dentro da foto.', true);
+      const cor = (i) => { const r = dados[i * 4], g2 = dados[i * 4 + 1], b2 = dados[i * 4 + 2], sm = r + g2 + b2 + 1; return [r / sm, g2 / sm, sm / 3]; };
+      let ref = [0, 0, 0], nr = 0; for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const c = cor((s0[1] + dy) * w + s0[0] + dx); ref = ref.map((v, k) => v + c[k]); nr++; } ref = ref.map((v) => v / nr);
+      const ceram = ref[0] - ref[2] * 0 > 0.4 && ref[0] > ref[1] * 1.25; // tom alaranjado
+      const T = ceram ? 1 : 0.62, dist = (c) => Math.hypot((c[0] - ref[0]) * 330, (c[1] - ref[1]) * 330, (c[2] - ref[2]) * (ceram ? 0.22 : 0.5));
+      // brilho suavizado (5×5): a ondulação da telha some, a borda da parede/calha fica
+      let lb = F.lb; if (!lb) { const I = new Float64Array((w + 1) * (h + 1)); for (let y = 0; y < h; y++) { let lin = 0; for (let x = 0; x < w; x++) { const k = (y * w + x) * 4; lin += (dados[k] + dados[k + 1] + dados[k + 2]) / 3; I[(y + 1) * (w + 1) + x + 1] = I[y * (w + 1) + x + 1] + lin; } }
+        lb = F.lb = new Float32Array(w * h); const R2 = 2; for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const x0 = Math.max(0, x - R2), x1 = Math.min(w, x + R2 + 1), y0 = Math.max(0, y - R2), y1 = Math.min(h, y + R2 + 1); lb[y * w + x] = (I[y1 * (w + 1) + x1] - I[y0 * (w + 1) + x1] - I[y1 * (w + 1) + x0] + I[y0 * (w + 1) + x0]) / ((x1 - x0) * (y1 - y0)); } }
+      const ok = new Uint8Array(w * h), fila = [s0[1] * w + s0[0]], max = w * h * 0.35; ok[fila[0]] = 1; let cont = 0;
+      while (fila.length && cont < max) { const i = fila.pop(); cont++; const x = i % w, y = (i / w) | 0;
+        for (const j of [i - 1, i + 1, i - w, i + w]) { if (j < 0 || j >= w * h || ok[j] || (j % w === 0 && x === w - 1) || (x === 0 && j === i - 1)) continue; if (dist(cor(j)) < 30 * T && (ceram || Math.abs(lb[j] - lb[i]) < 6)) { ok[j] = 1; fila.push(j); } } }
+      if (cont < 150) return msg('Não achei o telhado nesse ponto: toque no meio da telha, longe de placa, antena ou sombra forte. Ou desenhe com ▭ Retângulo.', true);
+      if (cont >= max) return msg('A área vazou para fora do telhado (a cor parece com o chão ou a parede). Desenhe este com ▭ Retângulo.', true);
+      // contorno → casco convexo → menor retângulo
+      const pts = []; for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x; if (ok[i] && (!ok[i - 1] || !ok[i + 1] || !ok[i - w] || !ok[i + w])) pts.push([x, y]); }
+      pts.sort((a2, b2) => a2[0] - b2[0] || a2[1] - b2[1]); const cr = (o, a2, b2) => (a2[0] - o[0]) * (b2[1] - o[1]) - (a2[1] - o[1]) * (b2[0] - o[0]);
+      const lo = [], hi = []; pts.forEach((p) => { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }); [...pts].reverse().forEach((p) => { while (hi.length >= 2 && cr(hi[hi.length - 2], hi[hi.length - 1], p) <= 0) hi.pop(); hi.push(p); });
+      const casco = [...lo.slice(0, -1), ...hi.slice(0, -1)]; let melhor = null;
+      casco.forEach((p, k) => { const q = casco[(k + 1) % casco.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1, u = [(q[0] - p[0]) / L, (q[1] - p[1]) / L], v = [-u[1], u[0]];
+        const us = casco.map((c) => c[0] * u[0] + c[1] * u[1]), vs = casco.map((c) => c[0] * v[0] + c[1] * v[1]), a0 = Math.min(...us), a1 = Math.max(...us), b0 = Math.min(...vs), b1 = Math.max(...vs), ar = (a1 - a0) * (b1 - b0);
+        if (!melhor || ar < melhor.ar) melhor = { ar, u, v, a0, a1, b0, b1 }; });
+      const R = melhor, P = (a2, b2) => [R.u[0] * a2 + R.v[0] * b2, R.u[1] * a2 + R.v[1] * b2];
+      { const la = (R.a1 - R.a0) * F.mPorPx, lb2 = (R.b1 - R.b0) * F.mPorPx, prop = Math.max(la, lb2) / Math.max(Math.min(la, lb2), 0.1);
+        if (Math.min(la, lb2) < 1.5 || prop > 5 || la * lb2 > (ceram ? 400 : 220)) return msg(ceram ? 'O contorno saiu estranho neste telhado. Desenhe com ▭ Retângulo (3 toques).' : 'Telha cinza (fibrocimento/metal) se confunde com a calçada e a laje: neste não consegui o contorno. Desenhe com <b>▭ Retângulo</b> (3 toques).', true); }
+      if (cont / R.ar < 0.55) msg('O formato achado não é bem um retângulo (telhado em L ou com recortes): confira os cantos.', true);
+      // forma pela textura: direção das fiadas em blocos de 8×8 pixels
+      let par = 0, per = 0; const lum = (x, y) => { const i = (y * w + x) * 4; return dados[i] * 0.3 + dados[i + 1] * 0.59 + dados[i + 2] * 0.11; };
+      for (let by = 1; by < h - 9; by += 8) for (let bx = 1; bx < w - 9; bx += 8) { if (!ok[(by + 4) * w + bx + 4]) continue; let xx = 0, yy = 0, xy = 0;
+        for (let y = by; y < by + 8; y++) for (let x = bx; x < bx + 8; x++) { const gx = lum(x + 1, y) - lum(x - 1, y), gy = lum(x, y + 1) - lum(x, y - 1); xx += gx * gx; yy += gy * gy; xy += gx * gy; }
+        const coer = Math.hypot(xx - yy, 2 * xy) / (xx + yy + 1e-6); if (coer < 0.3) continue; const ang = 0.5 * Math.atan2(2 * xy, xx - yy), eixo = Math.atan2(R.u[1], R.u[0]), rel = ((ang - eixo) % Math.PI + Math.PI) % Math.PI;
+        if (Math.abs(rel - Math.PI / 2) < Math.PI / 6) per++; else if (rel < Math.PI / 6 || rel > 5 * Math.PI / 6) par++; }
+      const frac = Math.min(par, per) / Math.max(par + per, 1), forma = !ceram ? '1' : frac > 0.18 ? '4' : '2';
+      const cantos = [P(R.a0, R.b0), P(R.a1, R.b0), P(R.a1, R.b1), P(R.a0, R.b1)].map((c) => F.paraM(c[0], c[1]).map((v) => Math.round(v * 100) / 100));
+      const ref2 = proj.blocos[proj.blocos.length - 1], telha = ceram ? 'ceramico' : (ref2 && ref2.telha !== 'ceramico' ? ref2.telha : 'fibrocimento');
+      const b = { id: U.novoId('b'), nome: 'Telhado ' + (proj.blocos.length + 1), pts: cantos, forma, cumeeira: 'longo', incl: grausDe(ceram ? 35 : 10), az: 0, alturaBeiral: ref2 ? ref2.alturaBeiral : 3, platibanda: 0, telha, usar: true, orientacao: 'retrato', fonte: 'varinha' };
+      b.az = azDe(normalFora(b, 0)); proj.blocos.push(b); st.sel = { t: 'b', id: b.id }; sujar(); painel(); desenhar();
+      msg(`Achei um telhado de <b>${telha === 'ceramico' ? 'cerâmica' : 'fibrocimento/metal'}</b> de ${n(Math.hypot(cantos[1][0] - cantos[0][0], cantos[1][1] - cantos[0][1]), 1)} × ${n(Math.hypot(cantos[2][0] - cantos[1][0], cantos[2][1] - cantos[1][1]), 1)} m e marquei <b>${forma} água${forma === '1' ? '' : 's'}</b>. Confira a forma, a <b>altura do beiral</b> e a <b>inclinação</b> ao lado${forma === '1' ? ' e o lado por onde a água sai (bolinha laranja)' : ''}. Toque no próximo telhado.`);
     }
     function fecharArea() {
       if (st.des.length < 3) return; const pts = st.des.map((p) => [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100]), c = U.centroide(pts);
@@ -339,12 +401,12 @@
     ov.addEventListener('click', (e) => {
       if (e.target.closest('[data-x]')) { fechar(); return; }
       const ab = e.target.closest('[data-aba]'); if (ab) { irAba(ab.dataset.aba); return; }
-      const f = e.target.closest('[data-ferr]'); if (f) { st.ferr = f.dataset.ferr || null; st.des = []; st.regua = []; st.enc = []; painel(); desenhar(); if (/^(posInv|posQuadro|regua|encaixar|ret|pol|mao|girar|area)$/.test(st.ferr)) { const r = tela.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) tela.scrollIntoView({ block: 'center', behavior: 'smooth' }); } return; }
+      const f = e.target.closest('[data-ferr]'); if (f) { st.ferr = f.dataset.ferr || null; st.des = []; st.regua = []; st.enc = []; painel(); desenhar(); if (/^(posInv|posQuadro|regua|encaixar|ret|pol|mao|girar|area|magica)$/.test(st.ferr)) { const r = tela.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) tela.scrollIntoView({ block: 'center', behavior: 'smooth' }); } return; }
       const ac = e.target.closest('[data-acao]'); if (ac) acao(ac.dataset.acao, ac);
     });
     const ehEscolha = (t) => t.type === 'checkbox' || t.type === 'radio' || t.type === 'file' || t.tagName === 'SELECT';
     ov.addEventListener('input', (e) => { if (!ehEscolha(e.target)) campo(e.target); });
-    ov.addEventListener('change', (e) => { const t = e.target; if (t.id === 't3Arq') enviarFoto(t.files[0]); else if (ehEscolha(t) || t.dataset.mp) campo(t, true); });
+    ov.addEventListener('change', (e) => { const t = e.target; if (t.dataset.ficha) { lerFicha(t.dataset.ficha, t.files[0]); return; } if (t.id === 't3Arq') enviarFoto(t.files[0]); else if (ehEscolha(t) || t.dataset.mp) campo(t, true); });
     ov.addEventListener('keydown', (e) => {
       if (e.target.closest('input,select,textarea')) return;
       if (e.key === 'Escape' && (st.des.length || st.regua.length)) { st.des = []; st.regua = []; st.ponteiro = null; desenhar(); painel(); e.preventDefault(); }
@@ -375,7 +437,7 @@
       } else if (A === 'telhados') {
         const b = st.sel && st.sel.t === 'b' ? bloco(st.sel.id) : null;
         const desenhando = (st.ferr === 'ret' || st.ferr === 'pol') && st.des.length;
-        el.innerHTML = `<div class="t3-ferr"><button data-ferr="ret" aria-pressed="${st.ferr === 'ret'}">▭ Retângulo (3 toques)</button><button data-ferr="pol" aria-pressed="${st.ferr === 'pol'}">⬠ Formato livre</button><button data-ferr="ajustar" aria-pressed="${st.ferr === 'ajustar'}">✋ Ajustar</button></div>
+        el.innerHTML = `<div class="t3-ferr">${imgDrone || imgFundo ? `<button data-ferr="magica" aria-pressed="${st.ferr === 'magica'}">🪄 Tocar no telhado</button>` : ''}<button data-ferr="ret" aria-pressed="${st.ferr === 'ret'}">▭ Retângulo (3 toques)</button><button data-ferr="pol" aria-pressed="${st.ferr === 'pol'}">⬠ Formato livre</button><button data-ferr="ajustar" aria-pressed="${st.ferr === 'ajustar'}">✋ Ajustar</button></div>
           ${desenhando ? `<div class="t3-linha"><span class="mini">${st.ferr === 'ret' ? ['', 'Toque no outro canto da mesma parede.', 'Agora toque do outro lado, para dar a profundidade.'][st.des.length] : `${st.des.length} ponto(s). Toque no primeiro ponto para fechar.`}</span><button class="link" data-acao="desfazerPonto">desfazer ponto</button>${st.ferr === 'pol' && st.des.length >= 3 ? '<button class="btn sol pequeno" data-acao="fecharPol">Fechar o telhado</button>' : ''}<button class="link" data-acao="cancelarDes">cancelar</button></div>` : ''}
           <div class="t3-chips">${proj.blocos.map((x, i) => `<button class="t3-chip" data-acao="sel-b" data-id="${x.id}" style="border-color:${CORES[i % CORES.length]}" aria-pressed="${!!(b && b.id === x.id)}">${esc(x.nome)}</button>`).join('')}</div>
           ${b ? `${b.pts.length === 4 ? `<div class="t3-linha"><span class="mini">Forma:</span><div class="t3-chips">${[['1', '1 água / laje'], ['2', '2 águas'], ['4', '4 águas']].map(([v, t]) => `<button class="t3-chip" data-acao="forma" data-v="${v}" aria-pressed="${(b.forma || '1') === v}">${t}</button>`).join('')}</div>${b.forma === '2' ? `<select data-b="cumeeira" style="width:auto"><option value="longo" ${b.cumeeira !== 'curto' ? 'selected' : ''}>cumeeira no lado maior</option><option value="curto" ${b.cumeeira === 'curto' ? 'selected' : ''}>cumeeira no lado menor</option></select>` : ''}</div>` : ''}
@@ -443,6 +505,7 @@
       const dois = kitDe('string') && kitDe('micro');
       return `<div class="t3-mppt"><div class="entre"><b>${f.tipo === 'micro' ? 'Microinversor' : 'Inversor'} e MPPTs</b>${dois ? `<div class="t3-chips">${[['string', 'Inversor'], ['micro', 'Micro']].map(([v, t]) => `<button class="t3-chip" data-acao="mpptKit" data-v="${v}" aria-pressed="${proj.mppt.kit === v}">${t}</button>`).join('')}</div>` : ''}</div>
         <p class="mini" style="margin:4px 0">${esc(k.inversor.nome)}${(f.qtd || 1) > 1 ? ` × ${f.qtd}` : ''} · ${f.conferida ? `<b style="color:var(--verde,#3ddc97)">${esc(f.fonte)}</b>` : `<b style="color:var(--laranja)">${esc(f.fonte)}: confira no datasheet e corrija</b>`}${f.tipo === 'string' ? ` · <b>${raiz.Mppt.totalEntradas(f)} MPPT${raiz.Mppt.totalEntradas(f) > 1 ? 's' : ''}</b>: as placas podem ficar em até ${raiz.Mppt.totalEntradas(f)} água${raiz.Mppt.totalEntradas(f) > 1 ? 's' : ''}` : ` · ${f.entradas} entradas independentes por micro: pode misturar águas`}</p>
+        <div class="t3-linha">${raiz.Fichas ? `<label class="btn vidro pequeno" style="cursor:pointer">📄 Ficha da placa (PDF)<input type="file" accept="application/pdf,.pdf" data-ficha="placa" hidden></label><label class="btn vidro pequeno" style="cursor:pointer">📄 Ficha do ${f.tipo === 'micro' ? 'micro' : 'inversor'} (PDF)<input type="file" accept="application/pdf,.pdf" data-ficha="inversor" hidden></label>` : ''}<span class="mini">${M.cadastro ? 'placa: ficha cadastrada ✓' : M.estimada ? 'placa: valores estimados' : 'placa: conferida'}</span></div>
         <details ${f.conferida ? '' : 'open'}><summary class="mini" style="cursor:pointer">Ficha do datasheet${f.editada ? ' (corrigida por você)' : ''}</summary>
           <div class="grade g2 t3-form" style="margin-top:6px">${f.tipo === 'micro' ? num('entradas', 'Entradas por micro', f.entradas, 1) : num('mppts', 'MPPTs por inversor', f.mppts, 1) + num('strPorMppt', 'Strings por MPPT', f.strPorMppt, 1)}
             ${num('vMax', 'Tensão máx. de entrada (V)', f.vMax)}${num('vMinMppt', 'MPPT mínimo (V)', f.vMinMppt)}${num('iMax', 'Corrente máx. por entrada (A)', f.iMax)}${num('iscMax', 'Curto máx. por entrada (A)', f.iscMax)}
@@ -452,6 +515,28 @@
           : `<table style="margin-top:6px"><tr><th>MPPT</th><th>Placas</th><th class="v">Strings</th><th class="v">Frio / calor</th></tr>${pl.mppts.map((m) => `<tr><td><i class="t3-bola" style="background:${CORES_MPPT[(m.n - 1) % 8]}"></i> ${m.n}</td><td>${m.placas} · ${m.agua.split('|')[0]}° ${ponto(+m.agua.split('|')[1])}</td><td class="v">${m.strings} × ${m.porString}</td><td class="v">${m.vFrio} V / ${m.vCalor} V ${m.ok ? '✓' : '⚠'}</td></tr>`).join('')}</table>
             <p class="mini">Por string: de ${pl.nMin} a ${pl.nMax} placas.${pl.livres ? ` ${pl.livres} MPPT livre(s).` : ''}</p>`) : ''}
         ${pl ? [...pl.avisos, ...(pl.mppts || []).flatMap((m) => m.avisos.map((x) => `MPPT ${m.n}: ${x}`))].map((x) => `<div class="aviso ruim" style="margin-top:6px">${esc(x)}</div>`).join('') || (st.escolhidas.length ? '<div class="aviso ok" style="margin-top:6px">✓ Ligação dentro dos limites do inversor.</div>' : '') : ''}</div>`;
+    }
+    /* ficha técnica em PDF: lê, mostra para conferir e cadastra o modelo (a próxima vez já vem certo) */
+    async function lerFicha(tipo, arq) {
+      if (!arq) return; if (!raiz.LeitorConta || !raiz.LeitorConta.textoPdf) return msg('Leitor de PDF indisponível.', true);
+      msg('Lendo a ficha técnica…');
+      try {
+        const txt = await raiz.LeitorConta.textoPdf(arq); if (txt.replace(/\s/g, '').length < 200) return msg('Este PDF não tem texto (é imagem): digite os números da ficha ao lado.', true);
+        if (tipo === 'placa') {
+          const r = raiz.Fichas.placa(txt, proj.layout.modulo.potW); if (!r.voc && !r.isc) return msg('Não achei Voc e Isc nesta ficha: confira se é a ficha da placa e digite ao lado.', true);
+          Object.assign(proj.mppt.mod, Object.fromEntries(Object.entries({ voc: r.voc, vmp: r.vmp, isc: r.isc, imp: r.imp }).filter(([, v]) => v != null)), { estimada: false, cadastro: true });
+          if (r.c && r.l) Object.assign(proj.layout.modulo, { c: r.c, l: r.l, estimada: false });
+          raiz.Fichas.guardar('modulos', proj.layout.modulo.nome, r);
+          sujar(); painel(); msg(`Ficha da placa lida (${r.potW} W): Voc ${r.voc ?? '?'} V · Vmp ${r.vmp ?? '?'} V · Isc ${r.isc ?? '?'} A${r.c ? ` · ${Math.round(r.c * 1000)} × ${Math.round(r.l * 1000)} mm` : ''}. <b>Confira</b> e corrija ao lado se precisar. Cadastrada para os próximos orçamentos.`);
+        } else {
+          const k = kitDe(proj.mppt.kit), kw = k ? (k.inversor.potenciaUnKw || k.inversor.potenciaKw / (k.inversor.qtd || 1)) : 5, r = raiz.Fichas.inversor(txt, kw);
+          if (r.lidos < 2) return msg('Não consegui ler os limites desta ficha: digite ao lado (MPPTs, tensão e corrente).', true);
+          const lim = Object.fromEntries(Object.entries(r).filter(([c, v]) => v != null && !['lidos', 'coluna'].includes(c)));
+          proj.mppt.ficha = { ...proj.mppt.ficha, ...lim, conferida: true, editada: false, fonte: 'ficha em PDF (lida)' }; limiteAguas();
+          if (k) raiz.Fichas.guardar('inversores', k.inversor.nome, lim);
+          recompor(); painel(); msg(`Ficha do ${r.tipo === 'micro' ? 'micro' : 'inversor'} lida${r.coluna ? ` (coluna ${esc(r.coluna)})` : ''}: ${r.tipo === 'micro' ? `${r.entradas ?? '?'} entradas` : `${r.mppts ?? '?'} MPPT · ${r.strPorMppt ?? '?'} string(s) por MPPT`} · até ${r.vMax ?? '?'} V · MPPT ${r.vMinMppt ?? '?'}–${r.vMaxMppt ?? '?'} V · ${r.iMax ?? '?'} A. <b>Confira</b> ao lado. Cadastrada para os próximos orçamentos.`);
+        }
+      } catch (e) { msg('Não consegui ler o PDF: ' + esc(e.message), true); }
     }
     /* qual telhado é melhor: sol do ano pela direção e inclinação (e a sombra, depois do cálculo) */
     function rankingAguas() {

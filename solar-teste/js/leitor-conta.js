@@ -101,7 +101,12 @@
     return ler(texto);
   }
 
-  const LeitorConta = { ler, lerArquivo };
+  async function textoPdf(arquivo) { // texto de qualquer PDF (fichas técnicas)
+    const pdfjs = await carregarPdfJs(), doc = await pdfjs.getDocument({ data: new Uint8Array(await arquivo.arrayBuffer()) }).promise; let texto = '';
+    for (let i = 1; i <= doc.numPages; i++) { const c = await (await doc.getPage(i)).getTextContent(); texto += c.items.map((it) => it.str + (it.hasEOL ? '\n' : ' ')).join('') + '\n'; }
+    return texto;
+  }
+  const LeitorConta = { ler, lerArquivo, textoPdf };
   if (typeof module !== 'undefined' && module.exports) module.exports = LeitorConta;
   else raiz.LeitorConta = LeitorConta;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -239,3 +239,11 @@ details.item .explica { padding: 0 16px 16px 70px; color: var(--tinta-2); font-s
 .ga-conta tr.total td:last-child { color: var(--bom); }
 .ga-passos { margin: 16px 0 0; padding-left: 22px; display: grid; gap: 8px; color: var(--tinta-2); font-size: .98rem; }
 .ga-passos b { color: var(--tinta); }
+/* números grandes nunca saem do cartão: o tamanho acompanha a largura do cartão */
+.num-card { min-width: 0; overflow: hidden; container-type: inline-size; }
+.num-card b { font-size: clamp(1.15rem, 13cqi, 2rem); white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+.num-card > span { min-width: 0; }
+@media (min-width: 640px) and (max-width: 900px) { .tres { grid-template-columns: 1fr; } }
+.conta-vs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.caixa { min-width: 0; container-type: inline-size; padding: 14px 10px; }
+.caixa b { font-size: clamp(1.1rem, 15cqi, 1.7rem); }
