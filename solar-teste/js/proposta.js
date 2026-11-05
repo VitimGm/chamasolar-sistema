@@ -170,7 +170,7 @@
         ${item('ferramenta', 'Instalação, projeto e papelada da CPFL', 'Tudo incluído no preço', 'Fazemos a visita técnica, o projeto, a aprovação na CPFL, a instalação e a troca do medidor. Você não precisa ir a lugar nenhum.')}
       </div>
       <div class="preco-sis"><span>Investimento</span><b>${brl(op.preco.precoFinal)}</b></div>
-      <details class="outras"><summary>Ver as outras opções (microinversor ou premium)</summary>
+      <details class="outras"><summary>Ver a outra opção (microinversor)</summary>
         ${a.opcoes.map((x, i) => i === est.opcao ? '' : `<div class="op-mini"><span><b style="font-family:inherit">${esc(x.nivel)}</b></span><b>${brl(x.preco.precoFinal)}</b><p>${esc(C.equipamentos(x).modulo)} + ${esc(C.equipamentos(x).inversor.replace(/^./, (c) => c.toLowerCase()))}. Gera ${n(x.dim.geracaoMes)} kWh/mês. ${esc(x.descricao)}</p><button type="button" data-op="${i}">Escolher esta opção</button></div>`).join('')}
       </details>`;
 

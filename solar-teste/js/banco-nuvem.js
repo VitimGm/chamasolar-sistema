@@ -173,6 +173,8 @@
     },
 
     modelo(chave) { return modelos[chave] || null; },
+    async treinoGravar(r) { await api('sol_robo_treino', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(r) }); },
+    async treino(limite = 300) { return api('sol_robo_treino?select=id,em,lote,cenario,ok,segundos,valor_kit,rs_wp,etapa,erro&order=em.desc&limit=' + limite); },
     async faturas(usinaId) { return api('sol_faturas?select=*&usina_id=eq.' + usinaId + '&order=leitura_fim.desc'); },
     async salvarFatura(f) {
       const campos = ['usina_id', 'referencia', 'leitura_ini', 'leitura_fim', 'consumo_rede', 'injetada', 'saldo_creditos', 'valor_pago', 'tarifa', 'geracao_manual', 'dados'];

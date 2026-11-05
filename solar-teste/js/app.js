@@ -250,11 +250,38 @@
       if (b.tipo === 'lista') return `<div class="bloco"><h4>${esc(b.titulo)}</h4><ul>${b.itens.map((x) => `<li><b>${esc(x.t)}</b>${x.d ? `<span>${esc(x.d)}</span>` : ''}</li>`).join('')}</ul></div>`;
       if (b.tipo === 'copiar') return `<div class="bloco"><h4>${esc(b.titulo)}</h4><pre>${esc(b.texto)}</pre><div class="acoes-r"><button class="btn vidro pequeno" data-copiar="${i}">Copiar</button>${o ? `<a class="btn zap pequeno" target="_blank" rel="noopener" href="${zap(b.texto)}">Abrir no WhatsApp</a>` : ''}</div></div>`;
       if (b.tipo === 'alerta') return `<div class="bloco alerta">⚠ ${esc(b.texto)}</div>`;
+      if (b.tipo === 'abordagens') return blocoAbordagens(b, o, i);
       if (b.tipo === 'cadencia') return `<div class="bloco"><h4>Cadência</h4>${b.itens.map((c) => `<div class="cad"><div class="d">D+${c.d}<small>${esc(c.data || '')}</small></div><div><b>${esc(c.canal)} · ${esc(c.t)}</b><p>${esc(c.msg)}</p></div></div>`).join('')}</div>`;
       if (b.tipo === 'tabela') return `<div class="bloco"><table><tr>${b.cab.map((h, j) => `<th class="${j ? 'v' : ''}">${esc(h)}</th>`).join('')}</tr>${b.linhas.map((l) => `<tr>${l.map((c, j) => `<td class="${j ? 'v' : ''}">${esc(c)}</td>`).join('')}</tr>`).join('')}</table></div>`;
       return '';
     }).join('')}</div>`;
   }
+
+  /* Abordagens do follow-up: dias como abas, 3 cards por dia, texto editável, copiar / WhatsApp / marcar feito */
+  let abDia = null;
+  function blocoAbordagens(b, o, i) {
+    const dia = b.passos.find((p) => p.id === abDia) ? abDia : b.atual;
+    const p = b.passos.find((x) => x.id === dia);
+    const dias = b.passos.map((x) => `<button class="aba ${x.id === dia ? 'sel' : ''}" data-ab-dia="${x.id}">${x.feito ? '✓ ' : x.atual ? '● ' : ''}D+${x.dia >= 1 ? x.dia : 0}<small style="display:block;font-weight:500;font-size:11px;opacity:.8">${esc(x.data)}</small></button>`).join('');
+    const cards = p.variantes.map((v, k) => `<label class="ab-card ${b.destaque === v.tec ? 'dest' : ''}"><div class="entre"><span><input type="radio" name="ab-sel" value="${k}" ${k === 0 ? 'checked' : ''}> <b>${esc(v.titulo)}</b></span>${b.destaque === v.tec ? '<span class="chip">indicada agora</span>' : ''}</div>
+        <span class="mini">${esc(v.tecnica)}</span><textarea data-ab-txt="${k}" rows="${Math.min(Math.max(Math.ceil(v.texto.length / 70), 3), 8)}">${esc(v.texto)}</textarea></label>`).join('');
+    return `<div class="bloco" data-ab-bloco="${i}"><h4>Dia a dia</h4><div class="abas ab-dias">${dias}</div>
+      <p style="margin:4px 0 10px"><b>${esc(p.titulo)}</b> · ${p.canal === 'ligacao' ? '📞 ligação (use o texto como roteiro)' : '💬 WhatsApp'}<br><span class="mini">${esc(p.porque)}</span></p>
+      <div class="ab-lista">${cards}</div>
+      <div class="acoes-r" style="margin-top:10px"><button class="btn vidro pequeno" data-ab="copiar">Copiar a escolhida</button>${o ? `<button class="btn zap pequeno" data-ab="zap" data-orc="${esc(o.id)}" data-passo="${p.id}">Abrir no WhatsApp</button><button class="link" data-ab="feito" data-orc="${esc(o.id)}" data-passo="${p.id}">${p.canal === 'ligacao' ? 'liguei' : 'marcar como enviado'}</button>` : ''}</div></div>`;
+  }
+  app.addEventListener('click', (e) => {
+    const d = e.target.closest('[data-ab-dia]'); if (d) { abDia = d.dataset.abDia; const r = $('#respAgente'); if (r && ultimaSaida) r.innerHTML = blocos(ultimaSaida, B.obter(location.hash.replace('#lead-', ''))); return; }
+    const bt = e.target.closest('[data-ab]'); if (!bt) return;
+    const bloco = bt.closest('[data-ab-bloco]'); const k = (bloco.querySelector('input[name="ab-sel"]:checked') || {}).value || 0;
+    const txt = bloco.querySelector(`[data-ab-txt="${k}"]`).value;
+    if (bt.dataset.ab === 'copiar') { copiar(txt); return; }
+    const o = B.obter(bt.dataset.orc), passo = Object.values(Cadencia.PASSOS).flat().find((x) => x.id === bt.dataset.passo);
+    if (bt.dataset.ab === 'zap') window.open('https://wa.me/55' + String(o.whatsapp || '').replace(/\D/g, '').replace(/^55/, '') + '?text=' + encodeURIComponent(txt.replace(/^\[ÁUDIO[^\]]*\]\s*/, '')), '_blank', 'noopener');
+    B.interacao(o.id, passo.canal === 'ligacao' && bt.dataset.ab === 'feito' ? 'ligacao' : 'whatsapp', `Cadência ${passo.id} · ${passo.titulo}`);
+    if (passo.id === 'P0' && o.status === 'novo') { o.status = 'proposta'; o.enviadoEm = new Date().toISOString(); B.salvar(o); }
+    abDia = null; toast('Registrado. Próximo passo agendado.');
+  });
 
   /* ======================= AGENTES (visão geral) ======================= */
   function agentesPag() {
@@ -711,7 +738,7 @@
             <label class="campo"><span>Chave de API / App ID (se tiver)</span><input id="crChave" type="text" autocomplete="off"></label>
             <label class="campo"><span>Segredo da API / App Secret (se tiver)</span><input id="crSegredo" type="password" autocomplete="new-password"></label>
             <label class="campo"><span>Observação (ex.: servidor, empresa)</span><input id="crObs" type="text"></label></div>
-          <div class="acoes-r" style="margin-top:8px"><button class="btn sol pequeno" id="crSalvar">Guardar acesso</button><span class="mini" id="crStatus">carregando…</span></div></div>` : ''}<div class="painel"><span class="rotulo">Dados da empresa para contrato e procuração</span><div class="grade g2" style="margin-top:10px">${[['razao', 'Razão social'], ['cnpj', 'CNPJ'], ['endereco', 'Endereço da sede'], ['cidadeForo', 'Foro (cidade/UF)'], ['respTecnico', 'Responsável técnico'], ['crea', 'CREA'], ['garantiaInstalacaoAnos', 'Garantia da instalação (anos)', 1], ['prazoInstalacaoDias', 'Prazo de instalação (dias)', 1]].map(([c, r, num]) => `<label class="campo"><span>${r}</span><input type="${num ? 'number' : 'text'}" data-emp="${c}" ${num ? 'data-num="1"' : ''} value="${esc(Documentos.empresaDe(p)[c] ?? '')}"></label>`).join('')}</div></div><div class="painel"><span class="rotulo">Fórmula</span><p class="sutil" style="margin-top:8px">Preço = (custos diretos + taxa fixa) ÷ (1 − (impostos + taxa de pagamento + comissão + margem + reserva))</p></div>
+          <div class="acoes-r" style="margin-top:8px"><button class="btn sol pequeno" id="crSalvar">Guardar acesso</button><span class="mini" id="crStatus">carregando…</span></div></div>` : ''}<div class="painel"><div class="entre"><span class="rotulo">Treino do robô Belenergy</span><a class="btn vidro pequeno" href="#treino">Abrir treino ›</a></div><p class="sutil" style="margin:6px 0 0">Cotações automáticas em todas as combinações para achar e corrigir erros antes do cliente.</p></div><div class="painel"><span class="rotulo">Dados da empresa para contrato e procuração</span><div class="grade g2" style="margin-top:10px">${[['razao', 'Razão social'], ['cnpj', 'CNPJ'], ['endereco', 'Endereço da sede'], ['cidadeForo', 'Foro (cidade/UF)'], ['respTecnico', 'Responsável técnico'], ['crea', 'CREA'], ['garantiaInstalacaoAnos', 'Garantia da instalação (anos)', 1], ['prazoInstalacaoDias', 'Prazo de instalação (dias)', 1]].map(([c, r, num]) => `<label class="campo"><span>${r}</span><input type="${num ? 'number' : 'text'}" data-emp="${c}" ${num ? 'data-num="1"' : ''} value="${esc(Documentos.empresaDe(p)[c] ?? '')}"></label>`).join('')}</div></div><div class="painel"><span class="rotulo">Fórmula</span><p class="sutil" style="margin-top:8px">Preço = (custos diretos + taxa fixa) ÷ (1 − (impostos + taxa de pagamento + comissão + margem + reserva))</p></div>
         <div class="acoes-r" style="margin-top:14px"><button class="btn sol" id="salvarP">Salvar</button>${B.nuvem ? '' : '<button class="btn vidro" id="resetP">Voltar ao teste</button>'}</div></div></div>`;
     $('#salvarP').onclick = () => {
       const novoP = {}; app.querySelectorAll('[data-par]').forEach((i) => { novoP[i.dataset.par] = +i.value / +i.dataset.m; });
@@ -788,6 +815,67 @@
     ov.onclick = (e) => { const b = e.target.closest('[data-u]'); if (b) fn(lista.find((u) => String(u.id) === b.dataset.u)); ov.remove(); };
     document.body.appendChild(ov);
   }
+  /* ======================= TREINO DO ROBÔ =======================
+     Roda cotações de teste em todas as combinações (potência × ligação × telhado × inversor/micro),
+     sem salvar na Belenergy. Cada resultado fica gravado: o que falhou chega para correção com
+     print e tela; o que deu certo vira tabela de R$/Wp para resposta rápida. */
+  const TREINO = { rodando: false, parar: false };
+  async function treinoPag() {
+    const hist = await B.treino(400).catch(() => []);
+    const ok = hist.filter((h) => h.ok), falhas = hist.filter((h) => !h.ok);
+    const porEtapa = {}; falhas.forEach((f) => { const k = f.etapa || 'outro'; porEtapa[k] = (porEtapa[k] || 0) + 1; });
+    const tab = {}; ok.forEach((h) => { const c = h.cenario || {}; const k = (c.tipo || '') + '|' + c.kwp; (tab[k] = tab[k] || []).push(+h.rs_wp); });
+    const linhasTab = Object.entries(tab).sort((a, b) => a[0].localeCompare(b[0], 'pt', { numeric: true })).map(([k, v]) => { const [t, kwp] = k.split('|'); const m = v.reduce((s, x) => s + x, 0) / v.length; return `<tr><td>${esc(t)}</td><td class="v">${n(+kwp, 1)} kWp</td><td class="v">R$ ${n(m, 2)}/Wp</td><td class="v">${v.length}</td></tr>`; }).join('');
+    const tempo = ok.length ? ok.reduce((s, h) => s + (+h.segundos || 0), 0) / ok.length : 0;
+    app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Treino do robô</h1><p class="sutil">O robô cota sozinho todas as combinações, sem salvar na Belenergy. Cada erro vem com print para correção; cada acerto vira preço de referência.</p></div></div>
+      <div class="kpis"><div class="kpi destaque"><span class="rotulo">Acertos</span><b>${hist.length ? n(ok.length / hist.length * 100) + '%' : '—'}</b><span class="sutil">${ok.length} de ${hist.length} cotações</span></div>
+        <div class="kpi"><span class="rotulo">Tempo médio</span><b>${tempo ? n(tempo) + ' s' : '—'}</b><span class="sutil">por kit</span></div>
+        <div class="kpi"><span class="rotulo">Falhas</span><b>${falhas.length}</b><span class="sutil">${Object.entries(porEtapa).map(([k, v]) => esc(k) + ': ' + v).join(' · ') || 'nenhuma'}</span></div></div>
+      <div class="painel"><span class="rotulo">Rodar treino</span>
+        <div class="grade g2" style="margin-top:10px">
+          <label class="campo"><span>Potências (kWp)</span><input id="trKwp" value="3, 5, 8, 12, 18, 25"></label>
+          <label class="campo"><span>Ligações</span><input id="trLig" value="mono, bi, tri"></label>
+          <label class="campo"><span>Telhados</span><input id="trTel" value="ceramico, metalico, fibrocimento, laje"></label>
+          <label class="campo"><span>Tipos</span><input id="trTipo" value="Inversor, Microinversor"></label>
+          <label class="campo"><span>Pausa entre cotações (s)</span><input id="trPausa" type="number" value="20"></label></div>
+        <p class="mini" id="trConta"></p>
+        <div class="acoes-r"><button class="btn sol" id="trIr" ${TREINO.rodando ? 'hidden' : ''}>▶ Começar treino</button><button class="btn vidro" id="trParar" ${TREINO.rodando ? '' : 'hidden'}>■ Parar</button><span class="mini" id="trProg">${TREINO.rodando ? 'rodando…' : ''}</span></div>
+        <p class="mini" style="margin-top:8px">Deixe esta aba aberta e o robô ligado. Pode rodar à noite. Não salva nada na Belenergy e nunca compra.</p></div>
+      ${linhasTab ? `<div class="painel"><span class="rotulo">Preço de referência aprendido (média dos acertos)</span><table style="margin-top:8px"><tr><th>Tipo</th><th class="v">Potência</th><th class="v">Kit</th><th class="v">Cotações</th></tr>${linhasTab}</table></div>` : ''}
+      <div class="painel"><span class="rotulo">Últimas cotações de treino</span><table style="margin-top:8px">${hist.slice(0, 40).map((h) => { const c = h.cenario || {}; return `<tr><td>${h.ok ? '✅' : '❌'}</td><td>${esc(c.tipo)} · ${n(c.kwp, 1)} kWp · ${esc(c.ligacao)} · ${esc(c.telhado)}</td><td class="mini">${h.ok ? 'R$ ' + n(h.rs_wp, 2) + '/Wp · ' + n(h.segundos) + ' s' : esc(String(h.erro || '').slice(0, 140))}</td></tr>`; }).join('') || '<tr><td class="sutil">Nenhum treino ainda.</td></tr>'}</table></div>`;
+    const lista = (id) => $(id).value.split(',').map((x) => x.trim()).filter(Boolean);
+    const cenarios = () => { const out = []; lista('#trTipo').forEach((tipo) => lista('#trKwp').forEach((kwp) => lista('#trLig').forEach((lig) => lista('#trTel').forEach((tel) => out.push({ tipo, kwp: +kwp.replace(',', '.'), ligacao: lig, telhado: tel }))))); return out; };
+    const contar = () => { const c = cenarios(); $('#trConta').textContent = `${c.length} combinações · cerca de ${n(c.length * (Number($('#trPausa').value) + 90) / 60)} min`; };
+    app.querySelectorAll('#trKwp,#trLig,#trTel,#trTipo,#trPausa').forEach((i) => i.oninput = contar); contar();
+    $('#trParar').onclick = () => { TREINO.parar = true; $('#trProg').textContent = 'parando depois desta cotação…'; };
+    $('#trIr').onclick = async () => {
+      if (!(await Cotador.conectado())) return toast('Ligue o robô e faça login na Belenergy antes do treino');
+      const lote = new Date().toISOString().slice(0, 16), lst = cenarios().sort(() => Math.random() - 0.5), pausa = Math.max(Number($('#trPausa').value) || 0, 5) * 1000;
+      TREINO.rodando = true; TREINO.parar = false; $('#trIr').hidden = true; $('#trParar').hidden = false;
+      const LIG = { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }, TEL = { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' };
+      let feitos = 0, acertos = 0;
+      for (const c of lst) {
+        if (TREINO.parar) break;
+        const ini = Date.now(), prog = (t) => { const el = $('#trProg'); if (el) el.textContent = `${feitos + 1}/${lst.length} · ${c.tipo} ${c.kwp} kWp ${c.ligacao} ${c.telhado}: ${t}… ${acertos} acertos`; };
+        try {
+          const s = await Cotador.cotarAuto('conectado', { kwp: c.kwp, ligacao: LIG[c.ligacao] || c.ligacao, cidade: 'Ribeirão Preto', frete: 'Cliente Retira', estruturaTipo: TEL[c.telhado] || c.telhado, tipoInversor: c.tipo === 'Microinversor' ? 'MICROINVERSOR' : 'INVERSOR STRING ON-GRID', nome: 'TREINO ' + c.tipo + ' ' + c.kwp, salvar: false }, prog);
+          const k = Cotador.paraKit(s, c.tipo), wp = k.modulo.qtd * k.modulo.potenciaW;
+          if (!(k.valorKit > 0)) throw new Error('valor R$ 0,00');
+          await B.treinoGravar({ lote, cenario: c, ok: true, segundos: Math.round((Date.now() - ini) / 1000), valor_kit: k.valorKit, rs_wp: Math.round(k.valorKit / wp * 1000) / 1000, kit: { modulo: k.modulo, inversor: k.inversor, estrutura: k.estrutura } }).catch(() => {});
+          acertos++;
+        } catch (e) {
+          const etapa = (String(e.message).match(/etapa "([^"]+)"/) || [])[1] || 'regra do sistema';
+          await B.treinoGravar({ lote, cenario: c, ok: false, segundos: Math.round((Date.now() - ini) / 1000), etapa, erro: String(e.message).slice(0, 500) }).catch(() => {});
+          if (e.diag) await B.registrarErroRobo({ orcamento: 'TREINO', opcao: c.tipo, mensagem: e.message, diag: e.diag }).catch(() => {});
+          if (/sessão/.test(e.message)) { toast('A sessão da Belenergy expirou: treino parado'); break; }
+        }
+        feitos++;
+        await new Promise((r) => setTimeout(r, pausa));
+      }
+      TREINO.rodando = false; toast(`Treino: ${acertos} de ${feitos} deram certo`); if (location.hash === '#treino') treinoPag();
+    };
+  }
+
   /* Relatório da conta: dados da fatura (lidos do PDF ou digitados) × geração da plataforma no período de leitura */
   async function formFatura(u) {
     const U = window.Usinas, g = B.geracao(u.id);
@@ -914,7 +1002,7 @@
     const [rota, arg] = h.startsWith('lead-') ? ['lead', h.slice(5)] : [h, null];
     document.querySelectorAll('[data-rota]').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === (rota === 'lead' ? 'painel' : rota)));
     if (rota !== 'novo') { document.body.classList.remove('com-barra'); $('#barra').hidden = true; }
-    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'parametros') parametrosPag(); else painel(); };
+    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'parametros') parametrosPag(); else painel(); };
     if (document.startViewTransition) {
       const t = document.startViewTransition(ir);
       [t.ready, t.finished, t.updateCallbackDone].forEach((pr) => pr && pr.catch(() => {})); // navegação rápida cancela a animação, sem problema

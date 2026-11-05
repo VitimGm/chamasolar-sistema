@@ -180,7 +180,11 @@
     const kw = (v) => fmt(v, v % 1 ? 2 : 0).replace(/,?0+$/, (z) => (z.startsWith(',') ? '' : z));
     const marcaMod = op.modulo.marca || (op.modulo.nome.match(/^(JA Solar|\S+)/) || [])[1] || '';
     const fabInv = op.inversor.fabricante || (op.inversor.nome.toUpperCase().match(new RegExp('\\b(' + MARCAS.join('|') + ')\\b')) || [])[1] || '';
-    const qtdInv = op.inversor.qtd || 1, potUn = op.inversor.potenciaUnKw || op.inversor.potenciaKw / qtdInv;
+    const qtdInv = op.inversor.qtd || 1;
+    let potUn = op.inversor.potenciaUnKw || op.inversor.potenciaKw / qtdInv;
+    // cotações antigas leram "7.5KW" como 75: o nome do portal é a fonte certa
+    const pNome = parseFloat(String((String(op.inversor.nome || '').match(/(\d+(?:[.,]\d+)?)\s*KW/i) || [])[1] || '').replace(',', '.'));
+    if (pNome && Math.abs(pNome - potUn) > 0.01) potUn = pNome;
     const tipo = op.inversor.tipo === 'micro' || /micro/i.test(op.inversor.nome) ? 'micro' : op.inversor.hibrido || op.inversor.tipo === 'hibrido' ? 'hibrido' : 'string';
     const nomeTipo = { micro: qtdInv > 1 ? 'microinversores' : 'microinversor', hibrido: 'inversor híbrido', string: 'inversor' }[tipo];
     return {

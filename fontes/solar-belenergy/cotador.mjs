@@ -215,7 +215,7 @@ async function passoInterno(etapa, e = {}) {
       await pg.locator('body').click({ position: { x: 5, y: 5 } }); await pausa(400);
     }
     await botao(/FILTRAR/i).click(); await esperarLinhas('INVERSOR|MICRO', 45000);
-    const invs = (await linhas('INVERSOR|MICRO')).map((v) => ({ sku: v.sku, nome: v.nome.replace(/^INVERSOR DE CORRENTE\s*/i, 'Inversor '), potenciaKw: num((v.nome.match(/(\d+(?:\.\d+)?)KW/i) || [])[1]), qtd: v.qtdSugerida || 1, overload: num(v.overload), tipo: /H[IÍ]BRID/i.test(v.nome) ? 'hibrido' : /MICRO/i.test(v.nome) ? 'micro' : 'string', fabricante: (v.nome.match(/(AUXSOL|DEYE|GROWATT|HUAWEI|SOLIS|SUNGROW|HOYMILES|TSUNESS|ENPHASE)/i) || [])[1] || '' }));
+    const invs = (await linhas('INVERSOR|MICRO')).map((v) => ({ sku: v.sku, nome: v.nome.replace(/^INVERSOR DE CORRENTE\s*/i, 'Inversor '), potenciaKw: parseFloat(String((v.nome.match(/(\d+(?:[.,]\d+)?)\s*KW/i) || [])[1] || '0').replace(',', '.')) || 0, qtd: v.qtdSugerida || 1, overload: num(v.overload), tipo: /H[IÍ]BRID/i.test(v.nome) ? 'hibrido' : /MICRO/i.test(v.nome) ? 'micro' : 'string', fabricante: (v.nome.match(/(AUXSOL|DEYE|GROWATT|HUAWEI|SOLIS|SUNGROW|HOYMILES|TSUNESS|ENPHASE)/i) || [])[1] || '' }));
     return { etapa: 2, opcoes: { tipos: [e.tipoInversor], ligacoes: [e.ligacao], tensoes: { [e.ligacao]: tensoes }, fabricantes: [], inversores: invs } };
   }
   if (etapa === 2) {

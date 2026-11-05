@@ -93,40 +93,34 @@
     };
   }
 
-  /* ---- 4. Follow-up por gatilho ---- */
+  /* ---- 4. Follow-up: cada dia da cadência com 3 abordagens prontas (técnica + texto) ---- */
   function followup({ o, a, eventos, link }) {
-    const nm = tratar(o.nome), b = a.boleto;
-    const envio = new Date(o.enviadoEm || o.criadoEm);
-    const dia = (d) => new Date(+envio + d * 864e5).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
-    const validade = (raiz.Banco ? raiz.Banco.parametros().validadeDias : D.parametros.validadeDias) || 7;
-    const viuBoleto = eventos.some((e) => ['boleto', 'pagamento'].includes(e.dados?.secao) || e.tipo === 'simulou');
-    const cad = [
-      { d: 0, canal: 'WhatsApp', t: 'Envio com a dor na 1ª linha', msg: 'Usar a mensagem do Roteirista.' },
-      { d: 1, canal: 'Áudio', t: 'Áudio curto pessoal', msg: `"${nm}, conseguiu ver? Qualquer dúvida me chama."` },
-      { d: 3, canal: 'Ligação', t: 'Ligar (não mandar texto)', msg: 'Perguntar qual opção fez mais sentido.' },
-      { d: 5, canal: 'WhatsApp', t: viuBoleto ? 'Reforço da troca de boleto' : 'Prova vizinha', msg: viuBoleto ? `Lembrei de você: ${b.prazo}x de ${brl(b.parcela)} + conta mínima dá ${brl(b.totalMes)} — menos do que os ${brl(b.contaAtual)} de hoje.` : `${nm}, só pra você ver: clientes nossos aqui em ${o.cidade || 'Ribeirão'} estão pagando em média ${brl(a.vizinhos.economiaMedia)} a menos por mês.` },
-      { d: validade - 1, canal: 'WhatsApp', t: 'Validade real da cotação (véspera)', msg: `${nm}, a cotação do kit que reservei vale até ${new Date(+envio + validade * 864e5).toLocaleDateString('pt-BR')}. Depois o distribuidor atualiza o preço. Quer que eu tente segurar?` },
-      { d: 8, canal: 'WhatsApp', t: 'Envolver o 2º decisor', msg: `Quer que eu explique para mais alguém da família? Posso fazer uma chamada rapidinha com vocês: ${link}` },
-      { d: 11, canal: 'Ligação', t: 'Resolver a objeção principal', msg: 'Usar o Matador de objeções.' },
-      { d: 14, canal: 'WhatsApp', t: 'Cotação atualizada + prova vizinha', msg: `${nm}, atualizei a cotação do kit pra você. E um dado real: clientes nossos em ${o.cidade || 'Ribeirão'} estão pagando em média ${brl(a.vizinhos.economiaMedia)} a menos por mês. Quer que eu te mande a versão nova?` },
-      { d: 21, canal: 'WhatsApp', t: 'Encerrar com elegância', msg: `${nm}, vou arquivar sua proposta por aqui. Se mudar de ideia, é só chamar — antes do reajuste da CPFL em abril vale a pena rever.` },
-    ];
-    const prox = C.proximaAcao(o, eventos);
+    const Cd = raiz.Cadencia, Ab = raiz.Abordagens;
+    const inter = raiz.Banco && raiz.Banco.interacoes ? raiz.Banco.interacoes(o.id) : [];
+    const prox = Cd.proximo(o, eventos, inter);
+    const grupo = o.status === 'novo' ? 'novo' : o.status === 'ganho' ? 'ganho' : o.status === 'perdido' ? 'perdido' : 'proposta';
+    const base = new Date((grupo === 'proposta' ? o.enviadoEm : o.criadoEm) || o.criadoEm || Date.now()).getTime();
+    const feitos = new Set(inter.map((i) => (String(i.texto || '').match(/^Cadência (\w\d)/) || [])[1]).filter(Boolean));
+    if (o.enviadoEm) feitos.add('P0');
+    const passos = Cd.PASSOS[grupo].map((p) => ({ ...p, data: new Date(base + p.dia * 864e5).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }), feito: feitos.has(p.id), atual: prox && prox.id === p.id, variantes: Ab.variantes(p.id, o, { a, link }) }));
+    const g = Ab.gatilho(eventos);
     return {
-      titulo: 'Cadência de 21 dias + gatilhos',
-      resumo: `Agora: ${prox.icone} ${prox.texto}`,
+      titulo: 'Follow-up do dia a dia',
+      resumo: prox ? `Hoje: ${prox.titulo} (${prox.canal === 'ligacao' ? 'ligação' : 'WhatsApp'}). Escolha a abordagem, ajuste se quiser e envie.` : 'Cadência concluída para esta etapa.',
       blocos: [
-        { tipo: 'cadencia', itens: cad.map((c) => ({ ...c, data: dia(c.d) })) },
-        { tipo: 'lista', titulo: 'Gatilhos que mudam a cadência', itens: [
-          { t: 'Nunca abriu em 24 h', d: 'Pare de mandar texto. Ligue.' },
-          { t: 'Abriu agora', d: 'Ligue nos próximos 30 minutos.' },
-          { t: 'Simulou parcela 2+ vezes', d: 'Dúvida financeira: mande a troca de boleto e ofereça ligar.' },
-          { t: 'Compartilhou o link', d: 'Tem outro decisor: proponha chamada com os dois.' },
-          { t: 'Abriu 3+ vezes sem responder', d: 'Pergunte direto o que falta para decidir.' },
+        ...(g ? [{ tipo: 'alerta', texto: g.texto }] : []),
+        { tipo: 'abordagens', passos, atual: (prox && prox.id) || passos[0].id, destaque: g && g.tec },
+        { tipo: 'lista', titulo: 'Regras de ouro', itens: [
+          { t: 'Uma pergunta por mensagem', d: 'Duas perguntas juntas = nenhuma resposta.' },
+          { t: 'Responda em até 5 minutos', d: 'Velocidade é o que mais fecha venda solar.' },
+          { t: 'Mais escuta que fala', d: 'SPIN: deixe o cliente dizer a dor e o ganho com as palavras dele.' },
+          { t: 'Escassez só se for verdade', d: 'O preço do kit muda mesmo: use, mas nunca invente prazo.' },
+          { t: 'Abriu a proposta? Ligue', d: 'Quem abriu agora está pensando nisso agora.' },
         ] },
       ],
     };
   }
+
 
   /* ---- 5. Comparador de concorrente ---- */
   function comparador({ o, a, conc }) {
@@ -179,7 +173,7 @@
       { id: 'diagnostico', nome: 'Diagnóstico da Dor', icone: '🩺', missao: 'Descobre qual dor abre a conversa e em que ordem argumentar.', fn: diagnostico },
       { id: 'roteirista', nome: 'Roteirista', icone: '✍️', missao: 'Escreve WhatsApp, áudio e roteiro de ligação com os números do cliente.', fn: roteirista },
       { id: 'objecoes', nome: 'Matador de Objeções', icone: '🛡️', missao: 'Responde "tá caro", "vou pensar", "falar com a esposa" com dados dele.', fn: objecoes, entrada: 'texto' },
-      { id: 'followup', nome: 'Follow-up', icone: '⏱️', missao: 'Cadência de 21 dias que muda conforme o cliente se comporta.', fn: followup },
+      { id: 'followup', nome: 'Follow-up', icone: '⏱️', missao: 'Para cada dia da cadência, 3 abordagens com técnica de venda. Escolha, ajuste e mande no WhatsApp.', fn: followup },
       { id: 'comparador', nome: 'Comparador', icone: '⚖️', missao: 'Compara com o orçamento do concorrente de forma honesta.', fn: comparador, entrada: 'concorrente' },
     ],
     analista,
