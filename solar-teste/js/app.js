@@ -983,7 +983,7 @@
           <label class="campo"><span>Tipos</span><input id="trTipo" value="Inversor, Microinversor"></label>
           <label class="campo"><span>Pausa entre cotações (s)</span><input id="trPausa" type="number" value="20"></label></div>
         <p class="mini" id="trConta"></p>
-        <div class="acoes-r"><button class="btn sol" id="trIr" ${TREINO.rodando ? 'hidden' : ''}>▶ Começar treino</button><button class="btn vidro" id="trParar" ${TREINO.rodando ? '' : 'hidden'}>■ Parar</button><span class="mini" id="trProg">${TREINO.rodando ? 'rodando…' : ''}</span></div>
+        <div class="acoes-r"><button class="btn sol" id="trIr" ${TREINO.rodando ? 'hidden' : ''}>▶ Começar treino</button><button class="btn vidro" id="trFalhas" ${TREINO.rodando || !falhas.length ? 'hidden' : ''}>↻ Repetir só o que falhou</button><button class="btn vidro" id="trParar" ${TREINO.rodando ? '' : 'hidden'}>■ Parar</button><span class="mini" id="trProg">${TREINO.rodando ? 'rodando…' : ''}</span></div>
         <p class="mini" style="margin-top:8px">Deixe esta aba aberta e o robô ligado. Pode rodar à noite. Não salva nada na Belenergy e nunca compra.</p></div>
       ${linhasTab ? `<div class="painel"><span class="rotulo">Preço de referência aprendido (média dos acertos)</span><table style="margin-top:8px"><tr><th>Tipo</th><th class="v">Potência</th><th class="v">Kit</th><th class="v">Cotações</th></tr>${linhasTab}</table></div>` : ''}
       <div class="painel"><span class="rotulo">Últimas cotações de treino</span><table style="margin-top:8px">${hist.slice(0, 40).map((h) => { const c = h.cenario || {}; return `<tr><td>${h.ok ? '✅' : '❌'}</td><td>${esc(c.tipo)} · ${n(c.kwp, 1)} kWp · ${esc(c.ligacao)} · ${esc(c.telhado)}</td><td class="mini">${h.ok ? 'R$ ' + n(h.rs_wp, 2) + '/Wp · ' + n(h.segundos) + ' s' : esc(String(h.erro || '').slice(0, 140))}</td></tr>`; }).join('') || '<tr><td class="sutil">Nenhum treino ainda.</td></tr>'}</table></div>`;
@@ -992,10 +992,12 @@
     const contar = () => { const c = cenarios(); $('#trConta').textContent = `${c.length} combinações · cerca de ${n(c.length * (Number($('#trPausa').value) + 90) / 60)} min`; };
     app.querySelectorAll('#trKwp,#trLig,#trTel,#trTipo,#trPausa').forEach((i) => i.oninput = contar); contar();
     $('#trParar').onclick = () => { TREINO.parar = true; $('#trProg').textContent = 'parando depois desta cotação…'; };
+    let soFalhas = null;
+    $('#trFalhas').onclick = () => { const vistos = new Set(), okK = new Set(ok.map((h) => JSON.stringify(h.cenario))); soFalhas = falhas.map((f) => f.cenario).filter((c) => { const k = JSON.stringify(c); if (vistos.has(k) || okK.has(k)) return false; vistos.add(k); return true; }); if (!soFalhas.length) { soFalhas = falhas.map((f) => f.cenario).filter((c) => { const k = JSON.stringify(c); if (vistos.has(k)) return false; vistos.add(k); return true; }); } $('#trIr').click(); };
     $('#trIr').onclick = async () => {
       if (!(await Cotador.conectado())) return toast('Ligue o robô e faça login na Belenergy antes do treino');
-      const lote = new Date().toISOString().slice(0, 16), lst = cenarios().sort(() => Math.random() - 0.5), pausa = Math.max(Number($('#trPausa').value) || 0, 5) * 1000;
-      TREINO.rodando = true; TREINO.parar = false; $('#trIr').hidden = true; $('#trParar').hidden = false;
+      const lote = new Date().toISOString().slice(0, 16), lst = (soFalhas || cenarios()).sort(() => Math.random() - 0.5); soFalhas = null; const pausa = Math.max(Number($('#trPausa').value) || 0, 5) * 1000;
+      TREINO.rodando = true; TREINO.parar = false; $('#trIr').hidden = true; $('#trFalhas').hidden = true; $('#trParar').hidden = false;
       const LIG = { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }, TEL = { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' };
       let feitos = 0, acertos = 0;
       for (const c of lst) {
