@@ -108,6 +108,10 @@
 
     modelo() { return null; }, // teste: usa os modelos genéricos
     async execucoes() { return []; },
+    _faturas: [],
+    async faturas(usinaId) { return this._faturas.filter((f) => f.usina_id === usinaId).sort((a, b) => b.leitura_fim.localeCompare(a.leitura_fim)); },
+    async salvarFatura(f) { const i = this._faturas.findIndex((x) => x.usina_id === f.usina_id && x.leitura_fim === f.leitura_fim); const novo = { ...f, id: i >= 0 ? this._faturas[i].id : this._faturas.length + 1 }; i >= 0 ? (this._faturas[i] = novo) : this._faturas.push(novo); return novo; },
+    async apagarFatura(id) { this._faturas = this._faturas.filter((f) => f.id !== id); },
     async registrarErroRobo() { /* teste: só no console */ },
     _anexos: [],
     async anexar(orcamento, nome, base64, tipo = 'application/pdf') { this._anexos.push({ id: this._anexos.length + 1, orcamento, nome, tipo, conteudo_b64: base64, em: new Date().toISOString() }); },

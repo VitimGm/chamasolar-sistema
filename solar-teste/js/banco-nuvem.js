@@ -173,6 +173,14 @@
     },
 
     modelo(chave) { return modelos[chave] || null; },
+    async faturas(usinaId) { return api('sol_faturas?select=*&usina_id=eq.' + usinaId + '&order=leitura_fim.desc'); },
+    async salvarFatura(f) {
+      const campos = ['usina_id', 'referencia', 'leitura_ini', 'leitura_fim', 'consumo_rede', 'injetada', 'saldo_creditos', 'valor_pago', 'tarifa', 'geracao_manual', 'dados'];
+      const corpo = Object.fromEntries(campos.filter((c) => f[c] !== undefined).map((c) => [c, f[c] === '' ? null : f[c]]));
+      const r = await api('sol_faturas?on_conflict=usina_id,leitura_fim', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=representation' }, body: JSON.stringify(corpo) });
+      aviso('Conta salva ✓'); return r[0];
+    },
+    async apagarFatura(id) { await api('sol_faturas?id=eq.' + id, { method: 'DELETE' }); },
     /* erro do robô: fica gravado com print e tela para análise */
     async registrarErroRobo(r) {
       const d = r.diag || {}; const print = d.print || null; delete d.print;

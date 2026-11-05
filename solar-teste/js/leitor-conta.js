@@ -56,6 +56,21 @@
     if (band) r.bandeira = band[1].trim();
     if (/inje[tç]/i.test(t)) r.avisos.push('A conta tem energia injetada: o cliente já tem geração. Confira antes de dimensionar.');
 
+    // Conta de quem JÁ tem solar: datas de leitura, energia injetada e saldo de créditos
+    const dt = '(\\d{2}\\/\\d{2}\\/\\d{4})';
+    const la = t.match(new RegExp('Leitura\\s*Anterior[^\\d]{0,40}' + dt, 'i')), lt = t.match(new RegExp('Leitura\\s*Atual[^\\d]{0,40}' + dt, 'i'));
+    const par = t.match(new RegExp('Leitura[^\\n]{0,60}?' + dt + '\\s+' + dt, 'i'));
+    const br = (s) => s.split('/').reverse().join('-');
+    if (la && lt) { r.leituraAnterior = br(la[1]); r.leituraAtual = br(lt[1]); } else if (par) { r.leituraAnterior = br(par[1]); r.leituraAtual = br(par[2]); }
+    const inj = t.match(/Inje(?:tada|[cç][aã]o)[^\n]{0,80}?kWh\s+([\d.]+(?:,\d+)?)/i) || t.match(/Energia\s+(?:Ativa\s+)?Injetada[^\d\n]{0,40}([\d.]+(?:,\d+)?)/i);
+    if (inj) r.injetada = num(inj[1]);
+    const sal = t.match(/Saldo[^\n]{0,60}?([\d.]+(?:,\d+)?)\s*kWh/i);
+    if (sal) r.saldoCreditos = num(sal[1]);
+    const cons = t.match(/(?:Consumo|Energia\s+Ativa\s+Fornecida)[^\n]{0,50}?kWh\s+([\d.]+(?:,\d+)?)/i);
+    if (cons) r.consumoRede = num(cons[1]);
+    const cip = t.match(/(?:Contrib|Ilumina[cç][aã]o\s+P[uú]blica)[^\n]{0,60}?([\d.]+,\d{2})/i);
+    if (cip) r.iluminacao = num(cip[1]);
+
     if (r.mesesLidos < 12) r.avisos.push(`Li ${r.mesesLidos} de 12 meses do histórico. Complete os que faltam.`);
     if (!r.tarifaKwh) r.avisos.push('Não achei a tarifa na conta. Usei a padrão.');
     r.ok = r.mesesLidos >= 6;

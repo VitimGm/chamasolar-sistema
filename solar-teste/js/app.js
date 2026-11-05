@@ -754,7 +754,7 @@
           <span class="mini">${esc(u.cidade || '')} · ${n(u.kwp, 2)} kWp · espera ${n(u.esperado_mes)} kWh/mês</span>
           <div style="height:10px;border-radius:99px;background:var(--vidro);margin:10px 0 4px;overflow:hidden"><div style="height:100%;width:${Math.min((s.pct || 0) * 100, 100)}%;background:${s.pct === null ? 'transparent' : s.pct < 0.75 ? 'var(--laranja)' : 'var(--verde-claro)'}"></div></div>
           <span class="mini">${s.pct === null ? 'sem leitura este mês' : `${n(s.total)} kWh · ${n(s.pct * 100)}% do esperado · ${brl(s.economiaMes)} de economia`}${s.ultimo ? ' · última leitura ' + s.ultimo.split('-').reverse().join('/') : ''}</span>
-          <div class="acoes-r" style="margin-top:10px"><button class="btn sol pequeno" data-us="rel" data-id="${u.id}">Relatório PDF</button><button class="btn zap pequeno" data-us="zap" data-id="${u.id}">WhatsApp</button><button class="btn vidro pequeno" data-us="imp" data-id="${u.id}">Importar</button><button class="link" data-us="edit" data-id="${u.id}">editar</button></div>
+          <div class="acoes-r" style="margin-top:10px"><button class="btn sol pequeno" data-us="conta" data-id="${u.id}">💡 Relatório da conta</button><button class="btn vidro pequeno" data-us="rel" data-id="${u.id}">Relatório do mês</button><button class="btn zap pequeno" data-us="zap" data-id="${u.id}">WhatsApp</button><button class="btn vidro pequeno" data-us="imp" data-id="${u.id}">Importar</button><button class="link" data-us="edit" data-id="${u.id}">editar</button></div>
         </div>`).join('') || '<p class="sutil">Nenhuma usina cadastrada. Comece pelas mais recentes.</p>'}</div>
       <input type="file" id="usArq" accept=".csv,.txt,.tsv" hidden>`;
     let alvo = null;
@@ -775,7 +775,8 @@
     $('#usImp').onclick = () => { if (!lista.length) { toast('Cadastre a usina primeiro'); return; } escolher(lista, (u) => { alvo = u.id; arq.click(); }); };
     app.querySelectorAll('[data-us]').forEach((b) => b.onclick = () => {
       const u = lista.find((x) => String(x.id) === b.dataset.id), g = B.geracao(u.id);
-      if (b.dataset.us === 'rel') U.relatorio(u, g);
+      if (b.dataset.us === 'conta') formFatura(u);
+      else if (b.dataset.us === 'rel') U.relatorio(u, g);
       else if (b.dataset.us === 'zap') window.open('https://wa.me/55' + String(u.whatsapp || '').replace(/\D/g, '').replace(/^55/, '') + '?text=' + encodeURIComponent(U.mensagem(u, g)), '_blank', 'noopener');
       else if (b.dataset.us === 'imp') { alvo = u.id; arq.click(); }
       else formUsina(u);
@@ -786,6 +787,65 @@
     ov.innerHTML = `<div class="painel" style="max-width:420px;width:100%"><span class="rotulo">De qual usina é a planilha?</span><div style="display:grid;gap:8px;margin-top:10px">${lista.map((u) => `<button class="btn vidro" data-u="${u.id}">${esc(u.cliente_nome)} · ${esc(u.marca)}</button>`).join('')}</div></div>`;
     ov.onclick = (e) => { const b = e.target.closest('[data-u]'); if (b) fn(lista.find((u) => String(u.id) === b.dataset.u)); ov.remove(); };
     document.body.appendChild(ov);
+  }
+  /* Relatório da conta: dados da fatura (lidos do PDF ou digitados) × geração da plataforma no período de leitura */
+  async function formFatura(u) {
+    const U = window.Usinas, g = B.geracao(u.id);
+    const hist = await B.faturas(u.id).catch(() => []);
+    const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:80;background:#0009;display:grid;place-items:center;padding:16px';
+    let f = { usina_id: u.id, tarifa: u.tarifa_kwh || '', dados: {} };
+    const campos = [['leitura_ini', 'Leitura anterior', 'date'], ['leitura_fim', 'Leitura atual', 'date'], ['consumo_rede', 'Consumo da rede (kWh)', 'number'], ['injetada', 'Energia injetada (kWh)', 'number'],
+      ['saldo_creditos', 'Saldo de créditos (kWh)', 'number'], ['valor_pago', 'Valor da conta (R$)', 'number'], ['tarifa', 'Tarifa (R$/kWh)', 'number'], ['iluminacao', 'Iluminação pública (R$)', 'number'], ['geracao_manual', 'Geração no período (kWh) · só se a plataforma não tiver', 'number'], ['referencia', 'Mês da conta (ex.: OUT/2026)', 'text']];
+    const desenhar = () => {
+      ov.innerHTML = `<div class="painel" style="max-width:640px;width:100%;max-height:92vh;overflow:auto"><div class="entre"><span class="rotulo" style="color:var(--sol)">Relatório da conta · ${esc(u.cliente_nome)}</span><button class="link" data-x>fechar</button></div>
+        <div class="linha-h" style="margin-top:10px"><button class="btn vidro" data-ler>📄 Ler a conta (PDF da CPFL)</button><span class="mini" id="ftAviso">ou digite os campos da conta</span></div>
+        <input type="file" id="ftArq" accept="application/pdf" hidden>
+        <div class="grade g2" style="margin-top:10px">${campos.map(([k, r, t]) => `<label class="campo"><span>${r}</span><input data-ft="${k}" type="${t}" step="any" value="${esc(k === 'iluminacao' ? (f.dados.iluminacao ?? '') : (f[k] ?? ''))}"></label>`).join('')}</div>
+        <div id="ftPrev" style="margin-top:10px"></div>
+        <div class="acoes-r" style="margin-top:12px"><button class="btn sol" data-gerar>Salvar e abrir o relatório</button><button class="btn zap" data-zap>WhatsApp</button></div>
+        ${hist.length ? `<div class="secao-t" style="margin-top:16px"><h2 style="font-size:16px">Contas anteriores</h2></div><table>${hist.map((h) => { const r = U.periodoFatura(u, g, h); return `<tr><td>${esc(h.referencia || h.leitura_fim)}</td><td>${brl(r.economia)} de economia</td><td><button class="link" data-abrir="${h.id}">abrir</button> · <button class="link" data-editar="${h.id}">editar</button></td></tr>`; }).join('')}</table>` : ''}</div>`;
+      prever();
+    };
+    const ler = () => { ov.querySelectorAll('[data-ft]').forEach((i) => { const v = i.type === 'number' ? (i.value === '' ? null : +i.value) : i.value.trim(); if (i.dataset.ft === 'iluminacao') f.dados = { ...(f.dados || {}), iluminacao: v }; else f[i.dataset.ft] = v; }); };
+    const prever = () => {
+      ler(); const el = ov.querySelector('#ftPrev'); if (!el) return;
+      if (!f.leitura_ini || !f.leitura_fim || f.leitura_fim <= f.leitura_ini) { el.innerHTML = '<p class="mini">Coloque as duas datas de leitura para ver a economia.</p>'; return; }
+      const r = U.periodoFatura(u, g, f);
+      el.innerHTML = `<div class="kpis"><div class="kpi destaque"><span class="rotulo">Economia na conta</span><b>${brl(r.economia)}</b><span class="sutil">sem solar seria ${brl(r.semSolar)}</span></div>
+        <div class="kpi"><span class="rotulo">Gerou no período</span><b>${n(r.geracao)} kWh</b><span class="sutil">${r.origem === 'plataforma' ? r.diasComDado + ' dias da plataforma' : r.origem === 'estimada' ? 'estimado: só ' + r.diasComDado + ' de ' + r.dias + ' dias' : r.geracao ? 'digitado' : 'sem dado: digite a geração'}</span></div>
+        <div class="kpi"><span class="rotulo">Veio do sol</span><b>${n(r.pctSol * 100)}%</b><span class="sutil">da energia da casa</span></div></div>`;
+    };
+    desenhar(); document.body.appendChild(ov);
+    ov.oninput = prever;
+    ov.onchange = async (e) => {
+      if (e.target.id !== 'ftArq') return; const arq = e.target.files[0]; if (!arq) return;
+      const av = ov.querySelector('#ftAviso'); av.textContent = 'lendo a conta…';
+      try {
+        const c = await window.LeitorConta.lerArquivo(arq);
+        const mapa = { leitura_ini: c.leituraAnterior, leitura_fim: c.leituraAtual, consumo_rede: c.consumoRede, injetada: c.injetada, saldo_creditos: c.saldoCreditos, valor_pago: c.valorTotal, tarifa: c.tarifaKwh, referencia: c.referencia };
+        let achou = 0; Object.entries(mapa).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') { f[k] = v; achou++; } });
+        if (c.iluminacao) { f.dados = { ...(f.dados || {}), iluminacao: c.iluminacao }; achou++; }
+        desenhar(); ov.querySelector('#ftAviso').textContent = `li ${achou} de 9 campos: confira os que ficaram em branco`;
+      } catch (err) { av.textContent = 'Não consegui ler: ' + err.message; }
+    };
+    ov.onclick = async (e) => {
+      if (e.target === ov || e.target.closest('[data-x]')) return ov.remove();
+      if (e.target.closest('[data-ler]')) return ov.querySelector('#ftArq').click();
+      const ab = e.target.closest('[data-abrir]'); if (ab) return U.relatorioFatura(u, g, hist.find((h) => String(h.id) === ab.dataset.abrir), hist);
+      const ed = e.target.closest('[data-editar]'); if (ed) { f = { ...hist.find((h) => String(h.id) === ed.dataset.editar) }; f.dados = f.dados || {}; return desenhar(); }
+      const gerar = e.target.closest('[data-gerar]'), zap = e.target.closest('[data-zap]');
+      if (!gerar && !zap) return;
+      ler();
+      if (!f.leitura_ini || !f.leitura_fim || f.leitura_fim <= f.leitura_ini) return toast('Coloque as datas de leitura da conta');
+      if (!f.valor_pago && f.valor_pago !== 0) return toast('Coloque o valor da conta');
+      if (!U.periodoFatura(u, g, f).geracao) return toast('Sem geração da plataforma nesse período: digite a geração do app do inversor');
+      let salvo = f;
+      try { salvo = await B.salvarFatura(f); } catch (err) { toast('Não salvou: ' + String(err.message).slice(0, 80)); }
+      const todas = [salvo, ...hist.filter((h) => h.leitura_fim !== salvo.leitura_fim)];
+      if (gerar) U.relatorioFatura(u, g, salvo, todas);
+      else window.open('https://wa.me/55' + String(u.whatsapp || '').replace(/\D/g, '').replace(/^55/, '') + '?text=' + encodeURIComponent(U.mensagemFatura(u, g, salvo)), '_blank', 'noopener');
+      ov.remove(); formFatura(u);
+    };
   }
   function formUsina(u) {
     const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:80;background:#0009;display:grid;place-items:center;padding:16px';
