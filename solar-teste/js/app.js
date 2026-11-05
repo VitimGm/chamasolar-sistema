@@ -1345,10 +1345,10 @@
   /* ======================= SERVIÇOS E MANUTENÇÃO (orçamentos avulsos) ======================= */
   const AV = () => window.Avulso;
   const linkServico = (o, vendedor) => new URL(`proposta-servico.html?t=${o.token}${vendedor ? '&v=1' : ''}`, location.href).href;
-  const ST_AV = { novo: ['Rascunho', 'var(--texto-3)'], proposta: ['Enviada', 'var(--azul, #3db4ff)'], aceito: ['Aceita ✓', 'var(--verde, #3ddc97)'], perdido: ['Perdida', 'var(--laranja)'] };
+  const ST_AV = { novo: ['Rascunho', 'var(--texto-3)'], proposta: ['Enviada', 'var(--azul, #3db4ff)'], ganho: ['Aceita ✓', 'var(--verde, #3ddc97)'], perdido: ['Perdida', 'var(--laranja)'] };
   function servicosPag() {
     const lista = B.avulsos().filter((o) => !o.apagado).sort((x, y) => String(y.atualizadoEm || '').localeCompare(String(x.atualizadoEm || '')));
-    const tot = (o) => AV().calcular(o, P()).total, abertos = lista.filter((o) => o.status === 'proposta'), aceitos = lista.filter((o) => o.status === 'aceito');
+    const tot = (o) => AV().calcular(o, P()).total, abertos = lista.filter((o) => o.status === 'proposta'), aceitos = lista.filter((o) => o.status === 'ganho');
     app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Serviços e manutenção</h1><p class="sutil">Orçamentos fora do kit solar: manutenção por placa, inversor híbrido, materiais e mão de obra. Cada um vira uma proposta com link.</p></div>
         <div class="linha-h"><a class="btn vidro" href="#servico-novo-manutencao">🧽 Nova manutenção</a><a class="btn sol" href="#servico-novo-servico">🔧 Novo serviço / itens</a></div></div>
       <div class="kpis entra"><div class="kpi destaque"><span class="rotulo">Em aberto</span><b>${abertos.length}</b><span class="sutil">${brl(abertos.reduce((t, o) => t + tot(o), 0))} em propostas</span></div>
@@ -1389,7 +1389,7 @@
         <p class="mini">Cartão: ${c.pagamento.parcelas}× de ${brl(c.pagamento.parcela, 2)} (${brl(c.pagamento.cartaoTotal, 2)}) · PIX ${brl(c.pagamento.pix, 2)}</p>
         <div class="acoes-r" style="margin-top:12px;flex-wrap:wrap"><button class="btn sol" id="avEnviar">📲 Enviar no WhatsApp</button><a class="btn vidro" href="${linkServico(o, true)}" target="_blank" id="avVer">👁 Ver a proposta</a><button class="btn vidro" id="avCopiar">🔗 Copiar link</button></div>
         <div class="chips" style="margin-top:10px">${Object.entries(ST_AV).map(([v, [t]]) => `<button class="chip ${o.status === v ? 'sel' : ''}" data-avst="${v}">${t}</button>`).join('')}</div>
-        ${(() => { const ac = B.eventos(o.token).find((e) => e.tipo === 'aceite'); return ac ? `<div class="aviso ok" style="margin-top:8px">✓ O cliente aceitou em ${new Date(ac.em).toLocaleString('pt-BR')}: ${(ac.dados || {}).pagamento === 'cartao' ? 'cartão' : 'PIX'}${(ac.dados || {}).plano ? ', com plano' : ''}, ${brl((ac.dados || {}).valor || 0, 2)}.${o.status !== 'aceito' ? ' Toque em "Aceita ✓" abaixo para fechar.' : ''}</div>` : ''; })()}
+        ${(() => { const ac = B.eventos(o.token).find((e) => e.tipo === 'aceite'); return ac ? `<div class="aviso ok" style="margin-top:8px">✓ O cliente aceitou em ${new Date(ac.em).toLocaleString('pt-BR')}: ${(ac.dados || {}).pagamento === 'cartao' ? 'cartão' : 'PIX'}${(ac.dados || {}).plano ? ', com plano' : ''}, ${brl((ac.dados || {}).valor || 0, 2)}.${o.status !== 'ganho' ? ' Toque em "Aceita ✓" abaixo para fechar.' : ''}</div>` : ''; })()}
         <p class="mini" style="margin-top:8px">${B.eventos(o.token).filter((e) => e.tipo === 'abriu').length ? `O cliente abriu a proposta ${B.eventos(o.token).filter((e) => e.tipo === 'abriu').length}×.` : 'O cliente ainda não abriu.'}</p></div>`; };
     const tela = () => {
       app.innerHTML = `${cabCelular()}<div class="cab entra"><div><a class="link" href="#servicos">← Serviços</a><h1>${M ? '🧽 Manutenção' : '🔧 Serviço / itens avulsos'} <span class="sutil" style="font-size:16px">${esc(o.id)}</span></h1></div>

@@ -17,7 +17,7 @@
   if (!o) { raiz.innerHTML = '<div class="ps"><div class="bloco vis" style="margin-top:20vh;text-align:center"><h2 style="justify-content:center">Proposta não encontrada</h2><p class="apoio">Confira o link ou fale com a Chama Solar.</p></div></div>'; return; }
   const P = B.parametros(), E = D.empresa, M = o.tipo === 'manutencao';
   const c = o.calc || AV.calcular(o, P);
-  const est = { pag: 'pix', plano: !!c.plano, aceito: o.status === 'aceito' || !!((B.eventos && B.eventos(o.token)) || []).find((e) => e.tipo === 'aceite') };
+  const est = { pag: 'pix', plano: !!c.plano, aceito: o.status === 'ganho' || !!((B.eventos && B.eventos(o.token)) || []).find((e) => e.tipo === 'aceite') };
   const registrar = (tipo, dados) => { if (!vendedor) try { B.evento(o.token, tipo, dados); } catch { /* sem conexão */ } };
   const ICON = { equipamento: ['⚡', '#4cc3ff33'], material: ['🔌', '#ffb23d33'], mao: ['🛠️', '#3ddc9733'], extra: ['🔧', '#ff6a0026'], outro: ['🚐', '#ffffff1a'] };
   const COR = { equipamento: '#4cc3ff', material: '#ffb23d', mao: '#3ddc97', outro: '#8792ad' };
