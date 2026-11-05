@@ -51,7 +51,8 @@ async function aguardarPortal(maxMs = 25000) {
     await pg.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {});
     const r = await pg.evaluate(() => {
       const carregando = [...document.querySelectorAll('mat-spinner, mat-progress-spinner, mat-progress-bar, .spinner, .spinner-border, .loading, .loader, ngx-spinner, .ngx-spinner-overlay, .la-ball-fall, [class*="carregando"], [class*="loading"]')].some((e) => e.offsetParent !== null);
-      return { carregando, assinatura: document.body.innerText.length + ':' + document.querySelectorAll('tr').length + ':' + location.pathname };
+      const txt = document.body.innerText; const carregandoTxt = /\bCarregando\.\.\.|Aguarde/i.test(txt);
+      return { carregando: carregando || carregandoTxt, assinatura: document.body.innerText.length + ':' + document.querySelectorAll('tr').length + ':' + location.pathname };
     }).catch(() => ({ carregando: false, assinatura: '' }));
     if (!r.carregando && r.assinatura === antes) { if (++iguais >= 2) return true; } else iguais = 0;
     antes = r.assinatura; await pausa(500);
@@ -134,6 +135,24 @@ async function listaCustom(rotulo, texto) { // listas da tela de estrutura (sele
   console.log(`Não achei "${texto}" em "${rotulo}": seguindo com o que o portal sugeriu.`);
   return false;
 }
+/* Lista as opções de um campo da estrutura (select comum ou lista do Angular) sem escolher nada */
+async function opcoesDe(rotulo) {
+  const viaSelect = await pg.evaluate((r) => {
+    const el = [...document.querySelectorAll('label, span, div, p, h4, h5')].find((x) => x.childElementCount < 3 && new RegExp(r, 'i').test(x.textContent || '') && (x.textContent || '').length < 60);
+    if (!el) return null;
+    let n = el; for (let k = 0; k < 4 && n; k++, n = n.parentElement) { const s = n.querySelector('select'); if (s) return [...s.options].map((o) => o.textContent.trim()).filter((t) => t && !/selecione/i.test(t)); }
+    return null;
+  }, rotulo).catch(() => null);
+  if (viaSelect && viaSelect.length) return viaSelect;
+  const rot = pg.getByText(rx(rotulo)).first(); if (!(await rot.count())) return [];
+  const campo = rot.locator('xpath=following::*[self::mat-select or self::ng-select or @role="combobox"][1]');
+  if (!(await campo.count())) return [];
+  await campo.first().click({ timeout: 4000 }).catch(() => {}); await pausa(700);
+  const ops = (await pg.locator('mat-option, [role="option"], .ng-option').locator('visible=true').allInnerTexts()).map((t) => t.trim()).filter((t) => t && !/selecione/i.test(t));
+  await pg.keyboard.press('Escape').catch(() => {}); await pausa(300);
+  return ops;
+}
+async function escolherPrimeira(rotulo, texto) { return (await listaCustom(rotulo, texto)) ? texto : null; }
 async function printErro(nome) { try { const f = path.resolve('erros', `${new Date().toISOString().replace(/[:.]/g, '-')}-${nome}.png`); await import('node:fs').then((fs) => fs.mkdirSync(path.resolve('erros'), { recursive: true })); await pg.screenshot({ path: f, fullPage: true }); return f; } catch { return ''; } }
 async function linhas(filtro) { // linhas das tabelas (módulos, inversores, itens)
   return pg.evaluate((filtro) => [...document.querySelectorAll('tr')].map((r, i) => {
@@ -203,6 +222,7 @@ async function passoInterno(etapa, e = {}) {
     return { etapa: 2, opcoes: { tipos: await opcoes('tipoInversor'), ligacoes: ['MONOFÁSICO', 'BIFÁSICO', 'TRIFÁSICO'], tensoes: {}, fabricantes: (await pg.locator('ng-multiselect-dropdown li').allInnerTexts()).map((x) => x.trim()).filter((x) => x && !/Marcar Todos/i.test(x)), inversores: null } };
   }
   if (etapa === 2 && e.filtrar) {
+    await aguardarPortal(20000);
     await matSelect('mat-select[formcontrolname="tipoInversor"]', e.tipoInversor);
     await matSelect('mat-select[formcontrolname="tipoLigacao"]', e.ligacao);
     await pg.locator('mat-select[formcontrolname="tensaoNominal"]').click(); await pausa(600);
@@ -214,7 +234,12 @@ async function passoInterno(etapa, e = {}) {
       for (const f of e.fabricantes) { const li = pg.locator('ng-multiselect-dropdown li').filter({ hasText: new RegExp('^\\s*' + f + '\\s*$', 'i') }); if (await li.count()) await li.first().click(); }
       await pg.locator('body').click({ position: { x: 5, y: 5 } }); await pausa(400);
     }
-    await botao(/FILTRAR/i).click(); await esperarLinhas('INVERSOR|MICRO', 45000);
+    await aguardarPortal(15000);
+    await botao(/FILTRAR/i).click({ timeout: 15000 });
+    // sistemas grandes demoram para listar ("Carregando..."): espera até 90 s e, se vier vazio, filtra de novo uma vez
+    if (!(await esperarLinhas('INVERSOR|MICRO', 90000).catch(() => 0))) {
+      await aguardarPortal(20000); await botao(/FILTRAR/i).click({ timeout: 15000 }).catch(() => {}); await esperarLinhas('INVERSOR|MICRO', 90000);
+    }
     const invs = (await linhas('INVERSOR|MICRO')).map((v) => ({ sku: v.sku, nome: v.nome.replace(/^INVERSOR DE CORRENTE\s*/i, 'Inversor '), potenciaKw: parseFloat(String((v.nome.match(/(\d+(?:[.,]\d+)?)\s*KW/i) || [])[1] || '0').replace(',', '.')) || 0, qtd: v.qtdSugerida || 1, overload: num(v.overload), tipo: /H[IÍ]BRID/i.test(v.nome) ? 'hibrido' : /MICRO/i.test(v.nome) ? 'micro' : 'string', fabricante: (v.nome.match(/(AUXSOL|DEYE|GROWATT|HUAWEI|SOLIS|SUNGROW|HOYMILES|TSUNESS|ENPHASE)/i) || [])[1] || '' }));
     return { etapa: 2, opcoes: { tipos: [e.tipoInversor], ligacoes: [e.ligacao], tensoes: { [e.ligacao]: tensoes }, fabricantes: [], inversores: invs } };
   }
@@ -230,12 +255,21 @@ async function passoInterno(etapa, e = {}) {
   }
   if (etapa === 3) {
     if (e.semEstrutura) { await pg.getByText(exato('Sem Estrutura')).click(); await pausa(800); return { etapa: 4, opcoes: { itens: [] } }; }
-    await listaCustom('Tipo de estrutura', e.estruturaTipo);
-    if (e.estruturaDetalhe) await listaCustom('Detalhes da Estrutura', e.estruturaDetalhe);
+    await listaCustom('Tipo de estrutura', e.estruturaTipo); await aguardarPortal(8000);
+    // Fibrocimento e laje pedem "Detalhes da Estrutura" (tipo de fixação/terça). Sem detalhe escolhido o CALCULAR fica travado:
+    // usa o detalhe pedido ou, se não vier, a primeira opção do portal (e devolve a lista para o vendedor escolher depois).
+    const detalhes = await opcoesDe('Detalhes da Estrutura');
+    let detalheUsado = null;
+    if (e.estruturaDetalhe && (await listaCustom('Detalhes da Estrutura', e.estruturaDetalhe))) detalheUsado = e.estruturaDetalhe;
+    else if (detalhes.length) { detalheUsado = await escolherPrimeira('Detalhes da Estrutura', detalhes[0]); }
+    if (detalheUsado) console.log('Detalhe da estrutura: ' + detalheUsado);
     await pg.locator('#numero-linhas').fill(String(e.linhas)); await pg.locator('#modulos-linha').fill(String(e.modulosPorLinha));
     await matSelect('#tipo-orientacao', e.orientacao || 'Retrato');
-    await botao(/CALCULAR ESTRUTURA/i).click(); await esperarLinhas('.', 45000);
-    return { etapa: 4, opcoes: { itens: (await linhas('Código:')).map((x) => ({ sku: x.sku, nome: x.nome, qtd: x.qtd })) } };
+    const calc = botao(/CALCULAR ESTRUTURA/i);
+    for (let k = 0; k < 16 && (await calc.isDisabled().catch(() => false)); k++) await pausa(500);
+    if (await calc.isDisabled().catch(() => false)) throw new Error(`o portal não liberou "Calcular estrutura" para ${e.estruturaTipo}${detalhes.length ? ` (detalhes disponíveis: ${detalhes.join(' / ')})` : ' (não achei a lista de detalhes)'}`);
+    await calc.click({ timeout: 10000 }); await esperarLinhas('.', 45000);
+    return { etapa: 4, opcoes: { detalhes, detalheUsado, itens: (await linhas('Código:')).map((x) => ({ sku: x.sku, nome: x.nome, qtd: x.qtd })) } };
   }
   if (etapa === 4 || etapa === 5) {
     await aguardarPortal(); await ajustarItens(e.itens); await proximo();
@@ -245,6 +279,8 @@ async function passoInterno(etapa, e = {}) {
   if (etapa === 6) {
     await aguardarPortal(); await ajustarItens(e.itens); await proximo();
     await aguardarPortal();
+    // garantia: se ainda estiver nos componentes CA (portal não trocou de tela), avança mais uma vez
+    if (!/Valor d[ao]s? (?:proposta|produtos)|Nome da proposta/i.test(await pg.evaluate(() => document.body.innerText))) { console.log('Ainda nos componentes CA: tentando avançar de novo.'); await pausa(2000); await proximo(); await aguardarPortal(); }
     const t = await pg.evaluate(() => document.body.innerText);
     return { etapa: 7, opcoes: { fretes: ['Cliente Retira', 'Transportadora escolhida pelo cliente', 'Belenus Entrega no Cliente'], pagamentos: ['Plano de Pagamento', 'Outras Formas de Pagamento'], valorProdutos: num((t.match(/Valor dos produtos:\s*R\$\s*([\d.,]+)/) || [])[1]) } };
   }
