@@ -32,7 +32,7 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
-const VERSAO = '2026-11-05c'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+const VERSAO = '2026-11-05d'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
 /* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
    Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
 const voando = new Map(); let ultimoFim = Date.now();
@@ -364,39 +364,56 @@ async function passoInterno(etapa, e = {}) {
     const valor = num((t.match(/Valor da proposta:\s*R\$\s*([\d.,]+)/) || t.match(/(?:Valor total|Total da proposta|Total geral)[^R]{0,20}R\$\s*([\d.,]+)/i) || [])[1]);
     const produtos = num((t.match(/Valor dos produtos:\s*R\$\s*([\d.,]+)/) || [])[1]);
     let numero = 'não salvo', pdf = null, diagSalvar = null;
+    const fs = await import('node:fs');
+    const guardarPdf = async (acao, nomeArq) => {
+      const [d] = await Promise.all([pg.waitForEvent('download', { timeout: 45000 }), acao()]);
+      fs.mkdirSync(path.resolve('propostas-belenergy'), { recursive: true });
+      const destino = path.resolve('propostas-belenergy', nomeArq); await d.saveAs(destino);
+      const buf = fs.readFileSync(destino); console.log('PDF salvo em ' + destino);
+      return buf.length < 4e6 ? { nome: nomeArq, base64: buf.toString('base64') } : null;
+    };
     if (e.salvar) { // só com a caixa "Salvar na Belenergy" marcada pelo vendedor
-      const antesSalvar = await pg.evaluate(() => document.body.innerText);
-      await botao(/^\s*Salvar\s*$/i).click(); await aguardarPortal(20000); await pausa(800);
-      // o número pode aparecer num aviso que some rápido, na tela ou no endereço: procura nos três
+      // 1) forma de pagamento: sem ela o portal não deixa salvar. Abre "Formas de pagamento" e escolhe Pix.
+      const pagTxt = async () => pg.evaluate(() => document.body.innerText);
+      if (!/Forma de pagamento:\s*\n?\s*(Pix|Boleto|Financiamento|Cart)/i.test(await pagTxt())) {
+        const abrir = pg.getByText(/Outras formas de pagamento|Forma de pagamento/i).last();
+        await abrir.click({ timeout: 5000 }).catch(() => {}); await pausa(900);
+        const modal = pg.locator('text=Formas de pagamento:').first();
+        if (await modal.count()) {
+          await pg.getByText(/^\s*Pix\s*$/i).first().click({ timeout: 5000 }).catch(() => {}); await pausa(1200); await aguardarPortal(8000);
+          const conf = pg.getByRole('button', { name: /Confirmar|Selecionar|Aplicar|Continuar|Escolher|Usar/i }).first();
+          if (await conf.count() && await conf.isVisible().catch(() => false)) { await conf.click({ timeout: 4000 }).catch(() => {}); await pausa(800); }
+          if (await pg.locator('text=Formas de pagamento:').first().isVisible().catch(() => false)) await pg.getByRole('button', { name: /^\s*Fechar\s*$/i }).first().click({ timeout: 3000 }).catch(() => {});
+          await pausa(600); console.log('Forma de pagamento escolhida: Pix');
+        }
+      }
+      // 2) PDF antes de salvar (depois de salvar o portal vai para "Meus orçamentos")
+      try { const bp = botao(/Baixar PDF|Gerar PDF|Download PDF|Baixar proposta/i); if (await bp.count()) pdf = await guardarPdf(() => bp.click(), 'cotacao-' + Date.now() + '.pdf'); }
+      catch (err) { console.log('PDF antes de salvar não veio: ' + String(err.message || err).slice(0, 100)); }
+      // 3) salvar e achar o número WEB em "Meus orçamentos" (cartão com o nome da proposta)
+      const antesSalvar = await pagTxt();
+      await botao(/^\s*Salvar\s*$/i).click(); await aguardarPortal(20000); await pausa(1500);
       let achado = null;
-      for (let k = 0; k < 6 && !achado; k++) {
-        t = await pg.evaluate(() => document.body.innerText) + ' ' + (await avisoPortal()) + ' ' + pg.url();
-        const w = t.match(/\bWEB\s*[-:#nº°]*\s*(\d{3,})/i) || pg.url().match(/(?:id|orcamento|proposta|pedido)[=/](\d{4,})/i)
-          || t.match(/(?:Or[çc]amento|Proposta|Pedido)\s*(?:n[ºo°.]*)?\s*[:#]?\s*(\d{4,})/i);
-        if (w && !antesSalvar.includes(w[1])) achado = w[1]; else await pausa(500);
+      for (let k = 0; k < 16 && !achado; k++) {
+        const t2 = (await pagTxt()) + ' ' + (await avisoPortal()) + ' ' + pg.url();
+        if (/Meus or[çc]amentos/i.test(t2)) {
+          achado = await pg.evaluate((nome) => { // cartões: "nome · WEB-0071… · Total"
+            const nos = [...document.querySelectorAll('div')].filter((d) => /WEB-\d{5,}/.test(d.innerText || '') && (d.innerText || '').length < 400);
+            const alvo = nos.filter((d) => !nome || (d.innerText || '').toLowerCase().includes(String(nome).toLowerCase().slice(0, 18))).sort((a, b) => (a.innerText || '').length - (b.innerText || '').length)[0] || nos[0];
+            if (!alvo) return null; alvo.setAttribute('data-robo-card', '1'); const m = alvo.innerText.match(/WEB-(\d{5,})/); return m ? m[1] : null;
+          }, e.nome || '');
+        } else { const w = t2.match(/\bWEB\s*[-:#nº°]*\s*(\d{5,})/i); if (w && !antesSalvar.includes(w[1])) achado = w[1]; }
+        if (!achado) await pausa(700);
       }
       numero = achado ? 'WEB ' + achado : 'salvo (ver Meus Orçamentos)';
-      if (!achado) { // guarda o que a tela mostrou depois de salvar, para ensinar o robô a achar o número
-        const i = t.search(/salv|sucesso|or[çc]amento/i);
-        diagSalvar = { url: pg.url(), tela: t.slice(Math.max(0, i - 300), i + 900).replace(/\s+/g, ' ') };
-        console.log('Salvou, mas não achei o número WEB na tela. Guardei o texto da tela para análise.');
+      if (achado && pdf) pdf.nome = 'WEB-' + achado + '.pdf';
+      if (!achado) { const t3 = await pagTxt(), i3 = t3.search(/salv|sucesso|or[çc]amento/i); diagSalvar = { url: pg.url(), tela: t3.slice(Math.max(0, i3 - 300), i3 + 900).replace(/\s+/g, ' ') }; console.log('Salvou, mas não achei o número WEB. Guardei o texto da tela.'); }
+      // 4) sem PDF ainda: baixa pelo botão de download do cartão em "Meus orçamentos"
+      if (!pdf && achado) {
+        try { const card = pg.locator('[data-robo-card="1"]').first(); const bt = card.locator('button, a').first(); if (await bt.count()) pdf = await guardarPdf(() => bt.click(), 'WEB-' + achado + '.pdf'); }
+        catch (err) { console.log('Não consegui baixar o PDF do cartão: ' + String(err.message || err).slice(0, 100)); }
       }
       await fecharAvisos();
-      // PDF da Belenergy: baixa e devolve para anexar no orçamento
-      try {
-        const bp = botao(/Baixar PDF|Gerar PDF|Download PDF|Baixar proposta/i);
-        if (await bp.count()) {
-          const [d] = await Promise.all([pg.waitForEvent('download', { timeout: 45000 }), bp.click()]);
-          const fs = await import('node:fs');
-          fs.mkdirSync(path.resolve('propostas-belenergy'), { recursive: true });
-          const nomeArq = (numero.startsWith('WEB') ? numero.replace(' ', '-') : 'cotacao-' + Date.now()) + '.pdf';
-          const destino = path.resolve('propostas-belenergy', nomeArq);
-          await d.saveAs(destino);
-          const buf = fs.readFileSync(destino);
-          if (buf.length < 4e6) pdf = { nome: nomeArq, base64: buf.toString('base64') };
-          console.log('PDF salvo em ' + destino);
-        }
-      } catch (err) { console.log('Não consegui baixar o PDF: ' + String(err.message || err).slice(0, 120)); }
     }
     // "Comprar Agora" NUNCA é clicado por este robô.
     if (!(valor || produtos)) { const f = await printErro('confirmacao'); throw new Error('Não achei o valor do kit na tela de confirmação' + (f ? ' · print salvo em ' + f : '')); }
