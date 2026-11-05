@@ -15,12 +15,20 @@
   }
   const hspDe = (o) => (D.cidades[o.cidade] || D.cidades['Ribeirão Preto']).hsp;
 
+  const ehGA = (o) => o.grupo === 'A' && raiz.GrupoA && o.grupoA && raiz.GrupoA.completo(o.grupoA);
   function entrada(o) {
     const p3 = o.projeto3d && Number.isFinite(o.projeto3d.perda) ? o.projeto3d.perda : null; // perda medida no 3D (direção + sombra)
     const desconhecida = p3 === null && (!o.orientacao || o.orientacao === '?');
     const perda = p3 !== null ? p3 : desconhecida ? ((raiz.Banco && raiz.Banco.parametros().perdaOrientacao) ?? 0.07) : 0;
+    const hsp = hspDe(o) * (1 - perda), orientacao = desconhecida || p3 !== null ? 'N' : o.orientacao;
+    let consumo = consumoMedio(o);
+    // Grupo A: a usina pode ficar no limite da demanda contratada (o inversor não passa dela)
+    if (ehGA(o) && o.grupoA.limitarDemanda) {
+      const pp = (raiz.Banco && raiz.Banco.parametros()) || D.parametros;
+      consumo = Math.min(consumo, raiz.GrupoA.consumoMaximo(o.grupoA, { hspEf: hsp * (M.FATOR_ORIENTACAO[orientacao] ?? 1), pr: pp.pr, margem: pp.margemGeracao ?? 0 }));
+    }
     return {
-      consumoMedio: consumoMedio(o), ligacao: o.ligacao, hsp: hspDe(o) * (1 - perda), orientacao: desconhecida || p3 !== null ? 'N' : o.orientacao, telhado: o.telhado || 'ceramico',
+      consumoMedio: consumo, ligacao: o.grupo === 'A' ? 'tri' : o.ligacao, hsp, orientacao, telhado: o.telhado || 'ceramico',
       distanciaKm: Number(o.distanciaKm) || 0, trocaPadrao: !!o.trocaPadrao, areaDisponivel: Number(o.areaDisponivel) || 0,
       formaPagamento: o.formaPagamento || 'financiamento', comissaoParceria: (Number(o.comissaoParceria) || 0) / 100,
       kitFaturadoDireto: !!o.kitFaturadoDireto, descontoPct: (Number(o.descontoPct) || 0) / 100,
@@ -36,22 +44,26 @@
     const pp = { ...p, tarifaKwh: Number(o.tarifaKwh) || p.tarifaKwh };
     const ops = M.montarOpcoes({ ...entrada(o), kitsFechados: o.kitsFechados }, raiz.Catalogo ? raiz.Catalogo.paraMotor() : D.catalogo, pp);
     ops.forEach((x) => { if (x.bateria) x.preco.semaforo = 'neutro'; });
+    // Grupo A: a economia sai da conta de ponta, fora ponta e demanda (a demanda continua)
+    if (ehGA(o)) ops.forEach((x) => { x.eco = raiz.GrupoA.economia(o.grupoA, { geracaoMes: x.dim.geracaoMes, investimento: x.preco.precoFinal, anoInicio: pp.anoBase }, pp); x.limiteDemanda = raiz.GrupoA.limiteDemanda(o.grupoA, (x.inversor && x.inversor.potenciaKw) || x.dim.kwpReal / 1.2); });
     return ops;
   }
 
   /* ---------- Raio-X da dor: o que o cliente já paga e vai pagar ---------- */
   function raioX(o, p, op) {
-    const tarifa = Number(o.tarifaKwh) || p.tarifaKwh;
-    const mensal = (o.consumos || []).map((c) => (Number(c) || 0) * tarifa);
+    const tarifa = Number(o.tarifaKwh) || p.tarifaKwh, ga = ehGA(o) ? o.grupoA : null;
+    // Grupo A: cada mês é ponta + fora ponta + demanda
+    const mensal = ga ? raiz.GrupoA.mensal(ga) : (o.consumos || []).map((c) => (Number(c) || 0) * tarifa);
     const pago12 = soma(mensal);
     const media = consumoMedio(o);
-    const anos = Array.from({ length: 25 }, (_, a) => media * 12 * tarifa * (1 + p.reajusteAnual) ** a);
+    const base12 = ga ? pago12 : media * 12 * tarifa, piso12 = ga ? raiz.GrupoA.demandaMes(ga) * 12 : 0; // a demanda continua com solar
+    const anos = Array.from({ length: 25 }, (_, a) => base12 * (1 + p.reajusteAnual) ** a);
     const total25 = soma(anos);
     // acumulado ano a ano: sem solar × com solar (investimento + o que ainda paga à CPFL)
     let semAc = 0, comAc = op ? op.preco.precoFinal : 0;
     const curva = anos.map((contaAno, a) => {
       semAc += contaAno;
-      if (op) comAc += Math.max(contaAno - op.eco.tabela[a].economiaAno, 0) + p.manutencaoAnual;
+      if (op) comAc += Math.max(contaAno - op.eco.tabela[a].economiaAno, piso12 * (1 + p.reajusteAnual) ** a) + p.manutencaoAnual;
       return { ano: p.anoBase + a, sem: Math.round(semAc), com: Math.round(comAc) };
     });
     const cruzamento = curva.findIndex((c) => c.com <= c.sem);
@@ -65,7 +77,7 @@
   /* ---------- Custo da espera ---------- */
   function espera(o, p, op) {
     const porMes = op.eco.economiaMes1;
-    const contaMedia = consumoMedio(o) * (Number(o.tarifaKwh) || p.tarifaKwh);
+    const contaMedia = ehGA(o) ? op.eco.contaAtual : consumoMedio(o) * (Number(o.tarifaKwh) || p.tarifaKwh);
     return {
       porMes: r2(porMes), porDia: r2(porMes / 30), seisMeses: Math.round(porMes * 6),
       contaPorSegundo: contaMedia / 30 / 86400, // para o "relógio da conta"
@@ -97,12 +109,12 @@
     const ini = soma(c.slice(0, 6)) / 6, fim = soma(c.slice(6)) / 6;
     const subida = ini > 0 ? fim / ini - 1 : 0;
     const pico = Math.max(...c), vale = Math.min(...c.filter((x) => x > 0));
-    const negocio = o.ligacao === 'tri' && consumoMedio(o) >= 1200;
+    const negocio = o.grupo === 'A' || (o.ligacao === 'tri' && consumoMedio(o) >= 1200);
     const dores = [];
     if (negocio) dores.push({ id: 'negocio', peso: 5, titulo: 'Energia está comendo a margem', texto: `R$ ${fmt(rx.pago12)} por ano de energia é custo fixo que sai do lucro todo mês.` });
     if (subida > 0.05) dores.push({ id: 'crescendo', peso: 4, titulo: 'O consumo está subindo', texto: `O consumo subiu ${Math.round(subida * 100)}% entre o 1º e o 2º semestre. A conta cresce junto.` });
     if (pico / vale > 1.2) dores.push({ id: 'verao', peso: 3, titulo: 'Picos de calor pesam', texto: `O mês mais caro (R$ ${fmt(rx.maiorConta)}) é ${Math.round((pico / vale - 1) * 100)}% maior que o mais barato — ar-condicionado e verão.` });
-    dores.push({ id: 'reajuste', peso: 2, titulo: 'A tarifa não para de subir', texto: 'A CPFL Paulista reajustou a tarifa residencial em 9,25% em 2026. Quem gera a própria energia sai dessa fila.' });
+    dores.push({ id: 'reajuste', peso: 2, titulo: 'A tarifa não para de subir', texto: o.grupo === 'A' ? 'A tarifa de média tensão também sobe todo ano. Gerando a própria energia, a empresa trava boa parte desse custo.' : 'A CPFL Paulista reajustou a tarifa residencial em 9,25% em 2026. Quem gera a própria energia sai dessa fila.' });
     dores.push({ id: 'conta', peso: 1, titulo: 'Dinheiro que não volta', texto: `R$ ${fmt(rx.pago12)} pagos à CPFL nos últimos 12 meses. Em 25 anos, R$ ${fmt(rx.total25)}.` });
     dores.sort((a, b) => b.peso - a.peso);
     return { principal: dores[0], dores, negocio, subida };
@@ -195,7 +207,7 @@
     const pNome = parseFloat(String((String(op.inversor.nome || '').match(/(\d+(?:[.,]\d+)?)\s*KW/i) || [])[1] || '').replace(',', '.'));
     if (pNome && Math.abs(pNome - potUn) > 0.01) potUn = pNome;
     const tipo = op.inversor.tipo === 'micro' || /micro/i.test(op.inversor.nome) ? 'micro' : op.inversor.hibrido || op.inversor.tipo === 'hibrido' ? 'hibrido' : 'string';
-    const nomeTipo = { micro: qtdInv > 1 ? 'microinversores' : 'microinversor', hibrido: 'inversor híbrido', string: 'inversor' }[tipo];
+    const nomeTipo = { micro: qtdInv > 1 ? 'microinversores' : 'microinversor', hibrido: qtdInv > 1 ? 'inversores híbridos' : 'inversor híbrido', string: qtdInv > 1 ? 'inversores' : 'inversor' }[tipo];
     return {
       modulo: `${op.dim.placas} placas ${marcaMod} de ${op.modulo.potenciaW} W`.replace(/\s+/g, ' '),
       moduloCurto: `${marcaMod} ${op.modulo.potenciaW} W`.trim(),
@@ -207,5 +219,5 @@
 
   function fmt(v, c = 0) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: c, maximumFractionDigits: c }); }
 
-  raiz.Conversao = { equipamentos, indiceOpcao, consumoMedio, entrada, opcoes, raioX, espera, custoEnergia, boleto, perfil, temperatura, proximaAcao, vizinhos, analisar, funil, fmt };
+  raiz.Conversao = { ehGA, equipamentos, indiceOpcao, consumoMedio, entrada, opcoes, raioX, espera, custoEnergia, boleto, perfil, temperatura, proximaAcao, vizinhos, analisar, funil, fmt };
 })(window);

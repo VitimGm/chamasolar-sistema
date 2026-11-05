@@ -186,6 +186,15 @@
     { nome: 'Padaria Pão Dourado', whatsapp: '16 98877-1122', cep: '14160-000', ligacao: 'tri', consumos: [1820, 1760, 1900, 1950, 1880, 1700, 1650, 1690, 1800, 1920, 2010, 1980], tarifaKwh: 0.96, instalacao: '4007XXXXXX' },
   ];
 
-  raiz.DadosTeste = { parametros, catalogo, cidades, ceps, contasExemplo, empresa, usinasVizinhas, leadsExemplo };
+  // Conta de média tensão de EXEMPLO (Grupo A, tarifa verde): supermercado fictício, tarifas aproximadas com impostos
+  const grupoAExemplo = {
+    nome: 'Supermercado Exemplo (teste)', cidade: 'Ribeirão Preto', distanciaKm: 8,
+    grupoA: { modalidade: 'verde', demanda: 150,
+      consumoFP: [39800, 38900, 39200, 36500, 33800, 31900, 31500, 33200, 35600, 37800, 38900, 40100],
+      consumoP: [4050, 3960, 3990, 3700, 3420, 3230, 3200, 3360, 3600, 3830, 3950, 4080],
+      tarifas: { teP: 0.62, tusdP: 1.95, teFP: 0.40, tusdFP: 0.14, demanda: 32, demandaP: 0 }, fioBParte: 0.5, simultaneidade: 0.7, alvo: 'fp', limitarDemanda: false },
+  };
+
+  raiz.DadosTeste = { parametros, catalogo, cidades, ceps, contasExemplo, grupoAExemplo, empresa, usinasVizinhas, leadsExemplo };
   if (typeof module !== 'undefined' && module.exports) module.exports = raiz.DadosTeste;
 })(typeof window !== 'undefined' ? window : globalThis);

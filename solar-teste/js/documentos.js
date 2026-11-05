@@ -69,6 +69,7 @@
   /* ---------- PROPOSTA EM PDF ---------- */
   function proposta(o, p, link) {
     const a = C().analisar(o, p), op = a.op, eq = C().equipamentos(op), e = empresaDe(p);
+    const ga = C().ehGA && C().ehGA(o) ? op.eco.grupoA : null, tRede = ga ? (+o.grupoA.tarifas.teFP || 0) + (+o.grupoA.tarifas.tusdFP || 0) : p.tarifaKwh;
     const prazos = p.financiamento.prazos || [];
     const parcelas = prazos.map((pz) => `<td class="v">${pz}x de <b>${brl(C().boleto(op, p, pz).parcela)}</b></td>`).join('');
     const anos = op.eco.tabela.filter((t, i) => [0, 4, 9, 14, 19, 24].includes(i));
@@ -78,7 +79,7 @@
       <h1>Proposta de energia solar para ${esc(o.nome)}</h1>
       <p class="mini">${esc(o.id)} · ${esc(o.cidade || '')} · válida até ${validade} (o preço do kit muda com o fornecedor)</p>
       <div class="tres"><div><span>Sua conta hoje</span><b>${brl(op.eco.contaAtual, 0)}</b></div><div><span>Com energia solar</span><b>${brl(op.eco.contaDepois, 0)}</b></div><div><span>Economia por mês</span><b>${brl(op.eco.economiaMes1, 0)}</b></div></div>
-      ${(o.segmento === 'grandes' || o.segmento === 'comercial' || o.segmento === 'rural') ? `<h2>${o.segmento === 'grandes' ? 'Resumo executivo' : 'Retorno do investimento'}</h2>
+      ${ga || o.segmento === 'grandes' || o.segmento === 'comercial' || o.segmento === 'rural' ? `<h2>${ga || o.segmento === 'grandes' ? 'Resumo executivo' : 'Retorno do investimento'}</h2>
       <table><tr><th>Indicador</th><th class="v">Valor</th></tr>
         <tr><td>Investimento</td><td class="v">${brl(op.preco.precoFinal, 0)}</td></tr>
         <tr><td>Geração anual estimada</td><td class="v">${n(op.dim.geracaoMes * 12)} kWh</td></tr>
@@ -86,26 +87,33 @@
         <tr><td>Retorno (payback)</td><td class="v">${op.eco.paybackAnos ? n(op.eco.paybackAnos, 1) + ' anos' : '—'}</td></tr>
         <tr><td>TIR</td><td class="v">${n(op.eco.tir * 100, 1)}% ao ano</td></tr>
         <tr><td>VPL (taxa de ${n((p.taxaDesconto || 0) * 100, 1)}% a.a.)</td><td class="v">${brl(op.eco.vpl, 0)}</td></tr>
-        <tr><td>Custo da energia gerada (LCOE)</td><td class="v">R$ ${n(C().analisar(o, p).energia.rsKwh, 2)}/kWh (rede: R$ ${n(p.tarifaKwh, 2)})</td></tr>
+        <tr><td>Custo da energia gerada (LCOE)</td><td class="v">R$ ${n(a.energia.rsKwh, 2)}/kWh (rede${ga ? ', fora ponta' : ''}: R$ ${n(tRede, 2)})</td></tr>
         <tr><td>Economia em 25 anos</td><td class="v">${brl(op.eco.economia25, 0)}</td></tr>
-        ${o.segmento === 'grandes' ? `<tr><td>Geração garantida em contrato</td><td class="v">${n(op.dim.geracaoMes * 12 * 0.9)} kWh/ano (90% da simulada, média de 12 meses)</td></tr>` : ''}</table>` : ''}
+        ${ga || o.segmento === 'grandes' ? `<tr><td>Geração garantida em contrato</td><td class="v">${n(op.dim.geracaoMes * 12 * 0.9)} kWh/ano (90% da simulada, média de 12 meses)</td></tr>` : ''}</table>` : ''}
+      ${ga ? (() => { const l = op.limiteDemanda || {}, dem = ga.modalidade === 'azul' ? `${n(ga.demandaKw.p)} kW ponta · ${n(ga.demandaKw.fp)} kW fora ponta` : `${n(ga.demandaKw)} kW`; return `<h2>A conta de média tensão (Grupo A, tarifa ${ga.modalidade === 'azul' ? 'azul' : 'verde'})</h2>
+      <table><tr><th>Parte da conta</th><th class="v">Hoje</th><th class="v">Com a usina</th></tr>
+        <tr><td>Energia fora ponta (${n(ga.cFP)} kWh/mês)</td><td class="v">${brl(ga.valorFP, 0)}</td><td class="v">${brl(ga.depoisFP, 0)}</td></tr>
+        <tr><td>Energia na ponta (${n(ga.cP)} kWh/mês)</td><td class="v">${brl(ga.valorP, 0)}</td><td class="v">${brl(ga.depoisP, 0)}</td></tr>
+        <tr><td>Demanda contratada (${dem})</td><td class="v">${brl(ga.demandaMes, 0)}</td><td class="v">${brl(ga.demandaMes, 0)}</td></tr>
+        <tr><td><b>Total por mês</b></td><td class="v"><b>${brl(op.eco.contaAtual, 0)}</b></td><td class="v"><b>${brl(op.eco.contaDepois, 0)}</b></td></tr></table>
+      <p class="mini">Por mês: ${n(ga.autoconsumo)} kWh usados na hora em que a usina gera, ${n(ga.compensadoFP)} kWh compensados no fora ponta${ga.compensadoP ? ` e ${n(ga.compensadoP)} kWh de ponta pagos com o crédito que sobra (1 kWh de ponta = ${n(ga.fa, 2)} kWh de crédito, pela relação das tarifas de energia)` : ''}. A demanda contratada continua. Fio B não compensado (Lei 14.300): cerca de ${brl(ga.fioBMes, 0)} por mês em ${p.anoBase}, já descontado.${l.demandaKw && !l.ok ? ` O inversor (${n(l.potInvKw, 1)} kW) passa da demanda contratada (${n(l.demandaKw)} kW): a demanda precisa ser revista com a CPFL antes da ligação; o custo dessa revisão não está nesta simulação.` : ''}</p>`; })() : ''}
       ${o.projeto3d && o.projeto3d.fotos && o.projeto3d.fotos.d3 ? secao3d(o.projeto3d) : ''}
       <h2>O sistema</h2>
       <table><tr><th>Item</th><th>Detalhe</th></tr>
         <tr><td>Placas solares</td><td>${esc(eq.modulo)}</td></tr><tr><td>${eq.tipo === 'micro' ? 'Microinversores' : 'Inversor'}</td><td>${esc(eq.inversor)}</td></tr>
         <tr><td>Potência</td><td>${n(op.dim.kwpReal, 2)} kWp</td></tr><tr><td>Geração estimada</td><td>${n(op.dim.geracaoMes)} kWh por mês (média do ano)</td></tr>
-        <tr><td>Seu consumo</td><td>${n(C().consumoMedio(o))} kWh por mês</td></tr><tr><td>Área no telhado</td><td>cerca de ${n(op.areaM2)} m²</td></tr>
+        <tr><td>${ga ? 'Consumo da empresa' : 'Seu consumo'}</td><td>${ga ? `${n(ga.cFP)} kWh fora ponta e ${n(ga.cP)} kWh na ponta por mês` : `${n(C().consumoMedio(o))} kWh por mês`}</td></tr><tr><td>Área no telhado</td><td>cerca de ${n(op.areaM2)} m²</td></tr>
         <tr><td>Incluso</td><td>Projeto, homologação na CPFL, ART, estrutura, instalação completa e acompanhamento até ligar</td></tr></table>
       <h2>Investimento</h2>
       <div class="preco"><div><span class="mini">${esc(PAGAMENTO[o.formaPagamento] || 'Valor do projeto')}</span><br><b>${brl(op.preco.precoFinal)}</b></div>
         <div class="mini" style="text-align:right">Retorno estimado em<br><b style="font-size:16pt;color:#1d283e">${op.eco.paybackAnos ? n(op.eco.paybackAnos, 1) + ' anos' : '—'}</b></div></div>
       ${prazos.length ? `<p class="mini" style="margin:10px 0 4px">Financiamento (simulação, sujeito à análise de crédito do banco):</p><table><tr>${parcelas}</tr></table>` : ''}
       <h2>Economia ao longo do tempo</h2>
-      <table><tr><th>Ano</th><th>Tarifa estimada</th><th class="v">Economia no ano</th><th class="v">Acumulado</th></tr>
+      <table><tr><th>Ano</th><th>Tarifa estimada${ga ? ' (fora ponta)' : ''}</th><th class="v">Economia no ano</th><th class="v">Acumulado</th></tr>
         ${anos.map((t) => `<tr><td>${t.ano}</td><td>R$ ${n(t.tarifa, 2)}/kWh</td><td class="v">${brl(t.economiaAno, 0)}</td><td class="v">${brl(t.acumulado, 0)}</td></tr>`).join('')}</table>
-      <p class="mini">Estimativas com reajuste de ${n((p.reajusteAnual || 0) * 100, 1)}% ao ano, perda de ${n((p.degradacaoAnual || 0) * 100, 1)}% ao ano das placas e as regras do Fio B da Lei 14.300. Ainda fica a taxa mínima da CPFL. A geração real depende do clima.</p>
+      <p class="mini">Estimativas com reajuste de ${n((p.reajusteAnual || 0) * 100, 1)}% ao ano, perda de ${n((p.degradacaoAnual || 0) * 100, 1)}% ao ano das placas e as regras do Fio B da Lei 14.300. ${ga ? 'A demanda contratada continua na conta.' : 'Ainda fica a taxa mínima da CPFL.'} A geração real depende do clima.</p>
       ${outras.length ? `<h2>${outras.length > 1 ? 'Outras opções' : 'Outra opção'}</h2><table>${outras.map((x) => `<tr><td><b>${esc(x.nivel)}</b>: ${esc(C().equipamentos(x).modulo)} + ${esc(C().equipamentos(x).inversor)}</td><td class="v">${brl(x.preco.precoFinal)}</td></tr>`).join('')}</table>` : ''}
-      ${link ? `<div class="qr"><div id="qr"></div><div><b>Veja esta proposta no celular</b><br><span class="mini">Aponte a câmera para o código: dá para simular parcelas, ouvir a explicação e mandar para a família.</span></div></div>` : ''}
+      ${link ? `<div class="qr"><div id="qr"></div><div><b>Veja esta proposta no celular</b><br><span class="mini">Aponte a câmera para o código: dá para simular parcelas, ouvir a explicação e mandar ${ga || (o.segmento && o.segmento !== 'residencial') ? 'para quem decide junto' : 'para a família'}.</span></div></div>` : ''}
       <p style="margin-top:18px">Dúvidas? Fale com ${esc(D.empresa.vendedor)}: WhatsApp ${esc(String(e.whatsapp).replace(/^55(\d\d)(\d{5})(\d{4})$/, '($1) $2-$3'))} · ${esc(e.email)}<br><span class="mini">${esc(e.nome)} · ${esc(e.endereco)}</span></p>`;
     abrir(pagina('Proposta ' + o.id, corpo, { qr: link }));
   }

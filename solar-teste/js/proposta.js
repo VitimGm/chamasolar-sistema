@@ -30,7 +30,8 @@
   let a = C.analisar({ ...o, opcaoEscolhida: est.opcao }, p, est.prazo);
 
   /* Tipo de cliente muda a proposta: residencial (conta e parcela), comercial (retorno), grandes contas (resumo executivo), rural (produção) */
-  const SEG = o.segmento || (/padaria|auto|peças|ltda|comércio|mercado|loja|restaurante/i.test(o.nome) ? 'comercial' : 'residencial');
+  const SEG = o.segmento || (o.grupo === 'A' ? 'grandes' : /padaria|auto|peças|ltda|comércio|mercado|loja|restaurante/i.test(o.nome) ? 'comercial' : 'residencial');
+  const GA = C.ehGA(o); // Grupo A: conta de média tensão (ponta, fora ponta e demanda)
   const ehEmpresa = SEG !== 'residencial' && !/^(dona|seu|sr|sra)\b/i.test(o.nome);
   const nomeCurto = ehEmpresa ? o.nome : String(o.nome).split(' ')[0];
   const validade = new Date(+new Date(o.enviadoEm || o.criadoEm) + p.validadeDias * 864e5);
@@ -52,7 +53,7 @@
     <main class="pv">
       <section class="ola">
         <h1>${ehEmpresa ? `Proposta para ${esc(o.nome)}` : `Olá, ${esc(nomeCurto)}!`}</h1>
-        <p>Preparamos esta proposta com base na sua conta de luz. Leva uns 3 minutos.</p>
+        <p>${GA ? 'Preparamos esta proposta com base na conta de média tensão da empresa: ponta, fora ponta e demanda contratada.' : 'Preparamos esta proposta com base na sua conta de luz.'} Leva uns 3 minutos.</p>
         <div class="consultor">
           <div class="foto" aria-hidden="true">${esc(vend[0])}</div>
           <div><b>${esc(vend)}, seu consultor na Chama Solar</b><span>Qualquer dúvida, é só me chamar:</span>
@@ -60,7 +61,7 @@
         </div>
       </section>
 
-      ${SEG === 'grandes' ? `<section class="bloco" data-secao="executivo" aria-labelledby="t-exe">
+      ${SEG === 'grandes' || GA ? `<section class="bloco" data-secao="executivo" aria-labelledby="t-exe">
         <h2 id="t-exe"><i class="bolha">${Icone('documento')}</i>Resumo executivo</h2>
         <div id="executivo"></div>
       </section>` : ''}
@@ -68,6 +69,11 @@
         <h2 id="t-resumo"><i class="bolha">${Icone('grafico')}</i>Resumo em três números</h2>
         <div class="tres" id="tres"></div>
       </section>
+      ${GA ? `<section class="bloco" data-secao="grupoA" aria-labelledby="t-ga">
+        <h2 id="t-ga"><i class="bolha">${Icone('conta')}</i>A conta de média tensão, hoje e com a usina</h2>
+        <p class="apoio">A conta do Grupo A tem três partes. A usina abate a energia (fora ponta e ponta); a demanda contratada continua.</p>
+        <div id="grupoA"></div>
+      </section>` : ''}
 
       ${SEG !== 'residencial' ? `<section class="bloco" data-secao="retorno" aria-labelledby="t-ret">
         <h2 id="t-ret"><i class="bolha">${Icone('grafico')}</i>${SEG === 'rural' ? 'Quanto a energia solar devolve para a propriedade' : 'Retorno do investimento'}</h2>
@@ -83,8 +89,8 @@
         </div>
       </section>` : ''}
       <section class="bloco" data-secao="conta" aria-labelledby="t-conta">
-        <h2 id="t-conta"><i class="bolha">${Icone('conta')}</i>Quanto você pagou de luz no último ano?</h2>
-        <p class="apoio">Cada barra é um mês da sua conta. A mais escura foi a mais cara.</p>
+        <h2 id="t-conta"><i class="bolha">${Icone('conta')}</i>${GA ? 'Quanto a empresa pagou de energia no último ano?' : 'Quanto você pagou de luz no último ano?'}</h2>
+        <p class="apoio">${GA ? 'Cada barra é um mês da conta: ponta, fora ponta e demanda somados.' : 'Cada barra é um mês da sua conta.'} A mais escura foi a mais cara.</p>
         <div class="barras" id="barras" aria-hidden="true"></div>
         <p class="frase" id="frase-conta"></p>
       </section>
@@ -152,6 +158,38 @@
   /* Item tocável: ícone + título; ao tocar, abre a explicação */
   const item = (ic, titulo, sub, explica, extra = '') => `<details class="item"><summary><i class="bolha">${Icone(ic)}</i><span class="txt"><b>${titulo}</b><span>${sub}</span></span><span class="abrir" aria-hidden="true">${Icone('mais')}</span></summary><div class="explica">${explica}${extra}</div></details>`;
 
+  /* ---------- Grupo A: a conta de média tensão por partes ---------- */
+  const tarifaRede = () => (GA && a.op.eco.grupoA ? (+(o.grupoA.tarifas.teFP || 0) + +(o.grupoA.tarifas.tusdFP || 0)) : p.tarifaKwh);
+  function blocoGrupoA(op) {
+    const eco = op.eco, g = eco.grupoA, l = op.limiteDemanda || {};
+    const dem = g.modalidade === 'azul' ? `${n(g.demandaKw.p)} kW ponta · ${n(g.demandaKw.fp)} kW fora ponta` : `${n(g.demandaKw)} kW`;
+    const linha = (t, sub, hoje, dep, cls = '') => `<tr class="${cls}"><td>${t}${sub ? `<small>${sub}</small>` : ''}</td><td class="v">${brl(hoje)}</td><td class="v">${brl(dep)}</td></tr>`;
+    return `<table class="ga-conta"><thead><tr><th></th><th class="v">Hoje</th><th class="v">Com a usina</th></tr></thead><tbody>
+        ${linha('Energia fora ponta', `${n(g.cFP)} kWh por mês`, g.valorFP, g.depoisFP)}
+        ${linha('Energia na ponta', `${n(g.cP)} kWh por mês, no fim da tarde`, g.valorP, g.depoisP)}
+        ${linha('Demanda contratada', dem, g.demandaMes, g.demandaMes)}
+        ${linha('Total por mês', '', eco.contaAtual, eco.contaDepois, 'total')}</tbody></table>
+      <div class="veredito bom">A conta cai ${brl(eco.economiaMes1)} por mês (${n((eco.economiaMes1 / Math.max(eco.contaAtual, 1)) * 100)}%).</div>
+      <ol class="ga-passos">
+        <li><b>${n(g.autoconsumo)} kWh</b> a empresa usa na hora em que a usina gera: saem direto do fora ponta${g.simultaneidade ? ` (estimamos ${n(g.simultaneidade * 100)}% da geração usada na hora)` : ''}.</li>
+        <li><b>${n(g.compensadoFP)} kWh</b> vão para a rede durante o dia e voltam como crédito no fora ponta.</li>
+        <li>${g.compensadoP ? `<b>${n(g.compensadoP)} kWh de ponta</b> são pagos com o crédito que sobra. Cada kWh de ponta usa ${n(g.fa, 2)} kWh de crédito, pela relação entre as tarifas de energia.` : 'A ponta (três horas no fim da tarde, em dias úteis) continua na conta: a usina foi dimensionada para o fora ponta.'}</li>
+        <li>A demanda contratada continua igual: ela paga a potência que a CPFL reserva para a empresa, com sol ou sem sol.</li>
+        ${g.fioBMes ? `<li>Pela Lei 14.300, parte do Fio B da tarifa não é compensada (cerca de ${brl(g.fioBMes)} por mês em ${p.anoBase}). Já está descontado nos números acima.</li>` : ''}
+        ${g.creditoSobra ? `<li>Sobram cerca de <b>${n(g.creditoSobra)} kWh</b> de crédito por mês, que valem por até 60 meses.</li>` : ''}
+      </ol>
+      ${l.demandaKw && !l.ok ? `<p class="apoio" style="margin-top:10px">A usina (inversor de ${n(l.potInvKw, 1)} kW) passa da demanda contratada hoje (${n(l.demandaKw)} kW). Antes de ligar, a demanda precisa ser revista com a CPFL; o custo dessa revisão não está nesta simulação. A Chama Solar cuida do pedido junto com o projeto.</p>` : ''}`;
+  }
+  function duvidasGA(op) {
+    const eco = op.eco, g = eco.grupoA;
+    return [
+      ['demanda', 'Por que a demanda continua na conta?', `A demanda contratada é a potência que a CPFL deixa reservada para a empresa, cobrada por kW mesmo nos meses de pouco consumo. A usina reduz a energia (kWh), não a demanda. Se no futuro a empresa reduzir a demanda contratada, a economia aumenta.`],
+      ['ponta', 'A usina gera no horário de ponta?', `Quase nada: a ponta é no fim da tarde, quando o sol já está baixo. Por isso a usina abate primeiro o fora ponta, e o crédito que sobra paga a ponta. Cada kWh de ponta usa ${n(g.fa, 2)} kWh de crédito, pela relação entre as tarifas de energia da ponta e do fora ponta.`],
+      ['taxacao', 'E a taxação do sol (Fio B)?', `Pela Lei 14.300, sobre a energia compensada pela rede passa a ser cobrada uma parte da tarifa de distribuição (o Fio B), que sobe até 2029. Na simulação já está descontado: cerca de ${brl(g.fioBMes)} por mês em ${p.anoBase}. O que a empresa usa na hora em que a usina gera não paga Fio B.`],
+      ['caro', 'Vale mais do que deixar o dinheiro aplicado?', `A usina rende ${n(eco.tir * 100, 1)}% ao ano (TIR) e se paga em ${eco.paybackAnos ? n(eco.paybackAnos, 1) + ' anos' : 'poucos anos'}, já com o reajuste da tarifa e a perda natural das placas. Depois disso, a economia de cerca de ${brl(eco.economiaMes1)} por mês fica com a empresa por mais de 20 anos.`],
+    ];
+  }
+
   /* ---------- Partes que mudam com as escolhas ---------- */
   function desenhar() {
     a = C.analisar({ ...o, opcaoEscolhida: est.opcao }, p, est.prazo);
@@ -160,7 +198,7 @@
 
     $('#tres').innerHTML = `
       <div class="num-card hoje"><i class="bolha">${Icone('conta')}</i><span>Hoje você paga</span><b>${brl(eco.contaAtual)}</b><small>por mês, em média</small></div>
-      <div class="num-card depois"><i class="bolha">${Icone('sol')}</i><span>Com energia solar</span><b>${brl(eco.contaDepois)}</b><small>por mês (taxa mínima da CPFL)</small></div>
+      <div class="num-card depois"><i class="bolha">${Icone('sol')}</i><span>Com energia solar</span><b>${brl(eco.contaDepois)}</b><small>${GA ? 'por mês (a demanda contratada continua)' : 'por mês (taxa mínima da CPFL)'}</small></div>
       <div class="num-card sobra"><i class="bolha">${Icone('cofre')}</i><span>Sobra no seu bolso</span><b>${brl(sobra)}</b><small>por mês, depois de pago o sistema</small></div>`;
 
     if ($('#retorno')) {
@@ -172,7 +210,7 @@
         <p class="apoio" style="margin:14px 0 6px">Caixa acumulado, ano a ano (vermelho: ainda pagando o sistema; verde: lucro):</p>
         <div aria-hidden="true" style="display:flex;align-items:center;gap:2px;height:130px;position:relative;border-left:1px solid var(--linha,#e3e6ec)">${(() => { const neg = Math.max(...tab.map((t) => (t.acumulado < 0 ? -t.acumulado : 0)), op.preco.precoFinal), pos = Math.max(...tab.map((t) => (t.acumulado > 0 ? t.acumulado : 0)), 1), zero = neg / (neg + pos) * 100; return `<div style="position:absolute;left:0;right:0;top:${100 - zero}%;border-top:1px solid var(--linha,#c9ced9)"></div>` + [{ acumulado: -op.preco.precoFinal }, ...tab].map((t) => `<div style="flex:1;height:100%;position:relative"><i style="position:absolute;left:0;right:0;border-radius:2px;${t.acumulado < 0 ? `top:${100 - zero}%;height:${-t.acumulado / (neg + pos) * 100}%;background:var(--ruim)` : `bottom:${zero}%;height:${t.acumulado / (neg + pos) * 100}%;background:var(--bom)`}"></i></div>`).join(''); })()}</div>
         <div style="display:flex;justify-content:space-between;font-size:.8rem;color:var(--texto-2,#5b6478);margin-top:4px"><span>hoje</span><span>ano 5</span><span>ano 10</span><span>ano 15</span><span>ano 20</span><span>ano 25</span></div>
-        <p class="frase" style="font-size:1rem">Cada kWh do sistema sai por <b>R$ ${n(a.energia.rsKwh, 2)}</b> ao longo de 25 anos, contra <b>R$ ${n(p.tarifaKwh, 2)}</b> da CPFL hoje.</p>`;
+        <p class="frase" style="font-size:1rem">Cada kWh do sistema sai por <b>R$ ${n(a.energia.rsKwh, 2)}</b> ao longo de 25 anos, contra <b>R$ ${n(tarifaRede(), 2)}</b> da CPFL hoje${GA ? ' no fora ponta' : ''}.</p>`;
     }
     if ($('#executivo')) {
       $('#executivo').innerHTML = `<table class="tab-exe"><tbody>
@@ -182,7 +220,9 @@
         <tr><td>Economia no 1º ano</td><td><b>${brl(eco.economiaMes1 * 12)}</b></td></tr>
         <tr><td>Retorno (payback)</td><td><b>${eco.paybackAnos ? n(eco.paybackAnos, 1) + ' anos' : '—'}</b></td></tr>
         <tr><td>TIR · VPL (${n(p.taxaDesconto * 100, 1)}% a.a.)</td><td><b>${n(eco.tir * 100, 1)}% a.a. · ${brl(eco.vpl)}</b></td></tr>
-        <tr><td>Custo da energia gerada (LCOE)</td><td><b>R$ ${n(a.energia.rsKwh, 2)}/kWh</b> contra R$ ${n(p.tarifaKwh, 2)} da rede</td></tr>
+        <tr><td>Custo da energia gerada (LCOE)</td><td><b>R$ ${n(a.energia.rsKwh, 2)}/kWh</b> contra R$ ${n(tarifaRede(), 2)} da rede${GA ? ' (fora ponta)' : ''}</td></tr>
+        ${GA ? (() => { const g = eco.grupoA, l = op.limiteDemanda || {}; return `<tr><td>Conta de energia por mês</td><td><b>${brl(eco.contaAtual)} → ${brl(eco.contaDepois)}</b></td></tr>
+        <tr><td>Tarifa · demanda contratada</td><td><b>${g.modalidade === 'azul' ? 'Azul' : 'Verde'} · ${g.modalidade === 'azul' ? `${n(g.demandaKw.p)} kW ponta e ${n(g.demandaKw.fp)} kW fora ponta` : `${n(g.demandaKw)} kW`}</b>${l.demandaKw ? (l.ok ? ` · inversor de ${n(l.potInvKw, 1)} kW dentro da demanda` : ` · inversor de ${n(l.potInvKw, 1)} kW: a demanda precisa ser revista com a CPFL`) : ''}</td></tr>`; })() : ''}
         <tr><td>Prazo de execução</td><td><b>${(p.empresaDoc && p.empresaDoc.prazoInstalacaoDias) || 60} dias</b> após a aprovação da CPFL</td></tr>
       </tbody></table>
       <p class="apoio" style="margin-top:10px">Geração garantida em contrato: ${n(op.dim.geracaoMes * 12 * 0.9)} kWh por ano (90% da simulada), apurada pela média de 12 meses.</p>`;
@@ -190,6 +230,7 @@
     const v = a.raioX.mensal, max = Math.max(...v), iMax = v.indexOf(max);
     $('#barras').innerHTML = v.map((x, i) => `<div class="b ${i === iMax ? 'max' : ''}"><i style="height:${Math.max((x / max) * 100, 4)}%"></i><em>${MESES[i]}</em></div>`).join('');
     $('#frase-conta').innerHTML = `No total foram <b class="destaque-ruim">${brl(a.raioX.pago12)}</b> para a CPFL. A conta mais cara foi em ${MESES_LONGOS[iMax]}: <b>${brl(max)}</b>.`;
+    if ($('#grupoA')) $('#grupoA').innerHTML = blocoGrupoA(op);
 
     const t25 = a.raioX.curva[24];
     const mx = Math.max(t25.sem, t25.com);
@@ -197,7 +238,7 @@
       <p class="frase" style="margin:0 0 14px">Cada mês sem energia solar custa <b class="destaque-ruim">${brl(a.espera.porMes)}</b>. Em seis meses, <b class="destaque-ruim">${brl(a.espera.seisMeses)}</b>.</p>
       <div class="linha-c"><div class="rot"><span>25 anos só com a CPFL</span><b class="destaque-ruim">${brl(t25.sem)}</b></div><div class="trilho"><i style="width:100%;background:var(--ruim)"></i></div></div>
       <div class="linha-c"><div class="rot"><span>25 anos com energia solar</span><b class="destaque-bom">${brl(t25.com)}</b></div><div class="trilho"><i style="width:${(t25.com / mx) * 100}%;background:var(--bom)"></i></div></div>
-      <p class="apoio" style="margin:12px 0 0">Com solar já está tudo somado: o sistema, a taxa mínima da CPFL e a limpeza anual. A CPFL reajustou a tarifa residencial em ${n(p.reajusteUltimo * 100, 2)}% em 2026.</p>`;
+      <p class="apoio" style="margin:12px 0 0">${GA ? `Com solar já está tudo somado: o sistema, a demanda contratada, a energia que ainda fica na conta e a limpeza anual. A simulação usa reajuste de ${n(p.reajusteAnual * 100, 1)}% ao ano na tarifa.` : `Com solar já está tudo somado: o sistema, a taxa mínima da CPFL e a limpeza anual. A CPFL reajustou a tarifa residencial em ${n(p.reajusteUltimo * 100, 2)}% em 2026.`}</p>`;
 
     $('#prazos').innerHTML = [...p.financiamento.prazos.slice().reverse(), 0].map((pz) => {
       const parc = pz ? C.boleto(op, p, pz).parcela : 0;
@@ -207,10 +248,10 @@
     $('#comparar').innerHTML = `
       <div class="conta-vs">
         <div class="caixa hoje"><span>Hoje</span><b>${brl(b.contaAtual)}</b><small>conta de luz</small></div>
-        <div class="caixa solar"><span>Com energia solar</span><b>${brl(b.totalMes)}</b><small>${b.parcela ? `parcela ${brl(b.parcela)} + conta ${brl(b.contaDepois)}` : `só a conta mínima`}</small></div>
+        <div class="caixa solar"><span>Com energia solar</span><b>${brl(b.totalMes)}</b><small>${b.parcela ? `parcela ${brl(b.parcela)} + conta ${brl(b.contaDepois)}` : GA ? 'só o que fica na conta' : 'só a conta mínima'}</small></div>
       </div>
       <div class="veredito ${b.diferenca >= 0 ? 'bom' : 'quase'}">${b.diferenca >= 0 ? `Você já começa pagando ${brl(b.diferenca)} a menos por mês.` : `Fica só ${brl(-b.diferenca)} a mais por mês, até terminar de pagar.`}</div>
-      <p class="frase" style="font-size:1rem">${b.parcela ? `Depois de ${b.prazo / 12} anos as parcelas acabam e você passa a pagar só ${brl(b.contaDepois)} de luz.` : `Desde o primeiro mês você paga só ${brl(b.contaDepois)} de luz.`}</p>`;
+      <p class="frase" style="font-size:1rem">${b.parcela ? `Depois de ${b.prazo / 12} anos as parcelas acabam e ${GA ? 'a empresa passa' : 'você passa'} a pagar só ${brl(b.contaDepois)} de ${GA ? 'energia' : 'luz'}.` : `Desde o primeiro mês ${GA ? 'a empresa paga' : 'você paga'} só ${brl(b.contaDepois)} de ${GA ? 'energia' : 'luz'}.`}</p>`;
 
     const consumoZerar = Math.max(C.consumoMedio(o) - op.dim.disponibilidade, 0);
     const eq = C.equipamentos(op);
@@ -218,9 +259,9 @@
       <p class="apoio">A opção que recomendamos para ${SEG === 'residencial' ? 'a sua casa' : SEG === 'rural' ? 'a propriedade' : 'a empresa'}:</p>
       <div class="itens">
         ${item('painel', esc(eq.modulo), `Ocupam cerca de ${n(op.areaM2)} m² do telhado`, `As placas transformam a luz do sol em energia. As placas ${esc(eq.marcaMod)} têm garantia de fábrica do produto e de rendimento. Os prazos de cada modelo vêm na ficha técnica que entregamos com o contrato.`)}
-        ${item(eq.tipo === 'micro' ? 'micro' : 'inversor', esc(eq.inversor), eq.tipo === 'micro' ? 'Um para cada grupo de placas' : eq.tipo === 'hibrido' ? 'Converte a energia e carrega a bateria' : 'O "cérebro" do sistema', eq.tipo === 'micro' ? 'Cada microinversor cuida de poucas placas. Se uma placa pegar sombra, as outras continuam gerando normalmente, e o sistema é desligado placa por placa, o que é mais seguro.' : eq.tipo === 'hibrido' ? 'Além de transformar a energia do sol, ele guarda energia na bateria e mantém o essencial ligado quando a luz da rua cai.' : 'Transforma a energia das placas na energia da tomada da sua casa e manda o que sobrar para a CPFL, que vira crédito na sua conta.')}
+        ${item(eq.tipo === 'micro' ? 'micro' : 'inversor', esc(eq.inversor), eq.tipo === 'micro' ? 'Um para cada grupo de placas' : eq.tipo === 'hibrido' ? 'Converte a energia e carrega a bateria' : 'O "cérebro" do sistema', eq.tipo === 'micro' ? 'Cada microinversor cuida de poucas placas. Se uma placa pegar sombra, as outras continuam gerando normalmente, e o sistema é desligado placa por placa, o que é mais seguro.' : eq.tipo === 'hibrido' ? 'Além de transformar a energia do sol, ele guarda energia na bateria e mantém o essencial ligado quando a luz da rua cai.' : `Transforma a energia das placas na energia da tomada ${SEG === 'residencial' ? 'da sua casa' : 'da empresa'} e manda o que sobrar para a CPFL, que vira crédito na ${SEG === 'residencial' ? 'sua conta' : 'conta'}.`)}
         ${op.bateria ? item('bateria', `Bateria de ${n(op.bateria.kwh, 1)} kWh`, 'Energia guardada para quando faltar luz', 'Mantém geladeira, luzes e internet ligadas durante uma queda de energia.') : ''}
-        ${item('grafico', `Gera ${n(op.dim.geracaoMes)} kWh por mês`, `Você usa ${n(C.consumoMedio(o))} kWh por mês`, `Desses ${n(C.consumoMedio(o))} kWh, ${n(consumoZerar)} kWh dá para zerar. Os outros ${op.dim.disponibilidade} kWh são a taxa mínima que a CPFL cobra de todo mundo, mesmo de quem tem energia solar. A conta mostra a média do ano, com dias de sol e de chuva.`, `<div class="trilho" style="margin-top:10px"><i style="width:${Math.min(op.dim.geracaoMes / Math.max(consumoZerar, 1), 1) * 100}%;background:var(--bom)"></i></div><p class="mini-p" style="text-align:left">${n(Math.min(op.dim.geracaoMes / Math.max(consumoZerar, 1), 1) * 100)}% do que dá para zerar</p>`)}
+        ${GA ? item('grafico', `Gera ${n(op.dim.geracaoMes)} kWh por mês`, `A empresa usa ${n(eco.grupoA.cFP)} kWh fora ponta e ${n(eco.grupoA.cP)} kWh na ponta`, `A usina gera de dia, fora do horário de ponta. ${n(eco.grupoA.autoconsumo)} kWh são usados na hora pela empresa, ${n(eco.grupoA.compensadoFP)} kWh viram crédito no fora ponta${eco.grupoA.compensadoP ? ` e ${n(eco.grupoA.compensadoP)} kWh de ponta são pagos com o crédito que sobra` : ''}. A conta mostra a média do ano, com dias de sol e de chuva.`, `<div class="trilho" style="margin-top:10px"><i style="width:${Math.min((eco.grupoA.autoconsumo + eco.grupoA.compensadoFP) / Math.max(eco.grupoA.cFP, 1), 1) * 100}%;background:var(--bom)"></i></div><p class="mini-p" style="text-align:left">${n(Math.min((eco.grupoA.autoconsumo + eco.grupoA.compensadoFP) / Math.max(eco.grupoA.cFP, 1), 1) * 100)}% do fora ponta coberto</p>`) : item('grafico', `Gera ${n(op.dim.geracaoMes)} kWh por mês`, `Você usa ${n(C.consumoMedio(o))} kWh por mês`, `Desses ${n(C.consumoMedio(o))} kWh, ${n(consumoZerar)} kWh dá para zerar. Os outros ${op.dim.disponibilidade} kWh são a taxa mínima que a CPFL cobra de todo mundo, mesmo de quem tem energia solar. A conta mostra a média do ano, com dias de sol e de chuva.`, `<div class="trilho" style="margin-top:10px"><i style="width:${Math.min(op.dim.geracaoMes / Math.max(consumoZerar, 1), 1) * 100}%;background:var(--bom)"></i></div><p class="mini-p" style="text-align:left">${n(Math.min(op.dim.geracaoMes / Math.max(consumoZerar, 1), 1) * 100)}% do que dá para zerar</p>`)}
         ${item('ferramenta', 'Instalação, projeto e papelada da CPFL', 'Tudo incluído no preço', 'Fazemos a visita técnica, o projeto, a aprovação na CPFL, a instalação e a troca do medidor. Você não precisa ir a lugar nenhum.')}
       </div>
       <div class="preco-sis"><span>Investimento</span><b>${brl(op.preco.precoFinal)}</b></div>
@@ -228,11 +269,11 @@
         ${a.opcoes.map((x, i) => i === est.opcao ? '' : `<div class="op-mini"><span><b style="font-family:inherit">${esc(x.nivel)}</b></span><b>${brl(x.preco.precoFinal)}</b><p>${esc(C.equipamentos(x).modulo)} + ${esc(C.equipamentos(x).inversor.replace(/^./, (c) => c.toLowerCase()))}. Gera ${n(x.dim.geracaoMes)} kWh/mês. ${esc(x.descricao)}</p><button type="button" data-op="${i}">Escolher esta opção</button></div>`).join('')}
       </details>`;
 
-    const perguntas = [
+    const perguntas = GA ? duvidasGA(op) : [
       ['caro', 'É muito dinheiro para agora?'], ['taxacao', 'Ouvi falar que agora o sol é taxado. Ainda compensa?'],
       ['tecnologia', 'Não é melhor esperar a tecnologia melhorar?'], ['mudar', 'E se eu mudar de casa?'],
-    ];
-    $('#duvidas').innerHTML = perguntas.map(([id, q]) => `<details class="duvida" data-duvida="${id}"><summary>${q}</summary><p>${esc(A.resposta(id, a, o))}</p></details>`).join('') +
+    ].map(([id, q]) => [id, q, A.resposta(id, a, o)]);
+    $('#duvidas').innerHTML = perguntas.map(([id, q, r]) => `<details class="duvida" data-duvida="${id}"><summary>${q}</summary><p>${esc(r)}</p></details>`).join('') +
       `<details class="duvida" data-duvida="nublado"><summary>E em dia nublado ou à noite?</summary><p>À noite você usa a energia da CPFL normalmente. De dia, o que sobra vira crédito na sua conta. O cálculo já usa a média do ano inteiro, com os dias nublados.</p></details>
        <details class="duvida" data-duvida="manutencao"><summary>Dá trabalho para cuidar?</summary><p>Quase nenhum: uma limpeza por ano. E a gente acompanha a sua usina todo mês e te avisa se algo sair do normal.</p></details>`;
     decidir();

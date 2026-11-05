@@ -46,6 +46,13 @@
     });
     // Fora da faixa: nunca passar do máximo (sobrecarga); entre os que não passam, o mais próximo de 1,20.
     const semSobrecarga = ordenados.filter((i) => kwpReal / i.potenciaKw <= faixa.max);
+    // usina maior que o maior inversor (Grupo A, comercial grande): vários inversores iguais
+    if (!dentro.length && !semSobrecarga.length) {
+      const maior = ordenados[ordenados.length - 1], qtd = Math.max(2, Math.ceil(kwpReal / (maior.potenciaKw * faixa.max) - 1e-9)); // o menor número que não passa da sobrecarga
+      const multi = { ...maior, qtd, potenciaUnKw: maior.potenciaKw, potenciaKw: maior.potenciaKw * qtd, preco: (maior.preco || 0) * qtd };
+      const r = kwpReal / multi.potenciaKw;
+      return { inversor: multi, relacaoDcAc: arred(r, 2), dentroDaFaixa: r >= faixa.min && r <= faixa.max };
+    }
     const candidatos = semSobrecarga.length ? semSobrecarga : [ordenados[ordenados.length - 1]];
     const escolhido = dentro[0] || candidatos.reduce((m, i) =>
       Math.abs(kwpReal / i.potenciaKw - 1.2) < Math.abs(kwpReal / m.potenciaKw - 1.2) ? i : m);
@@ -282,7 +289,7 @@
       const invs = catalogo.inversores.filter((i) => nivel.inversores.includes(i.id));
       const dim = dimensionar({ ...orc, potModuloW: modulo.potenciaW, pr: p.pr, margemGeracao: p.margemGeracao ?? 0, descontarDisponibilidade: !!p.descontarDisponibilidade });
       const inv = escolherInversor(dim.kwpReal, invs, p.faixaDcAc);
-      const str = conferirStrings(dim.placas, modulo, inv.inversor, p.tempMinima);
+      const str = conferirStrings(Math.ceil(dim.placas / (inv.inversor.qtd || 1)), modulo, inv.inversor, p.tempMinima); // por inversor
       const bateria = nivel.bateria ? catalogo.baterias.find((b) => b.id === nivel.bateria) : null;
       const kit = arred(
         dim.placas * modulo.preco + inv.inversor.preco + dim.placas * catalogo.estrutura[orc.telhado] + (bateria ? bateria.preco : 0)

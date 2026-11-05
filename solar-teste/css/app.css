@@ -228,3 +228,9 @@ body.com-barra { padding-bottom: 150px; }
 .t3-sol { min-height: 20px; font-size: 14px; }
 #t3Lado .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 560px) { #t3Lado .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .t3-caixa { padding: 10px; border-radius: 14px; } }
+/* Grupo A: tabela de ponta e fora ponta no passo 1 */
+.ga-tab { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ga-tab th { text-align: left; font-size: 11px; color: var(--texto-3); font-weight: 700; padding: 2px 4px; }
+.ga-tab td { padding: 2px 4px; }
+.ga-tab .v { text-align: right; }
+.ga-tab input { padding: 5px 8px; text-align: right; max-width: 100%; }
