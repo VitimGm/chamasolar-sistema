@@ -208,6 +208,9 @@
         </div>
         <div class="proxima" style="margin-top:14px"><div class="ic">${acao.icone}</div><div><span class="rotulo" style="color:var(--sol)">Próxima melhor ação</span><div style="font-weight:600;margin-top:4px">${esc(acao.texto)}</div></div></div>
         <div class="linha-h" style="margin-top:10px;gap:6px;flex-wrap:wrap"><span class="mini">📌 Próximo contato:</span>${[['amanhã', 1], ['3 dias', 3], ['1 semana', 7], ['15 dias', 15]].map(([t, d]) => `<button class="chip" data-prox="${d}">${t}</button>`).join('')}${lembretes().filter((l) => l.ref === o.id).map((l) => `<span class="mini" style="color:var(--sol)">· ${esc(l.texto)} em ${new Date(l.quando).toLocaleDateString('pt-BR')}</span>`).join('')}</div>
+        <div class="painel" style="margin-top:12px" id="resumoCv"><span class="rotulo">📝 Como ficou a conversa</span>
+          <textarea id="rsTxt" rows="2" placeholder="Escreva do seu jeito: liguei, ela gostou, vai ver com o marido no fim de semana e pediu para simular no banco" style="width:100%;margin-top:8px"></textarea>
+          <div class="acoes-r" style="margin-top:6px"><button class="btn vidro pequeno" id="rsVoz">🎙 Ditar</button><button class="btn sol pequeno" id="rsOk">Organizar o funil</button></div><div id="rsRes"></div></div>
         <div class="painel" style="margin-top:12px" id="conversa"><span class="rotulo">💬 O cliente respondeu</span>
           <textarea id="cvTxt" rows="2" placeholder="Cole aqui o que o cliente disse (ex.: achei caro, vou falar com minha esposa)" style="width:100%;margin-top:8px"></textarea>
           <div class="acoes-r" style="margin-top:6px"><button class="btn vidro pequeno" id="cvOk">O que eu respondo?</button></div><div id="cvRes"></div></div>
@@ -302,9 +305,9 @@
     $('#editar').onclick = () => { B.rascunho.gravar(o); B.rascunho.gravarEtapa(0); location.hash = '#novo'; };
     /* simulador de conversa: entende a resposta do cliente, sugere o caminho e aprende com o que você usa */
     const rep = () => P().repertorio || [];
-    const INT = [{ id: 'aceitou', t: 'Cliente quer fechar', k: ['fechar', 'vamos fazer', 'pode fazer', 'quero fazer', 'aceito', 'bora', 'pode mandar o contrato'], r: () => `Que ótimo, ${o.nome.split(' ')[0]}! Vou te mandar o contrato para conferir e já reservo a data da instalação. Prefere assinar pelo celular hoje ou amanhã?`, prox: 1, st: 'negociando' },
-      { id: 'financiamento', t: 'Pediu financiamento', k: ['financ', 'parcel', 'banco', 'prestação', 'prestacao', 'boleto'], r: () => `Consigo sim. Para simular de verdade no banco preciso do seu CPF e da renda aproximada. A estimativa da proposta é de ${a.boleto.prazo}x de ${brl(a.boleto.parcela)}. Me passa esses dados que te trago a simulação aprovada?`, prox: 2, st: 'negociando' },
-      { id: 'sumiu', t: 'Sem resposta', k: ['não respondeu', 'nao respondeu', 'sumiu', 'visualizou e não'], r: () => `Oi ${o.nome.split(' ')[0]}, tudo bem? Passando para saber se ficou alguma dúvida na proposta. Se preferir, te explico em 5 minutos por ligação. Qual o melhor horário?`, prox: 3 }];
+    const INT = [{ id: 'aceitou', t: 'Cliente quer fechar', k: ['fechar', 'vamos fazer', 'pode fazer', 'quero fazer', 'aceito', 'bora', 'pode mandar o contrato'], r: () => `Show, ${o.nome.split(' ')[0]}! Já te mando o contrato pra dar uma olhada, e reservo a data da instalação na agenda da equipe. Consegue assinar pelo celular hoje ainda ou fica melhor amanhã?`, prox: 1, st: 'negociando' },
+      { id: 'financiamento', t: 'Pediu financiamento', k: ['financ', 'parcel', 'banco', 'prestação', 'prestacao', 'boleto'], r: () => `Dá sim! Na proposta deixei uma estimativa de ${a.boleto.prazo}x de ${brl(a.boleto.parcela)}, mas pra te passar o valor certinho do banco preciso do seu CPF e de uma ideia da renda. Me manda por aqui que eu simulo nos bancos que trabalho e te volto com a melhor parcela, combinado?`, prox: 2, st: 'negociando' },
+      { id: 'sumiu', t: 'Sem resposta', k: ['não respondeu', 'nao respondeu', 'sumiu', 'visualizou e não'], r: () => `Oi ${o.nome.split(' ')[0]}, tudo certo? Sei que a correria é grande, não quero te encher 😊 Só queria saber se conseguiu ver a proposta. Se for mais fácil, te explico em 5 minutinhos por ligação, que horário costuma ser melhor pra você?`, prox: 3 }];
     const entenderResp = (txt) => { const t = txt.toLowerCase(), i = INT.find((x) => x.k.some((k) => t.includes(k))); if (i) return { id: i.id, t: i.t, resposta: i.r(), prox: i.prox, st: i.st };
       const ob = A.lista.find((x) => x.id === 'objecoes').fn({ o, a, texto: txt }); return ob.blocos.length === 1 ? { id: 'obj:' + ob.blocos[0].titulo, t: ob.blocos[0].titulo, resposta: ob.blocos[0].texto, prox: 2 } : { id: 'geral', t: 'Resposta livre', resposta: '', prox: 2 }; };
     const cvMostrar = () => {
@@ -326,6 +329,23 @@
       });
     };
     $('#cvOk').onclick = cvMostrar;
+    /* resumo da conversa → etapa, lembretes e anotação (confirma antes) */
+    const ETQ = Object.fromEntries(STATUS);
+    $('#rsOk').onclick = () => {
+      const txt = $('#rsTxt').value.trim(); if (!txt) return; const r = window.ResumoConversa.analisar(txt, o);
+      $('#rsRes').innerHTML = `<div style="margin-top:8px">${r.etapa && r.etapa !== o.status ? `<label class="chk"><input type="checkbox" data-rs="etapa" checked> Mudar a etapa para <b>${esc(ETQ[r.etapa] || r.etapa)}</b>${r.motivo ? ` (motivo: ${esc(r.motivo)})` : ''}</label>` : ''}
+        ${r.acoes.map((x, k) => `<label class="chk" style="display:flex;gap:6px;margin-top:4px"><input type="checkbox" data-rs="${k}" checked> 📌 ${esc(x.texto)} · <input type="datetime-local" data-rsq="${k}" value="${new Date(new Date(x.quando).getTime() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 16)}" style="padding:2px 6px;font-size:13px"></label>`).join('')}
+        <label class="chk" style="margin-top:4px"><input type="checkbox" data-rs="nota" checked> Guardar o resumo na ficha</label>
+        <div class="acoes-r" style="margin-top:8px"><button class="btn sol pequeno" id="rsAplicar">✓ Aplicar</button></div></div>`;
+      $('#rsAplicar').onclick = () => {
+        const on = (k) => { const x = $('#rsRes').querySelector(`[data-rs="${k}"]`); return x && x.checked; };
+        if (on('etapa')) { o.status = r.etapa; if (r.motivo) o.motivoPerda = r.motivo; if (r.etapa === 'ganho' && !o.ganhoEm) o.ganhoEm = new Date().toISOString(); B.salvar(o); }
+        r.acoes.forEach((x, k) => { if (on(k)) novoLembrete({ texto: x.texto, ref: o.id, quando: new Date($('#rsRes').querySelector(`[data-rsq="${k}"]`).value).toISOString() }); });
+        if (on('nota')) B.interacao(o.id, 'nota', 'Resumo: ' + txt);
+        toast('Funil atualizado: etapa, lembretes e anotação'); ficha(id);
+      };
+    };
+    $('#rsVoz').onclick = () => { const R = window.SpeechRecognition || window.webkitSpeechRecognition; if (!R) { toast('Ditado funciona no Chrome e no Edge'); return; } const rec = new R(); rec.lang = 'pt-BR'; rec.interimResults = false; rec.onresult = (e) => { $('#rsTxt').value = ($('#rsTxt').value + ' ' + e.results[0][0].transcript).trim(); }; rec.onend = () => { $('#rsVoz').textContent = '🎙 Ditar'; }; rec.start(); $('#rsVoz').textContent = '● ouvindo…'; };
     app.querySelectorAll('[data-prox]').forEach((bt) => bt.onclick = () => { const d = +bt.dataset.prox, q = new Date(Date.now() + d * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `Falar com ${o.nome}`, ref: o.id, quando: q.toISOString() }); toast('Próximo contato marcado no Meu dia'); ficha(id); });
     $('#status').onchange = (e) => { o.status = e.target.value; if (o.status === 'perdido') { const q = new Date(Date.now() + 90 * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `Retomar ${o.nome} (perdido há 90 dias: preço e momento mudam)`, ref: o.id, quando: q.toISOString() }); toast('Perdido: retomada agendada em 90 dias. Anote o motivo.'); } if (o.status !== 'novo' && !o.enviadoEm) o.enviadoEm = new Date().toISOString(); if (o.status === 'ganho' && !o.ganhoEm) o.ganhoEm = new Date().toISOString(); B.salvar(o); ficha(id); };
     const mot = $('#motivo'); if (mot) mot.onchange = (e) => { o.motivoPerda = e.target.value; B.salvar(o); toast('Motivo salvo'); };
