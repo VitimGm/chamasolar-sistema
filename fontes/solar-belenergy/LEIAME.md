@@ -39,3 +39,9 @@ Na 1ª vez faça o login na janela que abrir. A sessão fica em `sessao-belenerg
 
 ## Integração oficial
 A Belenergy já integra o montador com softwares de proposta (ex.: SolarMarket). Pedir ao gerente de contas a mesma integração continua sendo o caminho mais estável.
+
+## Fila do Jarvis (preço real pelo celular)
+1. No sistema: Parâmetros → "Robô do escritório" → "Mostrar a chave do robô".
+2. Nesta pasta, crie o arquivo `robo-config.json` e cole o que apareceu, por exemplo `{ "chave": "..." }`.
+3. Abra o INICIAR-COTADOR.bat. Deve aparecer "Fila do Jarvis ligada".
+O robô confere a fila a cada minuto, cota e salva na Belenergy (com Pix e a WEB). O preço volta sozinho para o orçamento, e você recebe um lembrete no Meu dia. Ele nunca clica em "Comprar Agora". Não mande a chave por mensagem.
