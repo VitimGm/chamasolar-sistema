@@ -73,7 +73,7 @@
         <div class="valor-h"><div><small id="vLeg">valor ${M && est.plano && c.plano ? 'por visita no plano' : 'total'}</small><b class="num" id="vTopo">${brl(M && est.plano && c.plano ? c.plano.porVisita : c.total)}</b></div><div class="val">${esc(o.prazo || '')}</div></div></header>
       ${M ? blocoManut() : ''}${blocoItens()}${M ? '' : blocoServ()}${blocoPagar()}
       <section class="bloco" data-secao="quem"><h2><i>🔆</i>Quem vai cuidar disso</h2><p class="apoio" style="margin:0">A ${esc(E.nome)} instala e cuida de sistemas solares há ${E.anos} anos em Ribeirão Preto e região. ${esc(E.selo || '')}.</p>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><a class="btn zap" href="${zap(`Olá, ${E.vendedor}! Tenho uma dúvida sobre a proposta ${o.id}.`)}" target="_blank" rel="noopener" data-z="1">Tirar dúvida no WhatsApp</a><a class="btn vidro" href="${esc(E.instagram)}" target="_blank" rel="noopener">Ver obras no Instagram</a></div></section>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><a class="btn zap" href="${zap(`Olá, ${E.vendedor}! Tenho uma dúvida sobre a proposta ${o.id}.`)}" target="_blank" rel="noopener" data-z="1">Tirar dúvida no WhatsApp</a><a class="btn vidro" href="${esc(E.instagram)}" target="_blank" rel="noopener">Ver obras no Instagram</a><button class="btn vidro" id="pdf">📄 Baixar PDF</button></div></section>
       <footer class="rodape">${esc(E.nome)} · ${esc(E.endereco)}<br>${esc(E.telefone)} · ${esc(E.email)}</footer></div>
       <div class="barra-acao"><div class="ps-in"><div class="tot"><small id="bLeg">${est.pag === 'cartao' ? 'no cartão' : 'à vista'}</small><b class="num" id="bTot">${brl(valorAtual().total)}</b></div>${est.aceito ? '<span class="selo" style="color:var(--bom)">aceita ✓</span>' : '<button class="btn sol" id="irAceitar">Aceitar</button>'}</div></div>`;
     ligar(); simular();
@@ -112,5 +112,8 @@
     if (!ob) document.querySelectorAll('[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; });
   }
   montar();
+  // PDF: a mesma proposta em versão para imprimir (fundo branco, tudo aberto)
+  const pdf = () => { document.querySelectorAll('.bloco').forEach((x) => x.classList.add('vis')); document.querySelectorAll('[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; }); registrar('viu', { secao: 'pdf' }); setTimeout(() => print(), 300); };
+  $('#pdf').onclick = pdf; if (qs.get('pdf') === '1') setTimeout(pdf, 800);
   registrar('abriu', { tipo: o.tipo });
 })();

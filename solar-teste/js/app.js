@@ -600,7 +600,9 @@
       : `<div class="aviso ruim">O inversor (${n(l.potInvKw, 1)} kW) passa da demanda contratada (${n(l.demandaKw)} kW). Para ligar assim, a demanda precisa ser revista com a CPFL (aumentar a demanda ou contratar demanda de geração), o que pode mudar a conta. Confira com a engenharia ou marque "Limitar a usina à demanda contratada" no passo 1.</div>`;
   }
   /* fixação: escolhida no passo 2 e passada ao robô para achar o "Detalhe da estrutura" certo no portal */
-  const FIXACAO = { fibrocimento: [['madeira', 'Estrutura de madeira'], ['metal', 'Estrutura metálica']], metalico: [['minitrilho', 'Mini trilho'], ['minitrilhoAlto', 'Mini trilho alto'], ['suporteL', 'Suporte em pé (L)']] };
+  // nomes iguais aos do "Detalhes da Estrutura" da Belenergy
+  const FIXACAO = { fibrocimento: [['madeira200', 'Madeira · haste 200 mm'], ['madeira250', 'Madeira · haste 250 mm'], ['madeira300', 'Madeira · haste 300 mm'], ['madeiraSext', 'Madeira · sextavado interno'], ['metal', 'Estrutura metálica']],
+    metalico: [['minitrilho130', 'Mini trilho 130 mm'], ['minitrilho260', 'Mini trilho 260 mm'], ['minitrilho550', 'Mini trilho 550 mm'], ['minitrilhoAlto', 'Mini trilho alto'], ['suporteL', 'Suporte pé em L c/ perfil'], ['zipada', 'Mini trilho · telha zipada']] };
   function passo3(el) {
     const p = P(), op = C.opcoes({ ...orc, kitsFechados: null }, p)[1], d = op.dim;
     el.innerHTML = `<div class="kpis">
@@ -1391,7 +1393,7 @@
         ${M ? (c.plano ? `<p class="mini" style="margin-top:8px">Plano: ${brl(c.plano.porVisita, 2)} por visita, ${c.plano.visitasAno}× por ano = ${brl(c.plano.porAno, 2)}/ano</p>` : '') : `<div class="numeros4" style="margin-top:10px"><div><span>Custo</span><b>${brl(c.custo)}</b></div><div><span>Impostos</span><b>${brl(c.imposto)}</b></div><div><span>Lucro</span><b style="color:${c.lucro < 0 ? 'var(--laranja)' : 'inherit'}">${brl(c.lucro)}</b></div><div><span>Margem real</span><b>${n(c.margemReal * 100, 1)}%</b></div></div>`}
         <label class="campo" style="margin-top:10px"><span>Ajustar o preço final (opcional)</span><input type="number" step="any" min="0" data-av="precoManual" value="${o.precoManual || ''}" placeholder="${n(c.calculado, 2)}"></label>
         <p class="mini">Cartão: ${c.pagamento.parcelas}× de ${brl(c.pagamento.parcela, 2)} (${brl(c.pagamento.cartaoTotal, 2)}) · PIX ${brl(c.pagamento.pix, 2)}</p>
-        <div class="acoes-r" style="margin-top:12px;flex-wrap:wrap"><button class="btn sol" id="avEnviar">📲 Enviar no WhatsApp</button><a class="btn vidro" href="${linkServico(o, true)}" target="_blank" id="avVer">👁 Ver a proposta</a><button class="btn vidro" id="avCopiar">🔗 Copiar link</button></div>
+        <div class="acoes-r" style="margin-top:12px;flex-wrap:wrap"><button class="btn sol" id="avEnviar">📲 Enviar no WhatsApp</button><a class="btn vidro" href="${linkServico(o, true)}" target="_blank" id="avVer">👁 Ver a proposta</a><button class="btn vidro" id="avCopiar">🔗 Copiar link</button><a class="btn vidro" href="${linkServico(o, true)}&pdf=1" target="_blank">📄 PDF</a></div>
         <div class="chips" style="margin-top:10px">${Object.entries(ST_AV).map(([v, [t]]) => `<button class="chip ${o.status === v ? 'sel' : ''}" data-avst="${v}">${t}</button>`).join('')}</div>
         ${(() => { const ac = B.eventos(o.token).find((e) => e.tipo === 'aceite'); return ac ? `<div class="aviso ok" style="margin-top:8px">✓ O cliente aceitou em ${new Date(ac.em).toLocaleString('pt-BR')}: ${(ac.dados || {}).pagamento === 'cartao' ? 'cartão' : 'PIX'}${(ac.dados || {}).plano ? ', com plano' : ''}, ${brl((ac.dados || {}).valor || 0, 2)}.${o.status !== 'ganho' ? ' Toque em "Aceita ✓" abaixo para fechar.' : ''}</div>` : ''; })()}
         <p class="mini" style="margin-top:8px">${B.eventos(o.token).filter((e) => e.tipo === 'abriu').length ? `O cliente abriu a proposta ${B.eventos(o.token).filter((e) => e.tipo === 'abriu').length}×.` : 'O cliente ainda não abriu.'}</p></div>`; };

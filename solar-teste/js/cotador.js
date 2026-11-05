@@ -204,7 +204,8 @@
     let det = (s.opcoes.estruturas || {})[tipo] || [];
     if (!det.length) det = await detalhes(s, tipo);
     // fixação pedida pelo vendedor (madeira/metal no fibrocimento; mini trilho, mini trilho alto ou suporte L na metálica)
-    const RX = { madeira: /madeira/i, metal: /met[aá]l|a[cç]o|perfil/i, minitrilho: /mini\s*-?\s*trilho(?!.*alto)/i, minitrilhoAlto: /mini\s*-?\s*trilho.*alto|alto.*mini\s*-?\s*trilho/i, suporteL: /\bL\b|em p[ée]|p[ée]\s*L|suporte\s*L/i };
+    const RX = { madeira200: /200\s*mm.*madeira(?!.*sextavado)/i, madeira250: /250\s*mm.*madeira/i, madeira300: /300\s*mm.*madeira/i, madeiraSext: /madeira.*sextavado/i, metal: /met[aá]l|perfil/i,
+      minitrilho130: /mini\s*trilho\s*130/i, minitrilho260: /mini\s*trilho\s*260/i, minitrilho550: /mini\s*trilho\s*550/i, minitrilhoAlto: /mini\s*trilho\s*alto/i, suporteL: /p[ée]\s*em\s*L/i, zipada: /zipada/i };
     const pref = base.fixacao && RX[base.fixacao] ? det.find((d) => RX[base.fixacao].test(d)) : null;
     if (pref) det = [pref, ...det.filter((d) => d !== pref)];
     const placas = s.escolhas.modulo.qtd, linhas = placas > 12 ? 2 : 1;
