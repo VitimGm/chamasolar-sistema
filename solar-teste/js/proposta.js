@@ -102,17 +102,17 @@
         <div id="comparar"></div>
       </section>
 
-      ${o.projeto3d && o.projeto3d.fotos ? `<section class="bloco" data-secao="usina3d" aria-labelledby="t-3d">
+      ${o.projeto3d && o.projeto3d.fotos && o.projeto3d.fotos.d3 ? (() => { const p3 = o.projeto3d, r3 = p3.resultado || {}; return `<section class="bloco" data-secao="usina3d" aria-labelledby="t-3d">
         <h2 id="t-3d"><i class="bolha">${Icone('casa')}</i>Sua usina em 3D</h2>
-        <p class="apoio">Montada sobre a foto ${o.projeto3d.fonte === 'google' ? 'de satélite' : 'aérea'} do seu telhado, com a posição de cada placa e a sombra calculada para o ano inteiro.</p>
-        <div class="v3d" id="v3d"><img src="${o.projeto3d.fotos.d3}" alt="Usina solar em 3D no seu telhado"></div>
+        <p class="apoio">Montada sobre a foto ${p3.drone ? 'do drone' : p3.fonte === 'google' ? 'de satélite' : 'aérea'} do seu telhado, com a medida real de cada placa e a sombra calculada hora a hora, para o ano inteiro.</p>
+        <div class="v3d" id="v3d"><img src="${p3.fotos.d3}" alt="Usina solar em 3D no seu telhado"></div>
         <div class="v3d-ctl" id="v3dCtl" hidden>
-          <label>Mês <input type="range" id="v3dMes" min="0" max="11" value="5"></label>
-          <label>Hora <input type="range" id="v3dHora" min="6" max="18" step="0.25" value="9.5"></label>
+          <div class="v3d-dias" role="group" aria-label="Época do ano">${[[0, 'Verão'], [3, 'Mar · Set'], [6, 'Inverno']].map(([d, t]) => `<button data-v3d-dia="${d}" aria-pressed="${d === 6}">${t}</button>`).join('')}</div>
+          <div class="v3d-linha"><button class="v3d-play" id="v3dPlay" aria-label="Ver o sol passar">▶</button><input type="range" id="v3dHora" min="6" max="18" step="0.05" value="9.5" aria-label="Hora do dia"><b id="v3dHoraO">09:30</b></div>
           <span id="v3dTxt"></span></div>
-        <button class="btn-g contorno" id="v3dGirar" style="margin-top:10px">${Icone('casa')} Girar a minha casa em 3D</button>
-        <p class="apoio" style="margin-top:8px">${o.projeto3d.resultado ? `${o.projeto3d.resultado.placas} placas · perda por sombra medida: ${n(o.projeto3d.resultado.perdaSom * 100, 1)}%` : ''}${o.projeto3d.fonte === 'google' ? ' · Imagens © Google' : ''}</p>
-      </section>` : ''}
+        <button class="btn-g contorno" id="v3dGirar" style="margin-top:10px">${Icone('casa')} Girar a casa e ver o sol passar</button>
+        <p class="apoio" style="margin-top:8px">${r3.placas ? `${r3.placas} placas · sombra medida: ${n((r3.perdaSombra ?? r3.perdaSom ?? 0) * 100, 1)}% da geração do ano, já descontada${r3.geracaoAnual ? ` · ${n(r3.geracaoAnual / 12)} kWh por mês` : ''}` : ''}${p3.fonte === 'google' ? ' · Imagens © Google' : ''}</p>
+      </section>`; })() : ''}
       <section class="bloco" data-secao="sistema" aria-labelledby="t-sis">
         <h2 id="t-sis"><i class="bolha">${Icone('painel')}</i>O que vamos instalar?</h2>
         <div id="sistema"></div>
@@ -267,11 +267,25 @@
     if (ev.target.closest('#v3dGirar')) {
       const bt = ev.target.closest('#v3dGirar'); bt.disabled = true; bt.textContent = 'Carregando o 3D…';
       window.Usina3D.carregarThree().then(() => {
+        const U = window.Usina3D, proj = U.migrar(JSON.parse(JSON.stringify(o.projeto3d))), r3 = proj.resultado || {};
         const box = document.getElementById('v3d'); box.innerHTML = ''; box.classList.add('vivo');
-        const v = window.Usina3D.criar(box, JSON.parse(JSON.stringify(o.projeto3d)), { placas: () => o.projeto3d.placasKit, aoSol: (k, dia) => { const t = document.getElementById('v3dTxt'); if (t) t.textContent = !dia ? 'noite' : k ? k + ' placa(s) na sombra agora' : 'todas as placas no sol'; } });
+        const hh = (h) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60) % 60).padStart(2, '0')}`;
+        const v = U.criar(box, proj, { aoSol: (i) => { const t = document.getElementById('v3dTxt'); if (t) t.textContent = !i.dia ? 'noite' : i.sombreadas ? `${hh(i.hora)}: ${i.sombreadas} placa(s) com sombra agora (já descontado na geração)` : `${hh(i.hora)}: todas as placas no sol`; } });
+        // as placas nas mesmas posições do projeto do vendedor
+        const chaves = new Set(r3.escolhidas || []), vagas = U.vagas(proj);
+        let lista = vagas.filter((s) => chaves.has(s.k)); if (!lista.length) lista = U.escolher(vagas, (proj.layout && proj.layout.qtd) || r3.placas || 0, proj.layout || {});
+        v.cor('agora'); v.atualizar(lista);
         const ctl = document.getElementById('v3dCtl'); ctl.hidden = false; bt.remove();
-        const mover = () => v.sol(+document.getElementById('v3dMes').value, +document.getElementById('v3dHora').value);
-        ctl.addEventListener('input', mover); mover(); registrar('abriu3d', {});
+        let di = 6, hora = 9.5, anima = null;
+        const hr = document.getElementById('v3dHora'), ho = document.getElementById('v3dHoraO'), play = document.getElementById('v3dPlay');
+        const mover = () => { hr.value = hora; ho.textContent = hh(hora); v.sol(di, hora); };
+        const parar = () => { cancelAnimationFrame(anima); anima = null; play.textContent = '▶'; };
+        hr.addEventListener('input', () => { parar(); hora = +hr.value; mover(); });
+        ctl.addEventListener('click', (e) => {
+          const d = e.target.closest('[data-v3d-dia]'); if (d) { di = +d.dataset.v3dDia; ctl.querySelectorAll('[data-v3d-dia]').forEach((b) => b.setAttribute('aria-pressed', String(b === d))); mover(); return; }
+          if (e.target.closest('#v3dPlay')) { if (anima) return parar(); play.textContent = '❚❚'; if (hora >= 17.9) hora = 6; let ult = performance.now(); const passo = (t) => { hora += (t - ult) / 1000 * 1.5; ult = t; if (hora > 18) { hora = 18; mover(); return parar(); } mover(); anima = requestAnimationFrame(passo); }; anima = requestAnimationFrame(passo); }
+        });
+        mover(); registrar('abriu3d', {});
       }).catch(() => { bt.disabled = false; bt.textContent = 'Não carregou: tocar para tentar de novo'; });
       return;
     }

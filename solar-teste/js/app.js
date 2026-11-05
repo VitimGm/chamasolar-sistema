@@ -483,17 +483,36 @@
     }
   }
 
+  /* ---------- projeto 3D: mesmo editor no passo 2 (telhado) e no passo 4 (com a placa e a quantidade do kit) ---------- */
+  const resumo3d = () => { const p3 = orc.projeto3d; return p3 && p3.versao === 2 && p3.resultado ? p3 : null; };
+  function abrir3D(aba) {
+    const p = P(), kits = (orc.kitsFechados || []).filter(Boolean), k = (orc.kitsFechados || [])[PRINCIPAL] || kits[0];
+    let modulo = k && k.modulo ? k.modulo : null, qtd = modulo ? modulo.qtd : 0;
+    if (!modulo) { const ops = C.opcoes(orc, p), op = ops[orc.opcaoEscolhida ?? 0] || ops[0]; if (op) { modulo = { nome: op.modulo.nome, potenciaW: op.modulo.potenciaW }; qtd = op.dim.placas; } }
+    Telhado.abrir({ orc, modulo, qtd, aba, tipoTelhado: orc.telhado, aoSalvar: (proj) => { orc.projeto3d = proj; salvarR(); novo(); toast('Projeto 3D salvo no orçamento'); } });
+  }
+  function cartao3d(p3) {
+    const r = p3.resultado, M = (p3.layout && p3.layout.modulo) || {};
+    return `<div style="display:grid;grid-template-columns:minmax(0,180px) 1fr;gap:14px;align-items:center;margin-top:10px">
+      ${p3.fotos && p3.fotos.d3 ? `<img src="${p3.fotos.d3}" alt="Projeto 3D" style="width:100%;border-radius:12px;aspect-ratio:4/3;object-fit:cover">` : '<span></span>'}
+      <div><b>${r.placas} placas de ${M.potW || '?'} W · ${n(r.kwp, 2)} kWp</b><br>
+        <span class="sutil">${n(r.geracaoAnual / 12)} kWh/mês (${/PVGIS/i.test(r.fonte || '') ? 'irradiação PVGIS do local' : 'irradiação da cidade'}) · sombra ${n(r.perdaSombra * 100, 1)}% · aproveitamento ${n(r.tsrfMedio * 100)}%</span><br>
+        <span class="mini">${(p3.blocos || []).length} telhado(s) · ${p3.drone ? 'foto do drone' : p3.fonte === 'google' ? 'satélite Google' : 'desenho'}${p3.salvoEm ? ' · salvo em ' + new Date(p3.salvoEm).toLocaleDateString('pt-BR') : ''}</span>
+        <div class="acoes-r" style="margin-top:8px"><button class="btn sol pequeno" data-abrir3d>Editar o 3D</button><button class="btn vidro pequeno" data-abrir3d="sol">☀️ Ver a sombra no dia</button><button class="link" data-tirar3d>tirar o 3D</button></div></div></div>`;
+  }
+  function ligar3d(el) {
+    el.querySelectorAll('[data-abrir3d]').forEach((b) => b.onclick = () => abrir3D(b.dataset.abrir3d || undefined));
+    el.querySelectorAll('[data-tirar3d]').forEach((b) => b.onclick = () => { if (!confirm('Tirar o projeto 3D deste orçamento? A geração volta a usar a perda de segurança.')) return; delete orc.projeto3d; salvarR(); novo(); });
+  }
+
   function passo2(el) {
     const p = P(), hsp = (D.cidades[orc.cidade] || D.cidades['Ribeirão Preto']).hsp;
-    const p3 = orc.projeto3d, r3 = p3 && p3.resultado;
+    const p3 = resumo3d(), antigo = orc.projeto3d && !p3, perda3 = orc.projeto3d && Number.isFinite(orc.projeto3d.perda) ? orc.projeto3d.perda : null; // a mesma que entra na geração (conversao.js)
     el.innerHTML = `<div class="painel" style="margin-bottom:14px">
-        <div class="entre"><span class="rotulo">Telhado e projeto 3D</span>${p3 ? `<span class="mini">${p3.aguas.length} água(s) · ${p3.fonte === 'google' ? 'satélite Google' : 'foto própria'}</span>` : ''}</div>
-        ${p3 ? `<div style="display:grid;grid-template-columns:minmax(0,180px) 1fr;gap:14px;align-items:center;margin-top:10px">
-            ${p3.fotos && p3.fotos.d3 ? `<img src="${p3.fotos.d3}" alt="Projeto 3D" style="width:100%;border-radius:12px;aspect-ratio:4/3;object-fit:cover">` : '<span></span>'}
-            <div><b>${r3 ? r3.placas : 0} placas desenhadas no telhado</b><br><span class="sutil">perda pela direção ${n((r3 ? r3.perdaOri : 0) * 100, 1)}% · sombra ${n((r3 ? r3.perdaSom : 0) * 100, 1)}% · entra no dimensionamento no lugar da perda de segurança</span>
-            <div class="acoes-r" style="margin-top:8px"><button class="btn sol pequeno" id="t3Abrir">Editar o 3D</button><button class="link" id="t3Tirar">tirar o 3D</button></div></div></div>`
-        : `<p class="sutil" style="margin:6px 0 10px">Pelo endereço, o Google traz a foto de satélite e as águas do telhado. Você confere, marca árvores e caixa d'água, e a sombra medida entra na geração. Também dá para usar a foto do drone.</p>
-          <button class="btn sol" id="t3Abrir">🛰️ Montar o telhado em 3D</button>`}
+        <div class="entre"><span class="rotulo">Telhado e projeto 3D</span></div>
+        ${p3 ? cartao3d(p3)
+        : `<p class="sutil" style="margin:6px 0 10px">${antigo ? '<b>Este 3D foi feito na versão anterior:</b> abra e salve de novo para medir com a placa real, as alturas e as platibandas. ' : ''}Pelo endereço, o Google traz a foto de satélite; com a foto do drone fica no detalhe. Você desenha cada parte do telhado com a altura e a platibanda, marca caixa d'água e árvores, e a sombra medida entra na geração. <b>Melhor fazer depois do kit (passo 4)</b>, com a placa e a quantidade certas.</p>
+          <div class="acoes-r" style="justify-content:flex-start"><button class="btn sol" data-abrir3d>🛰️ ${antigo ? 'Refazer' : 'Montar'} o telhado em 3D</button>${antigo ? '<button class="link" data-tirar3d>tirar o 3D antigo</button>' : ''}</div>`}
       </div>
       <div class="lado"><div class="painel grade">
       <div class="campo"><span>Tipo de telhado</span><div class="chips">${[['ceramico', 'Cerâmico'], ['fibrocimento', 'Fibrocimento'], ['metalico', 'Metálico'], ['laje', 'Laje'], ['solo', 'Solo']].map(([v, t]) => `<button class="chip ${orc.telhado === v ? 'sel' : ''}" data-tel="${v}">${t}<small>${brl(D.catalogo.estrutura[v])}/pl</small></button>`).join('')}</div></div>
@@ -505,15 +524,10 @@
       <label class="campo"><span>Distância (km)</span><input type="number" id="f-km" value="${esc(orc.distanciaKm)}"></label></div>
       <label class="alternar"><span><b>Troca de padrão de entrada</b><br><span class="sutil">soma ${brl(p.trocaPadrao)}</span></span><input type="checkbox" id="f-pad" ${orc.trocaPadrao ? 'checked' : ''}></label></div>
       <div class="painel"><span class="rotulo">Sol no local</span><div class="numeros4" style="margin-top:12px">
-        <div><span>${esc(orc.cidade || 'Ribeirão Preto')}</span><b>${n(hsp, 2)} HSP</b></div><div><span>${!orc.orientacao || orc.orientacao === '?' ? 'Com a perda de segurança' : 'Com a orientação'}</span><b>${n(hsp * (!orc.orientacao || orc.orientacao === '?' ? 1 - (p.perdaOrientacao ?? 0.07) : M.FATOR_ORIENTACAO[orc.orientacao]), 2)} HSP</b></div></div>
-        <p class="mini" style="margin-top:10px">Irradiação de teste. No oficial vem da base pública pelo endereço. A perda de segurança cobre telhado leste/oeste até a visita técnica (ajustável em Parâmetros).</p></div></div>`;
+        <div><span>${esc(orc.cidade || 'Ribeirão Preto')}</span><b>${n(hsp, 2)} HSP</b></div><div><span>${perda3 !== null ? 'Medido no 3D (direção + sombra)' : !orc.orientacao || orc.orientacao === '?' ? 'Com a perda de segurança' : 'Com a orientação'}</span><b>${n(hsp * (perda3 !== null ? 1 - perda3 : !orc.orientacao || orc.orientacao === '?' ? 1 - (p.perdaOrientacao ?? 0.07) : M.FATOR_ORIENTACAO[orc.orientacao]), 2)} HSP</b></div></div>
+        <p class="mini" style="margin-top:10px">${perda3 !== null ? 'O 3D salvo manda na geração: a direção de cada água, a sombra placa a placa e a irradiação do local substituem a orientação e a perda de segurança.' : 'Irradiação da cidade. Com o projeto 3D, vem do PVGIS (satélite SARAH-3) pelo local exato. A perda de segurança cobre telhado leste/oeste até a visita técnica (ajustável em Parâmetros).'}</p></div></div>`;
     el.querySelectorAll('[data-tel]').forEach((b) => b.onclick = () => { orc.telhado = b.dataset.tel; salvarR(); novo(); });
-    $('#t3Abrir').onclick = () => {
-      const ops = C.opcoes(orc, p), op = ops[orc.opcaoEscolhida ?? 0] || ops[0];
-      const placas = (orc.kitsFechados || []).filter(Boolean).map((k) => k.modulo && k.modulo.qtd).find(Boolean) || (op && op.dim.placas) || 12;
-      Telhado.abrir({ orc, placasKit: orc.projeto3d ? orc.projeto3d.placasKit : placas, tipoTelhado: orc.telhado, aoSalvar: (proj) => { orc.projeto3d = proj; salvarR(); novo(); toast('Projeto 3D salvo no orçamento'); } });
-    };
-    if ($('#t3Tirar')) $('#t3Tirar').onclick = () => { delete orc.projeto3d; salvarR(); novo(); };
+    ligar3d(el);
     el.querySelectorAll('[data-ori]').forEach((b) => b.onclick = () => { orc.orientacao = b.dataset.ori; salvarR(); novo(); });
     $('#f-area').oninput = (e) => { orc.areaDisponivel = e.target.value; salvarR(); };
     $('#f-km').oninput = (e) => { orc.distanciaKm = e.target.value; salvarR(); };
@@ -555,6 +569,25 @@
       <label class="campo"><span>${tipo === 'MICROINVERSOR' ? 'Micro' : 'Inversor'} · fabricante</span><select data-sel="${i}" data-k="fabInv">${op(fabsInv, sel.fabInv, 'Melhor custo-benefício')}</select></label>
       <label class="campo"><span>${tipo === 'MICROINVERSOR' ? 'Micro' : 'Inversor'} · potência</span><select data-sel="${i}" data-k="potInv">${op(P0.potInversor[tipo], sel.potInv, 'Automática', (k) => String(k).replace('.', ',') + ' kW')}</select></label></div>`;
   }
+  /* passo 4: depois do kit, o 3D usa a placa e a quantidade certas (é o que vai para o contrato) */
+  function painel3dKit() {
+    const kits = orc.kitsFechados || [], k = kits[PRINCIPAL] || kits.find(Boolean);
+    if (!k || !k.modulo) return '';
+    const p3 = resumo3d(), r = p3 && p3.resultado, L = (p3 && p3.layout) || {}, qtd = k.modulo.qtd, med = window.Usina3D ? Usina3D.medidasModulo(`${k.modulo.sku || ''} ${k.modulo.nome || ''}`, k.modulo.potenciaW) : null;
+    const outra = p3 && L.modulo && (L.modulo.potW !== k.modulo.potenciaW || L.qtd !== qtd);
+    const ops = C.opcoes(orc, P()), alvo = ops[0] && ops[0].dim ? ops[0].dim.alvoKwh : 0, ger = r ? r.geracaoAnual / 12 : 0;
+    const avisos = [];
+    if (r && r.placas < qtd) avisos.push(`Só couberam <b>${r.placas} das ${qtd} placas</b> do kit no telhado. Reveja o layout no 3D ou cote um kit menor.`);
+    if (outra) avisos.push(`O 3D foi feito com ${L.qtd} × ${L.modulo.potW} W e o kit tem ${qtd} × ${k.modulo.potenciaW} W: abra o 3D e salve de novo.`);
+    if (r && !outra && alvo && ger < alvo * 0.97) avisos.push(`No 3D a geração fica em <b>${n(ger)} kWh/mês</b>, abaixo do consumo a cobrir (${n(alvo)} kWh/mês).`);
+    return `<div class="painel" style="margin-top:14px">
+      <div class="entre"><span class="rotulo">Projeto 3D com as placas do kit</span><span class="mini">${esc(k.nivel)}: ${qtd} × ${k.modulo.potenciaW} W</span></div>
+      ${p3 ? cartao3d(p3) : `<p class="sutil" style="margin:6px 0 10px">Com o kit fechado, o 3D usa a medida real da placa${med ? ` (${n(med.c * 1000)} × ${n(med.l * 1000)} mm, confira na ficha)` : ''} e as ${qtd} placas: testa todas as posições no telhado, evita a sombra das platibandas, da caixa d'água e das árvores, e calcula a geração com a irradiação do local (PVGIS). É a base para a geração que vai no contrato.</p>
+        <div class="acoes-r" style="justify-content:flex-start"><button class="btn sol" data-abrir3d>🏠 Montar o 3D com as ${qtd} placas do kit</button></div>`}
+      ${avisos.map((a) => `<div class="aviso ruim" style="margin-top:8px">${a}</div>`).join('')}
+      ${r && !outra ? `<p class="mini" style="margin-top:8px">Geração no 3D: <b>${n(ger)} kWh/mês</b> (${n(r.geracaoAnual)} kWh/ano)${alvo ? ` · consumo a cobrir: ${n(alvo)} kWh/mês` : ''}.${r.placas >= qtd ? ' Já é a geração usada no preço e na proposta.' : ''}</p>` : ''}
+    </div>`;
+  }
   function passo4(el) {
     const p = P();
     orc.kitsFechados = [0, 1].map((i) => (orc.kitsFechados || [])[i] || null);
@@ -581,7 +614,9 @@
           : `<p class="sutil" style="margin:8px 0 12px">${DICA_OPCAO[i]}</p>${seletores(i)}
             <button class="link" data-montar="${i}" style="margin-top:10px">montar passo a passo</button>`}
         </div>`; }).join('')}</div>
-      <p class="mini" style="margin-top:12px">Potência sugerida pelo pré-dimensionamento: <b>${n(kwpSug, 2)} kWp</b> (${p.descontarDisponibilidade ? "consumo menos a taxa mínima" : "consumo total, sem descontar a taxa mínima"} + ${n((p.margemGeracao || 0) * 100)}% de margem${!orc.orientacao || orc.orientacao === '?' ? ` + perda de segurança de ${n((p.perdaOrientacao ?? 0.07) * 100)}% da orientação` : ''}).</p>`;
+      <p class="mini" style="margin-top:12px">Potência sugerida pelo pré-dimensionamento: <b>${n(kwpSug, 2)} kWp</b> (${p.descontarDisponibilidade ? "consumo menos a taxa mínima" : "consumo total, sem descontar a taxa mínima"} + ${n((p.margemGeracao || 0) * 100)}% de margem${!orc.orientacao || orc.orientacao === '?' ? ` + perda de segurança de ${n((p.perdaOrientacao ?? 0.07) * 100)}% da orientação` : ''}).</p>
+      ${painel3dKit()}`;
+    ligar3d(el);
     Cotador.conectado().then((ok) => { cotModo = ok ? 'conectado' : 'simulado'; const st = $('#cot-status'); if (st) st.innerHTML = ok ? '🟢 Robô conectado: a cotação é feita no site da Belenergy, com a sua sessão.' : '🟡 Robô não encontrado neste computador. Modo <b>simulado</b> (mesmas telas, valores de teste).'; });
     el.querySelectorAll('[data-montar]').forEach((b) => b.onclick = async () => {
       cotSlot = +b.dataset.montar; cot = Cotador.novaSessao(cotModo || 'simulado'); cot.escolhas.kwp = +kwpSug.toFixed(2); cot.escolhas.tipoInversor = TIPO_POR_OPCAO[cotSlot];

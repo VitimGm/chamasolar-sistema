@@ -121,6 +121,9 @@
     async anexar(orcamento, nome, base64, tipo = 'application/pdf') { this._anexos.push({ id: this._anexos.length + 1, orcamento, nome, tipo, conteudo_b64: base64, em: new Date().toISOString() }); },
     async anexos(orcamento) { return this._anexos.filter((a) => a.orcamento === orcamento); },
     async anexo(id) { return this._anexos.find((a) => a.id === +id) || null; },
+    // teste: imagem grande do 3D fica só na memória (some ao recarregar; o orçamento guarda a versão leve)
+    async guardarImagem(chave, nome, dataURL) { const [cab, b64] = String(dataURL).split(','); await this.anexar(chave, nome, b64, (cab.match(/data:([^;]+)/) || [])[1] || 'image/jpeg'); return this._anexos.length; },
+    async lerImagem(id) { const a = await this.anexo(id); return a ? `data:${a.tipo};base64,${a.conteudo_b64}` : null; },
     async atualizarMonitoramento() { throw new Error('No teste não há leitura das plataformas. Use a versão no Chamae.'); },
     async guardarCredencial() { throw new Error('No teste os acessos não são guardados. Use a versão no Chamae.'); },
     async credenciaisStatus() { return []; },

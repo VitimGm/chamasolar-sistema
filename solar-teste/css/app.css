@@ -205,3 +205,26 @@ body.com-barra { padding-bottom: 150px; }
 .t3-agua { padding: 10px 12px; border-radius: 12px; background: var(--vidro); }
 .t3-agua input[type=range], .t3-dir input[type=range] { width: 100%; accent-color: var(--sol); }
 @media (max-width: 900px) { .t3-corpo { grid-template-columns: 1fr; } }
+/* editor v2: passos, painel de cada passo, zoom do desenho */
+.t3-cab { gap: 10px; }
+.t3-passos { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.t3-passos::-webkit-scrollbar { display: none; }
+.t3-passos button { flex: 0 0 auto; font: 700 13px inherit; padding: 9px 14px; border-radius: 999px; border: 1px solid var(--linha-forte); background: var(--vidro); color: var(--texto); cursor: pointer; }
+.t3-passos button[aria-pressed="true"] { background: var(--grad-sol); color: #1a1205; border-color: transparent; }
+.t3-foto { position: relative; }
+.t3-zoom { position: absolute; right: 8px; top: 34px; display: grid; gap: 6px; }
+.t3-zoom button { width: 36px; height: 36px; border-radius: 10px; border: 1px solid #ffffff40; background: #0d1426cc; color: #fff; font: 700 18px/1 system-ui; cursor: pointer; }
+.t3-painel { display: grid; gap: 10px; padding: 12px; border-radius: 14px; background: var(--vidro); border: 1px solid var(--linha); }
+.t3-painel input[type=text] { flex: 1 1 220px; min-width: 0; }
+.t3-linha { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.t3-linha .mini { flex: 1 1 200px; }
+.t3-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.t3-chip { font: 600 12px inherit; padding: 6px 10px; border-radius: 999px; border: 2px solid var(--linha-forte); background: transparent; color: var(--texto); cursor: pointer; }
+.t3-chip[aria-pressed="true"] { background: #ffffff1f; }
+.t3-form { gap: 8px 12px; }
+.t3-form .campo span small { display: block; font-weight: 400; opacity: .72; font-size: 11px; margin-top: 1px; }
+.t3-form input:disabled { opacity: .8; }
+.t3-painel input[type=range] { width: 100%; accent-color: var(--sol); }
+.t3-sol { min-height: 20px; font-size: 14px; }
+#t3Lado .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 560px) { #t3Lado .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .t3-caixa { padding: 10px; border-radius: 14px; } }

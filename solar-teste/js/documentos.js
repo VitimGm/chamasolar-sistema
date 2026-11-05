@@ -89,9 +89,7 @@
         <tr><td>Custo da energia gerada (LCOE)</td><td class="v">R$ ${n(C().analisar(o, p).energia.rsKwh, 2)}/kWh (rede: R$ ${n(p.tarifaKwh, 2)})</td></tr>
         <tr><td>Economia em 25 anos</td><td class="v">${brl(op.eco.economia25, 0)}</td></tr>
         ${o.segmento === 'grandes' ? `<tr><td>Geração garantida em contrato</td><td class="v">${n(op.dim.geracaoMes * 12 * 0.9)} kWh/ano (90% da simulada, média de 12 meses)</td></tr>` : ''}</table>` : ''}
-      ${o.projeto3d && o.projeto3d.fotos ? `<h2>Projeto da sua usina</h2><p class="mini">Montado sobre a foto ${o.projeto3d.fonte === 'google' ? 'de satélite (Imagens © Google)' : 'aérea'} do seu telhado, com a posição real das placas e a sombra calculada para o ano inteiro.</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0"><img src="${o.projeto3d.fotos.topo}" alt="Vista de cima" style="width:100%;border-radius:6px"><img src="${o.projeto3d.fotos.d3}" alt="Vista 3D" style="width:100%;border-radius:6px"></div>
-        ${o.projeto3d.resultado ? `<p class="mini">Perda pela direção do telhado: ${n(o.projeto3d.resultado.perdaOri * 100, 1)}% · perda por sombra medida: ${n(o.projeto3d.resultado.perdaSom * 100, 1)}% · já consideradas na geração abaixo.</p>` : ''}` : ''}
+      ${o.projeto3d && o.projeto3d.fotos && o.projeto3d.fotos.d3 ? secao3d(o.projeto3d) : ''}
       <h2>O sistema</h2>
       <table><tr><th>Item</th><th>Detalhe</th></tr>
         <tr><td>Placas solares</td><td>${esc(eq.modulo)}</td></tr><tr><td>${eq.tipo === 'micro' ? 'Microinversores' : 'Inversor'}</td><td>${esc(eq.inversor)}</td></tr>
@@ -134,6 +132,20 @@
     return (t.join(' e ') || 'zero reais').toUpperCase();
   }
   const dataExtenso = () => { const s = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); return s; };
+  /* projeto 3D no PDF: vistas, tabela por telhado e de onde vem a irradiação */
+  const PONTOS = ['norte', 'nordeste', 'leste', 'sudeste', 'sul', 'sudoeste', 'oeste', 'noroeste'], ponto = (a) => PONTOS[Math.round((((a % 360) + 360) % 360) / 45) % 8];
+  function secao3d(p3) {
+    const r = p3.resultado || {}, M = (p3.layout && p3.layout.modulo) || {}, fonte = p3.drone ? 'do drone' : p3.fonte === 'google' ? 'de satélite (Imagens © Google)' : 'aérea';
+    const vistas = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0">${p3.fotos.topo ? `<img src="${p3.fotos.topo}" alt="Vista de cima" style="width:100%;border-radius:6px">` : ''}<img src="${p3.fotos.d3}" alt="Vista 3D" style="width:100%;border-radius:6px"></div>`;
+    if (p3.versao !== 2) return `<h2>Projeto da sua usina</h2><p class="mini">Montado sobre a foto ${fonte} do seu telhado, com a posição das placas e a sombra calculada para o ano inteiro.</p>${vistas}${r.perdaSom != null ? `<p class="mini">Perda pela direção do telhado: ${n((r.perdaOri || 0) * 100, 1)}% · perda por sombra medida: ${n(r.perdaSom * 100, 1)}% · já consideradas na geração abaixo.</p>` : ''}`;
+    const linhas = (r.porBloco || []).map((b) => `<tr><td>${esc(b.nome || 'Telhado')}</td><td>${ponto(b.az)} · ${n(Math.tan((b.incl || 0) * Math.PI / 180) * 100)}%</td><td class="v">${b.placas}</td><td class="v">${n((b.tsrf || 0) * 100)}%</td><td class="v">${n(b.geracao)} kWh</td></tr>`).join('');
+    return `<h2>Projeto da sua usina</h2>
+      <p class="mini">Montado sobre a foto ${fonte} do seu telhado, com a medida real das placas${M.c ? ` (${n(M.c * 1000)} × ${n(M.l * 1000)} mm)` : ''}, o espaço entre elas, o afastamento das bordas e das platibandas, e a sombra calculada hora a hora para o ano inteiro.</p>${vistas}
+      <p class="mini">Na vista de cima, a cor de cada placa mostra o aproveitamento do sol no ano: verde a partir de 90%, amarelo de 80 a 90%, laranja de 70 a 80% e vermelho abaixo de 70%.</p>
+      ${linhas ? `<table><tr><th>Telhado</th><th>Direção · inclinação</th><th class="v">Placas</th><th class="v">Aproveitamento</th><th class="v">Geração no ano</th></tr>${linhas}
+        <tr><td><b>Total</b></td><td></td><td class="v"><b>${r.placas}</b></td><td class="v"><b>${n((r.tsrfMedio || 0) * 100)}%</b></td><td class="v"><b>${n(r.geracaoAnual)} kWh</b></td></tr></table>` : ''}
+      <p class="mini">Sombra medida: ${n((r.perdaSombra || 0) * 100, 1)}% da geração do ano · irradiação: ${/PVGIS/i.test(r.fonte || '') ? 'PVGIS (Comissão Europeia), base de satélite SARAH-3, no local da usina' : 'média da cidade'} · já considerados na geração abaixo.</p>`;
+  }
   function valoresModelo(o, p) {
     const a = C().analisar(o, p), op = a.op, k = o.contrato || {};
     const end = [k.rua, k.numero ? 'nº ' + k.numero : '', k.bairro].filter(Boolean).join(', ');

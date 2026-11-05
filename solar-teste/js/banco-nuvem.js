@@ -88,7 +88,11 @@
     });
     const cliente = { ...o, kitsFechados: kits, comissaoParceria: 0, descontoPct: 0, kitFaturadoDireto: false, distanciaKm: 0 };
     ['whatsapp', 'email', 'documento', 'endereco', 'selKits', 'freteAuto', 'motivoPerda', 'origem', 'interacoes', 'aceite', 'contrato', 'indicadoPor', 'posVenda', 'presenteEntregue', 'mensagem', 'contaInformada'].forEach((c) => delete cliente[c]);
-    if (cliente.projeto3d) { const { endereco, lng, precisao, ...p3 } = cliente.projeto3d; void endereco; void lng; void precisao; cliente.projeto3d = { ...p3, lat: Math.round((p3.lat || -21.2) * 10) / 10 }; } // o 3D vai; o endereço exato não
+    if (cliente.projeto3d) { // o 3D vai; o endereço exato e os ids internos não
+      const { endereco, lng, precisao, ...p3 } = cliente.projeto3d; void endereco; void lng; void precisao;
+      const semId = (x) => (x ? (({ id, auto, ...r }) => { void id; void auto; return r; })(x) : x);
+      cliente.projeto3d = { ...p3, lat: Math.round((p3.lat || -21.2) * 10) / 10, fundo: semId(p3.fundo), drone: semId(p3.drone), pvgis: p3.pvgis ? { db: p3.pvgis.db, faces: p3.pvgis.faces } : null };
+    }
     return { orc: json(cliente), parametros: paramsPublicos(p), geradoEm: agora() };
   }
 
@@ -185,6 +189,19 @@
       const t = await token(); const r = await fetch(SB + '/functions/v1/sol-telhado?tile=' + z + '/' + x + '/' + y, { headers: { apikey: KEY, Authorization: 'Bearer ' + t } });
       if (!r.ok) throw new Error('tile ' + r.status); return r.blob();
     },
+    /* irradiação do local (PVGIS SARAH-3) por água do telhado: faces = ['incl|az', ...] */
+    async pvgis(lat, lng, faces) {
+      const t = await token(); if (!t) throw new Error('entre com o login do Chamae');
+      const r = await fetch(SB + '/functions/v1/sol-telhado', { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'pvgis', lat, lng, faces }) });
+      const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.erro || 'HTTP ' + r.status); return j;
+    },
+    /* imagens grandes do projeto 3D (satélite e drone) ficam nos anexos; o orçamento guarda só o id e a versão leve */
+    async guardarImagem(chave, nome, dataURL) {
+      const [cab, b64] = String(dataURL).split(','), tipo = (cab.match(/data:([^;]+)/) || [])[1] || 'image/jpeg';
+      const r = await api('sol_anexos?select=id', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ orcamento: chave, nome, tipo, conteudo_b64: b64 }) });
+      return r && r[0] ? r[0].id : null;
+    },
+    async lerImagem(id) { const a = await this.anexo(id); return a ? `data:${a.tipo};base64,${a.conteudo_b64}` : null; },
     async treinoGravar(r) { await api('sol_robo_treino', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(r) }); },
     async treino(limite = 300) { return api('sol_robo_treino?select=id,em,lote,cenario,ok,segundos,valor_kit,rs_wp,etapa,erro&order=em.desc&limit=' + limite); },
     async faturas(usinaId) { return api('sol_faturas?select=*&usina_id=eq.' + usinaId + '&order=leitura_fim.desc'); },
