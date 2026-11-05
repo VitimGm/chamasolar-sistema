@@ -1141,6 +1141,10 @@
         <div class="linha-h"><button class="btn vidro" id="rapida">⚡ Resposta rápida</button><a class="btn sol" href="#novo">＋ Novo orçamento</a></div></div>
       <div class="painel"><div class="entre"><span class="rotulo">Progresso de hoje</span><b>${feitos} de ${total || 0}</b></div><div class="progresso"><i style="width:${total ? Math.round(feitos / total * 100) : 100}%"></i></div>
         <p class="mini" style="margin:8px 0 0">${!total ? 'Sem contatos vencidos. Bom dia para pedir indicação a um cliente feliz ou postar um depoimento.' : feitos >= total ? 'Dia concluído. 👏' : 'Faça na ordem: os de cima são os que mais dão resultado.'}</p></div>
+      ${(() => { const ls = lembretes().filter((l) => !l.quando || new Date(l.quando) <= new Date(new Date().setHours(23, 59, 59))).sort((x, y) => String(x.quando || '').localeCompare(String(y.quando || ''))); const fut = lembretes().length - ls.length;
+        return ls.length || fut ? `<div class="dia-bloco lembretes"><div class="entre"><h3>📌 Lembretes</h3><span class="mini">${ls.length} para hoje${fut ? ` · ${fut} para depois` : ''}</span></div>
+          ${ls.map((l) => `<div class="dia-item"><div class="ic">📌</div><div><b>${esc(l.texto)}</b> <span class="mini">${l.quando ? new Date(l.quando).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+            <div class="acoes-r" style="margin-top:6px">${l.ref ? `<button class="btn sol pequeno" data-labrir="${esc(l.ref)}">Completar agora</button>` : ''}<button class="btn vidro pequeno" data-lfeito="${esc(l.id)}">✓ Feito</button></div></div></div>`).join('') || '<p class="sutil" style="margin:6px 0">Nada para hoje.</p>'}</div>` : ''; })()}
       ${bloco('🌅', 'Bloco da manhã', '8h00', Math.max(manha.length * 3, 5), 'Leads novos e mensagens: responder rápido é o que mais fecha venda.', manha.map(item).join(''), [[8, 0], [8, 15]])}
       ${bloco('☀️', 'Bloco do almoço', '12h30', Math.max(usAlerta.length * 5, 5), 'Usinas com alerta: ligue antes do cliente perceber.', usAlerta.map(({ u, s }) => `<div class="dia-item"><div class="ic">⚠️</div><div><b>${esc(u.cliente_nome)}</b> <span class="mini">${esc(u.marca)} · ${n(u.kwp, 2)} kWp</span><p class="mini" style="margin:2px 0 6px">${esc(s.alerta)}</p><div class="acoes-r"><a class="btn vidro pequeno" href="#usinas">Ver usina</a>${u.whatsapp ? `<a class="btn zap pequeno" target="_blank" rel="noopener" href="https://wa.me/55${String(u.whatsapp).replace(/\D/g, '').replace(/^55/, '')}">WhatsApp</a>` : ''}</div></div></div>`).join(''), [[12, 30], [12, 40]])}
       ${bloco('🌇', 'Bloco do fim do dia', '17h30', Math.max(tarde.length * 7, 5), 'Ligações: no fim da tarde o cliente atende mais.', tarde.map(item).join(''), [[17, 30], [17, 50]])}
@@ -1438,6 +1442,69 @@
     };
     tela();
   }
+
+  /* ======================= JARVIS (voz) E LEMBRETES ======================= */
+  const lembretes = () => (P().lembretes || []).filter((l) => l && !l.feito);
+  function novoLembrete(l) { const lista = P().lembretes || []; lista.push({ id: 'L' + Date.now().toString(36), criado: new Date().toISOString(), ...l }); B.salvarParametros({ lembretes: lista.slice(-200) }); }
+  function lembreteFeito(id) { const lista = (P().lembretes || []).map((l) => (l.id === id ? { ...l, feito: new Date().toISOString() } : l)); B.salvarParametros({ lembretes: lista.filter((l) => !l.feito || Date.now() - new Date(l.feito) < 30 * 864e5) }); }
+  function jarvis() {
+    const J = window.Jarvis, ov = document.createElement('div'); ov.className = 'modal-rapida jarvis-ov';
+    ov.innerHTML = `<div class="painel jarvis"><div class="entre"><span class="rotulo" style="color:var(--sol)">🎙 Jarvis</span><button class="link" data-fechar>fechar</button></div>
+      <p class="sutil" style="margin:6px 0 10px">Fale ou digite. Ex.: "crie uma proposta de 500 kWh para o cliente João Silva, telhado cerâmico em Ribeirão Preto, as 2 opções, e me deixa um lembrete para completar os dados".</p>
+      <div class="jarvis-mic"><button class="btn sol" id="jvFalar">🎙 Falar</button><span class="mini" id="jvSt">${'webkitSpeechRecognition' in window || 'SpeechRecognition' in window ? 'toque e fale' : 'este navegador não tem voz: digite abaixo'}</span></div>
+      <textarea id="jvTxt" rows="3" placeholder="ou digite o pedido aqui"></textarea>
+      <div class="acoes-r" style="margin-top:8px"><button class="btn vidro" id="jvEnt">Entender</button></div><div id="jvRes"></div></div>`;
+    document.body.appendChild(ov);
+    const fechar = () => ov.remove(); ov.onclick = (e) => { if (e.target === ov || e.target.closest('[data-fechar]')) fechar(); };
+    const R = window.SpeechRecognition || window.webkitSpeechRecognition; let rec = null;
+    $('#jvFalar', ov).onclick = () => {
+      if (!R) { toast('Digite o pedido: a voz funciona no Chrome e no Edge'); return; }
+      if (rec) { rec.stop(); return; }
+      rec = new R(); rec.lang = 'pt-BR'; rec.interimResults = true; rec.continuous = true; let final = '';
+      rec.onresult = (e) => { let parcial = ''; for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) final += e.results[i][0].transcript + ' '; else parcial += e.results[i][0].transcript; } $('#jvTxt', ov).value = (final + parcial).trim(); };
+      rec.onend = () => { rec = null; $('#jvFalar', ov).textContent = '🎙 Falar'; $('#jvSt', ov).textContent = 'toque e fale'; if ($('#jvTxt', ov).value.trim()) entender(); };
+      rec.onerror = (e) => { $('#jvSt', ov).textContent = e.error === 'not-allowed' ? 'libere o microfone no navegador' : 'não ouvi: tente de novo'; };
+      rec.start(); $('#jvFalar', ov).textContent = '⏹ Parar'; $('#jvSt', ov).textContent = 'ouvindo… toque em Parar quando terminar';
+    };
+    const entender = () => {
+      const r = J.entender($('#jvTxt', ov).value, { cidades: D.cidades }), linha = (k, v) => `<div class="entre mini"><span>${k}</span><b>${v ? esc(String(v)) : '<span style="color:var(--laranja)">não entendi</span>'}</b></div>`;
+      const box = $('#jvRes', ov); if (r.acao === 'nada') { box.innerHTML = '<div class="aviso ruim" style="margin-top:10px">Não entendi o pedido. Comece com "crie uma proposta…", "manutenção de…" ou "me lembra…".</div>'; return; }
+      const TEL = { ceramico: 'Cerâmico', fibrocimento: 'Fibrocimento', metalico: 'Metálico', laje: 'Laje', solo: 'Solo' };
+      box.innerHTML = `<div class="painel" style="margin-top:10px"><span class="rotulo">Entendi assim (confira)</span>
+        ${r.acao === 'proposta' ? linha('Criar', r.grupoA ? 'orçamento Grupo A' : 'orçamento solar') + linha('Cliente', r.nome) + linha('Geração / consumo', r.kwh ? n(r.kwh) + ' kWh por mês' : '') + linha('Telhado', TEL[r.telhado] || '') + linha('Cidade', r.cidade) + linha('Opções', { ambos: 'inversor e micro', inversor: 'só inversor', micro: 'só micro' }[r.opcoes]) : ''}
+        ${r.acao === 'manutencao' ? linha('Criar', 'proposta de manutenção') + linha('Cliente', r.nome) + linha('Placas', r.placas) + linha('Cidade', r.cidade) : ''}
+        ${r.lembrete ? linha('Lembrete no Meu dia', r.lembrete + (r.quando ? ' · ' + new Date(r.quando).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '')) : ''}
+        <div class="acoes-r" style="margin-top:10px"><button class="btn sol" id="jvOk">✓ Confirmar</button><button class="link" id="jvNao">corrigir o texto</button></div></div>`;
+      $('#jvNao', ov).onclick = () => { box.innerHTML = ''; $('#jvTxt', ov).focus(); };
+      $('#jvOk', ov).onclick = () => { const fim = executar(r); fechar(); if (fim) location.hash = fim; };
+    };
+    $('#jvEnt', ov).onclick = entender;
+    $('#jvTxt', ov).onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); entender(); } };
+  }
+  function executar(r) {
+    const cid = r.cidade && D.cidades[r.cidade] ? D.cidades[r.cidade] : null;
+    if (r.acao === 'proposta') {
+      const o = { ...novoOrc(), nome: r.nome || 'Cliente (Jarvis)', cidade: r.cidade || '', distanciaKm: cid ? cid.km : 0, telhado: r.telhado || 'ceramico', consumos: Array(12).fill(r.kwh || ''), origem: 'Jarvis', cotarQuais: r.opcoes || 'ambos', modo: 'media', criadoPorVoz: r.texto };
+      if (r.grupoA && window.GrupoA) { o.grupo = 'A'; o.segmento = 'grandes'; o.ligacao = 'tri'; o.grupoA = GrupoA.novo(); o.grupoA.consumoFP = Array(12).fill(r.kwh || ''); }
+      B.salvar(o); novoLembrete({ texto: (r.lembrete || 'Completar o orçamento') + ` · ${o.nome}`, ref: o.id, quando: new Date().toISOString(), topo: true });
+      toast(`Orçamento ${o.id} criado para ${o.nome}. Lembrete no topo do Meu dia.`); return '#dia';
+    }
+    if (r.acao === 'manutencao') {
+      const o = { ...AV().novo('manutencao', P()), nome: r.nome || '', cidade: r.cidade || 'Ribeirão Preto', distanciaKm: cid ? cid.km : 12, placas: r.placas || 0, criadoPorVoz: r.texto }; B.salvar(o);
+      if (r.lembrete) novoLembrete({ texto: r.lembrete + ` · ${o.nome}`, ref: o.id, quando: new Date().toISOString(), topo: true });
+      toast(`Manutenção ${o.id} criada`); return '#servico-' + o.id;
+    }
+    if (r.acao === 'lembrete') { novoLembrete({ texto: r.lembrete, quando: r.quando }); toast('Lembrete guardado no Meu dia'); return '#dia'; }
+    return null;
+  }
+  /* abre um orçamento criado por voz para completar */
+  function abrirParaCompletar(id) { const o = B.obter(id); if (!o) return; if (/^SRV-/.test(id)) { location.hash = '#servico-' + id; return; } B.rascunho.gravar(o); B.rascunho.gravarEtapa(0); location.hash = '#novo'; }
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#jarvisBt')) { jarvis(); return; }
+    const f = e.target.closest('[data-lfeito]'); if (f) { lembreteFeito(f.dataset.lfeito); toast('Feito ✓'); render(); return; }
+    const ab = e.target.closest('[data-labrir]'); if (ab) abrirParaCompletar(ab.dataset.labrir);
+  });
+  if (!$('#jarvisBt')) { const bt = document.createElement('button'); bt.id = 'jarvisBt'; bt.className = 'jarvis-bt'; bt.title = 'Jarvis: peça por voz'; bt.setAttribute('aria-label', 'Jarvis, comando de voz'); bt.textContent = '🎙'; document.body.appendChild(bt); }
 
   /* ======================= ROTAS ======================= */
   function render() {

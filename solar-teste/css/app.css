@@ -254,3 +254,12 @@ body.com-barra { padding-bottom: 150px; }
 .av-item.av-extra { grid-template-columns: minmax(0, 4fr) minmax(0, 1.2fr) 24px; }
 .av-item input, .av-item select { width: 100%; min-width: 0; padding: 8px; font-size: 14px; }
 @media (max-width: 900px) { .av-grade { grid-template-columns: 1fr; } .av-lado { position: static; } .av-item { grid-template-columns: 1fr 1fr 1fr; } .av-item input[data-k="desc"] { grid-column: 1 / -1; } }
+/* Jarvis */
+.jarvis-bt { position: fixed; right: 18px; bottom: 18px; z-index: 70; width: 58px; height: 58px; border-radius: 50%; border: 0; font-size: 26px; cursor: pointer; background: linear-gradient(135deg, #ff6a00, #ffb23d); box-shadow: 0 10px 30px #ff6a0066; }
+.jarvis-bt:hover { transform: scale(1.06); }
+body.com-barra .jarvis-bt { bottom: 96px; }
+.jarvis-ov { position: fixed; inset: 0; z-index: 80; background: #0009; display: grid; place-items: center; padding: 16px; }
+.jarvis { max-width: 560px; width: 100%; max-height: 92vh; overflow: auto; }
+.jarvis textarea { width: 100%; margin-top: 10px; }
+.jarvis-mic { display: flex; gap: 12px; align-items: center; }
+.dia-bloco.lembretes { border-color: #ffb23d66; }
