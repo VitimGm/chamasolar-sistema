@@ -27,6 +27,10 @@
     cepInfo,
     parametros() { return Object.assign(json(D.parametros), ler('parametros', {})); },
     salvarParametros(p) { gravar('parametros', { ...ler('parametros', {}), ...json(p) }); },
+    async filaRobo(item) { const f = ler('fila_robo', []); const x = { id: 'F' + Date.now(), criado: agora(), atualizado: agora(), status: 'pendente', tipo: 'cotar', ...item }; f.unshift(x); gravar('fila_robo', f); return [x]; },
+    async filaRoboLer() { return ler('fila_robo', []); },
+    async filaRoboMarcar(id, campos) { gravar('fila_robo', ler('fila_robo', []).map((x) => (x.id === id ? { ...x, ...campos } : x))); },
+    async roboChave() { return 'teste-sem-chave'; },
     zerarParametros() { gravar('parametros', {}); },
 
     todos() { return ler('orcamentos', []); },

@@ -20,7 +20,7 @@
     if (!r.ok) { const x = new Error(j.erro || `O robô respondeu ${r.status}`); x.diag = j.diag || null; throw x; }
     return j;
   }
-  const ROBO_ESPERADO = '2026-11-05d'; // versão do robô que acompanha este sistema
+  const ROBO_ESPERADO = '2026-11-05e'; // versão do robô que acompanha este sistema
   let versaoRobo = null;
   async function conectado() {
     try {

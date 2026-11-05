@@ -135,6 +135,11 @@
       });
     },
     zerarParametros() { this.salvarParametros({}); },
+    /* fila do robô do escritório (Jarvis e pré-propostas) */
+    async filaRobo(item) { return api('sol_robo_fila', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(item) }); },
+    async filaRoboLer() { return api('sol_robo_fila?select=id,criado,atualizado,orc_codigo,tipo,status,resultado,erro,pedido&order=criado.desc&limit=60'); },
+    async filaRoboMarcar(id, campos) { return api('sol_robo_fila?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ ...campos, atualizado: agora() }) }); },
+    async roboChave() { return api('rpc/sol_robo_chave', { method: 'POST', body: '{}' }); },
 
     todos() { return publico ? [publico.orc] : orcs; },
     orcamentos() { return this.todos().filter((o) => !AVULSO(o)); }, // serviços e manutenções ficam fora das listas de energia solar

@@ -32,7 +32,7 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
-const VERSAO = '2026-11-05d'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+const VERSAO = '2026-11-05e'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
 /* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
    Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
 const voando = new Map(); let ultimoFim = Date.now();
@@ -453,3 +453,46 @@ http.createServer((req, res) => {
     res.statusCode = 404; res.end('{}');
   });
 }).listen(PORTA, '127.0.0.1', () => console.log(`Cotador pronto em http://127.0.0.1:${PORTA}. Faça login na janela, se pedir.`));
+
+// =====================================================================
+// FILA DO JARVIS: com o arquivo robo-config.json ({ "chave": "..." }) nesta pasta,
+// o robô olha a fila do sistema a cada minuto, cota o que foi pedido (do celular,
+// pelo Jarvis) e devolve o kit real. Usa o mesmo passo a passo do sistema
+// (cotador-sistema.js), falando com este próprio robô em 127.0.0.1.
+// =====================================================================
+const SB_URL = 'https://jmpvmyyokikpwphwylob.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImptcHZteXlva2lrcHdwaHd5bG9iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIyMTc1MzEsImV4cCI6MjEwNzc5MzUzMX0.e5XT2R7eOj3x-ZYcRFkY4OFg0QEr3_guxT6-W0xpnfY';
+async function filaRpc(fn, corpo) {
+  const r = await fetch(`${SB_URL}/rest/v1/rpc/${fn}`, { method: 'POST', headers: { apikey: SB_ANON, Authorization: 'Bearer ' + SB_ANON, 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
+  const t = await r.text(); if (!r.ok) throw new Error(t.slice(0, 200)); return t ? JSON.parse(t) : null;
+}
+let filaOcupada = false, Cot = null;
+async function orquestrador() {
+  if (Cot) return Cot;
+  const fs = await import('node:fs'), vm = await import('node:vm');
+  globalThis.window = globalThis;
+  vm.runInThisContext(fs.readFileSync(path.resolve('cotador-sistema.js'), 'utf8'), { filename: 'cotador-sistema.js' });
+  Cot = globalThis.Cotador; return Cot;
+}
+async function filaVez(chave) {
+  if (filaOcupada) return; filaOcupada = true;
+  try {
+    const j = await filaRpc('sol_robo_proximo', { p_segredo: chave }); if (!j) return;
+    console.log(`Fila: pedido ${j.orc_codigo || j.id} (${(j.pedido.opcoes || []).map((x) => x.nivel).join(' + ')})`);
+    const C = await orquestrador(), kits = [], erros = [];
+    for (const op of j.pedido.opcoes || []) {
+      try { const s = await C.cotarAuto('conectado', { ...j.pedido.base, tipoInversor: op.tipoInversor, nome: op.nome }, (et) => console.log(`  ${op.nivel}: ${et}`)); const k = C.paraKit(s, op.nivel); if (k.valorKit > 0) kits.push(k); else erros.push(op.nivel + ': valor R$ 0'); }
+      catch (e) { erros.push(op.nivel + ': ' + String(e.message || e).slice(0, 160)); }
+    }
+    await filaRpc('sol_robo_entregar', { p_segredo: chave, p_id: j.id, p_ok: kits.length > 0, p_resultado: { kits, erros, versao: VERSAO, em: new Date().toISOString() }, p_erro: erros.join(' | ') || null });
+    console.log(`Fila: ${kits.length} kit(s) devolvido(s) ao sistema${erros.length ? ' · ' + erros.join(' | ') : ''}`);
+  } catch (e) { console.log('Fila: ' + String(e.message || e).slice(0, 160)); }
+  finally { filaOcupada = false; }
+}
+(async () => {
+  const fs = await import('node:fs'); const arq = path.resolve('robo-config.json');
+  if (!fs.existsSync(arq)) { console.log('Fila do Jarvis desligada (sem robo-config.json). Pegue a chave em Parâmetros → Robô do escritório.'); return; }
+  let chave = ''; try { chave = JSON.parse(fs.readFileSync(arq, 'utf8')).chave || ''; } catch { console.log('robo-config.json inválido.'); return; }
+  console.log('Fila do Jarvis ligada: olhando a cada 60 s.');
+  setTimeout(() => filaVez(chave), 15000); setInterval(() => filaVez(chave), 60000);
+})();

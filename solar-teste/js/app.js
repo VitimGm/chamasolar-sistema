@@ -305,9 +305,9 @@
     $('#editar').onclick = () => { B.rascunho.gravar(o); B.rascunho.gravarEtapa(0); location.hash = '#novo'; };
     /* simulador de conversa: entende a resposta do cliente, sugere o caminho e aprende com o que você usa */
     const rep = () => P().repertorio || [];
-    const INT = [{ id: 'aceitou', t: 'Cliente quer fechar', k: ['fechar', 'vamos fazer', 'pode fazer', 'quero fazer', 'aceito', 'bora', 'pode mandar o contrato'], r: () => `Show, ${o.nome.split(' ')[0]}! Já te mando o contrato pra dar uma olhada, e reservo a data da instalação na agenda da equipe. Consegue assinar pelo celular hoje ainda ou fica melhor amanhã?`, prox: 1, st: 'negociando' },
-      { id: 'financiamento', t: 'Pediu financiamento', k: ['financ', 'parcel', 'banco', 'prestação', 'prestacao', 'boleto'], r: () => `Dá sim! Na proposta deixei uma estimativa de ${a.boleto.prazo}x de ${brl(a.boleto.parcela)}, mas pra te passar o valor certinho do banco preciso do seu CPF e de uma ideia da renda. Me manda por aqui que eu simulo nos bancos que trabalho e te volto com a melhor parcela, combinado?`, prox: 2, st: 'negociando' },
-      { id: 'sumiu', t: 'Sem resposta', k: ['não respondeu', 'nao respondeu', 'sumiu', 'visualizou e não'], r: () => `Oi ${o.nome.split(' ')[0]}, tudo certo? Sei que a correria é grande, não quero te encher 😊 Só queria saber se conseguiu ver a proposta. Se for mais fácil, te explico em 5 minutinhos por ligação, que horário costuma ser melhor pra você?`, prox: 3 }];
+    const INT = [{ id: 'aceitou', t: 'Cliente quer fechar', k: ['fechar', 'vamos fazer', 'pode fazer', 'quero fazer', 'aceito', 'bora', 'pode mandar o contrato'], r: () => `Que notícia boa, ${o.nome.split(' ')[0]}! Você tomou uma decisão que vai fazer diferença por mais de 20 anos. Vou te mandar agora o contrato para você conferir com calma: está tudo ali, os equipamentos, a garantia, a geração prevista e o prazo de instalação. Assim que assinar, já reservo a data na agenda da nossa equipe e começo a homologação com a CPFL, que é o que mais demora, então quanto antes, mais cedo você começa a economizar.\n\nFica melhor você assinar pelo celular hoje ainda ou amanhã cedo?`, prox: 1, st: 'negociando' },
+      { id: 'financiamento', t: 'Pediu financiamento', k: ['financ', 'parcel', 'banco', 'prestação', 'prestacao', 'boleto'], r: () => `Consigo sim, e é o caminho que a maioria dos nossos clientes escolhe, porque a parcela fica perto do que já se paga de conta. Na proposta deixei uma estimativa de ${a.boleto.prazo}x de ${brl(a.boleto.parcela)}, mas o valor exato depende da análise do banco. Trabalho com mais de um banco e linha específica para energia solar, então consigo comparar e te trazer a melhor condição, não só a primeira que aparecer.\n\nPara simular de verdade preciso só do seu CPF e de uma ideia da renda mensal. Não tem compromisso nenhum: é só para você ver o número real. Prefere me mandar por aqui ou que eu te ligue rapidinho para preencher junto?`, prox: 2, st: 'negociando' },
+      { id: 'sumiu', t: 'Sem resposta', k: ['não respondeu', 'nao respondeu', 'sumiu', 'visualizou e não'], r: () => `Oi ${o.nome.split(' ')[0]}, tudo bem? Sei que a rotina é corrida, então vou direto ao ponto. Preparei sua proposta com base na sua conta e o resultado ficou bem interessante: a conta cai para perto de ${brl(a.boleto.contaDepois)} e o sistema se paga em ${n(a.op.eco.paybackAnos, 1)} anos. Só não quero que você perca a condição atual, porque o kit tem validade de preço com o fornecedor.\n\nVocê prefere que eu te explique em 5 minutinhos por ligação, ou te mando um áudio rápido resumindo os pontos principais?`, prox: 3 }];
     const entenderResp = (txt) => { const t = txt.toLowerCase(), i = INT.find((x) => x.k.some((k) => t.includes(k))); if (i) return { id: i.id, t: i.t, resposta: i.r(), prox: i.prox, st: i.st };
       const ob = A.lista.find((x) => x.id === 'objecoes').fn({ o, a, texto: txt }); return ob.blocos.length === 1 ? { id: 'obj:' + ob.blocos[0].titulo, t: ob.blocos[0].titulo, resposta: ob.blocos[0].texto, prox: 2 } : { id: 'geral', t: 'Resposta livre', resposta: '', prox: 2 }; };
     const cvMostrar = () => {
@@ -1044,7 +1044,9 @@
     const p = P();
     app.innerHTML = `${cabCelular()}<div class="cab"><div><h1>Parâmetros</h1><p class="sutil">${B.nuvem ? 'Valores usados em todos os orçamentos. Cada vez que salvar, a versão anterior fica guardada.' : 'Valores de teste. Troque pelos reais quando tiver custo fixo, alíquota e preço do terceiro.'}</p></div></div>
       <div class="lado"><div>${CAMPOS.map(([t, cs]) => `<div class="painel"><span class="rotulo">${t}</span><div class="grade g2" style="margin-top:12px">${cs.map(([k, r, m]) => `<label class="campo"><span>${r}</span><input type="number" step="any" data-par="${k}" data-m="${m}" value="${+(p[k] * m).toFixed(4)}"></label>`).join('')}</div></div>`).join('')}</div>
-      <div><div class="painel"><span class="rotulo">Margem por tamanho</span><table style="margin-top:8px">${p.margens.map((x, i) => `<tr><td>até ${x.ate >= 1e9 ? '∞' : x.ate} kWp</td><td class="v"><input type="number" step="0.5" data-mg="${i}" value="${+(x.margem * 100).toFixed(2)}" style="width:90px;padding:6px 8px;text-align:right"> %</td></tr>`).join('')}</table></div>
+      <div><div class="painel"><span class="rotulo">Robô do escritório (fila do Jarvis)</span><p class="mini" style="margin:6px 0">O robô no computador do escritório pega na fila os pedidos do Jarvis, cota na Belenergy e devolve o preço real. Copie a chave para o arquivo <b>robo-config.json</b> da pasta do robô (uma vez).</p>
+        <div class="acoes-r"><button class="btn vidro pequeno" id="rbChave">Mostrar a chave do robô</button><span class="mini" id="rbFila"></span></div><div id="rbOut"></div></div>
+      <div class="painel"><span class="rotulo">Margem por tamanho</span><table style="margin-top:8px">${p.margens.map((x, i) => `<tr><td>até ${x.ate >= 1e9 ? '∞' : x.ate} kWp</td><td class="v"><input type="number" step="0.5" data-mg="${i}" value="${+(x.margem * 100).toFixed(2)}" style="width:90px;padding:6px 8px;text-align:right"> %</td></tr>`).join('')}</table></div>
         <div class="painel"><span class="rotulo">Comparação com a Groner</span><p class="sutil" style="margin:6px 0 8px">Como a Groner calcula: (kit + engenharia + mão de obra + ART + deslocamento + outros) ÷ (1 − (percentual + Fator X + comissão)). Fator X: 0% até R$ 100 mil, 5% até R$ 500 mil, 6% acima.</p>
           <div class="grade g2">${[['percentual', 'Percentual (imposto + lucro + comissão) %', 100], ['maoDeObraPorPlaca', 'Mão de obra por placa (R$)', 1], ['art', 'ART (R$)', 1], ['custoKm', 'Deslocamento (R$/km)', 1], ['eng0', 'Engenharia até 10 kWp (R$)', 1], ['eng1', 'Engenharia até 30 kWp (R$)', 1], ['eng2', 'Engenharia acima de 30 kWp (R$)', 1], ['kmIdaVolta', 'Contar o km ida e volta (1 = sim)', 1]].map(([k, r, m]) => { const G = { percentual: 0.365, maoDeObraPorPlaca: 100, art: 70, custoKm: 1, kmIdaVolta: 0, eng: [300, 500, 700], ...(p.groner || {}) }; const v = /^eng\d$/.test(k) ? G.eng[+k.slice(3)] : G[k]; return `<label class="campo"><span>${r}</span><input type="number" step="any" data-gr="${k}" data-m="${m}" value="${+(v * m).toFixed(3)}"></label>`; }).join('')}</div></div>
         ${p.kwpPrevistosMes > 0 ? `<div class="painel"><span class="rotulo">Ponto de equilíbrio</span><p style="margin:8px 0 4px">Para pagar ${brl(p.custoFixoMes)} de custo fixo, a meta é vender <b>${n(p.kwpPrevistosMes)} kWp por mês</b>.</p><p class="sutil" style="margin:0">≈ ${Math.ceil(p.kwpPrevistosMes / 4.3)} obras de 4,3 kWp ou ${Math.ceil(p.kwpPrevistosMes / 10)} de 10 kWp. Vendendo menos, o custo fixo não fecha; vendendo mais, a margem vira lucro.</p></div>` : ''}${B.nuvem ? `<div class="painel"><span class="rotulo">Acessos das plataformas de monitoramento</span>
@@ -1070,6 +1072,8 @@
       novoP.empresaDoc = { ...(p.empresaDoc || {}) }; app.querySelectorAll('[data-emp]').forEach((i) => { novoP.empresaDoc[i.dataset.emp] = i.dataset.num ? +i.value || 0 : i.value.trim(); });
       B.salvarParametros(novoP); toast('Parâmetros salvos');
     };
+    if ($('#rbChave')) { $('#rbChave').onclick = async () => { try { const k = await B.roboChave(); $('#rbOut').innerHTML = `<pre class="mini" style="white-space:pre-wrap;user-select:all;background:var(--vidro);padding:8px;border-radius:8px;margin-top:6px">{ "chave": "${esc(k || '')}" }</pre><p class="mini">Cole isso num arquivo robo-config.json na pasta do robô. Não mande por mensagem.</p>`; } catch (e) { toast(e.message); } };
+        B.filaRoboLer().then((f) => { const pend = (f || []).filter((x) => x.status === 'pendente' || x.status === 'rodando').length; $('#rbFila').textContent = pend ? `${pend} pedido(s) na fila` : 'fila vazia'; }).catch(() => {}); }
     if ($('#crSalvar')) {
       const status = () => B.credenciaisStatus().then((l) => { $('#crStatus').textContent = l.length ? 'Guardados: ' + l.map((x) => x.marca + ' (' + new Date(x.atualizado_em).toLocaleDateString('pt-BR') + ')').join(', ') : 'Nenhum acesso guardado ainda.'; }).catch(() => { $('#crStatus').textContent = ''; });
       status();
@@ -1532,13 +1536,48 @@
     $('#jvEnt', ov).onclick = entender;
     $('#jvTxt', ov).onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); entender(); } };
   }
+  /* pedido para o robô do escritório (mesmo do passo 4): potência pela estimativa, uma linha por opção */
+  function pedidoRobo(o) {
+    const est = C.opcoes(o, P())[0], kwp = est ? +est.dim.kwpNecessario.toFixed(2) : 0, quais = o.cotarQuais || 'ambos';
+    const base = { salvar: true, kwp, ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[o.ligacao] || 'BIFÁSICO', cidade: o.cidade || 'Ribeirão Preto', frete: P().freteRobo || 'Cliente Retira',
+      estruturaTipo: { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' }[o.telhado], fixacao: FIXACAO[o.telhado] ? o.fixacao || FIXACAO[o.telhado][0][0] : null };
+    return { base, opcoes: NIVEIS_KIT.map((nivel, i) => ({ nivel, tipoInversor: TIPO_POR_OPCAO[i], nome: `${o.id} ${o.nome} ${nivel}` })).filter((x, i) => quais === 'ambos' || (quais === 'inversor' ? i === 0 : i === 1)) };
+  }
+  async function mandarParaRobo(o) {
+    try { await B.filaRobo({ orc_codigo: o.id, tipo: 'cotar', pedido: pedidoRobo(o) }); o.aguardandoRobo = new Date().toISOString(); B.salvar(o); return true; }
+    catch (e) { toast('Não consegui mandar para o robô: ' + e.message); return false; }
+  }
+  /* o que o robô devolveu entra no orçamento sozinho (preço real, WEB) e vira lembrete para revisar e enviar */
+  let filaLida = 0;
+  async function aplicarFila(forcar) {
+    if (!forcar && Date.now() - filaLida < 60000) return; filaLida = Date.now();
+    let fila = []; try { fila = (await B.filaRoboLer()) || []; } catch { return; }
+    let mudou = 0;
+    for (const j of fila.filter((x) => x.status === 'feito' && x.resultado && !x.resultado.aplicado && x.orc_codigo)) {
+      const o = B.obter(j.orc_codigo); if (!o) continue;
+      o.kitsFechados = o.kitsFechados || [null, null];
+      (j.resultado.kits || []).forEach((k) => { const i = NIVEIS_KIT.indexOf(k.nivel); if (i >= 0 && k.valorKit > 0) o.kitsFechados[i] = k; });
+      o.aguardandoRobo = null; B.salvar(o); mudou++;
+      novoLembrete({ texto: `Preço real chegou (Belenergy${(j.resultado.kits || []).map((k) => ' ' + (k.numeroBelenergy || '')).join(',')}): revisar e enviar a proposta de ${o.nome}`, ref: o.id, quando: new Date().toISOString(), topo: true });
+      await B.filaRoboMarcar(j.id, { resultado: { ...j.resultado, aplicado: new Date().toISOString() } }).catch(() => {});
+    }
+    for (const j of fila.filter((x) => x.status === 'erro' && !(x.resultado && x.resultado.avisado) && x.orc_codigo)) {
+      const o = B.obter(j.orc_codigo); if (o) { o.aguardandoRobo = null; B.salvar(o); }
+      novoLembrete({ texto: `O robô não conseguiu cotar ${o ? o.nome : j.orc_codigo}: ${String(j.erro || '').slice(0, 120)}. Cote pelo passo 4.`, ref: j.orc_codigo, quando: new Date().toISOString(), topo: true });
+      await B.filaRoboMarcar(j.id, { resultado: { ...(j.resultado || {}), avisado: true } }).catch(() => {});
+    }
+    if (mudou) toast(`O robô trouxe o preço real de ${mudou} orçamento(s)`);
+  }
+  setInterval(() => aplicarFila(), 120000); setTimeout(() => aplicarFila(true), 3000);
   function executar(r) {
     const cid = r.cidade && D.cidades[r.cidade] ? D.cidades[r.cidade] : null;
     if (r.acao === 'proposta') {
       const o = { ...novoOrc(), nome: r.nome || 'Cliente (Jarvis)', cidade: r.cidade || '', distanciaKm: cid ? cid.km : 0, telhado: r.telhado || 'ceramico', consumos: Array(12).fill(r.kwh || ''), origem: 'Jarvis', cotarQuais: r.opcoes || 'ambos', modo: 'media', criadoPorVoz: r.texto };
       if (r.grupoA && window.GrupoA) { o.grupo = 'A'; o.segmento = 'grandes'; o.ligacao = 'tri'; o.grupoA = GrupoA.novo(); o.grupoA.consumoFP = Array(12).fill(r.kwh || ''); }
       B.salvar(o); novoLembrete({ texto: (r.lembrete || 'Completar o orçamento') + ` · ${o.nome}`, ref: o.id, quando: new Date().toISOString(), topo: true });
-      toast(`Orçamento ${o.id} criado para ${o.nome}. Lembrete no topo do Meu dia.`); return '#dia';
+      if (r.kwh) mandarParaRobo(o).then((ok) => { if (ok) toast(`Orçamento ${o.id} criado. O robô do escritório vai cotar na Belenergy e o preço real entra sozinho.`); });
+      else toast(`Orçamento ${o.id} criado para ${o.nome}. Lembrete no topo do Meu dia.`);
+      return '#dia';
     }
     if (r.acao === 'manutencao') {
       const o = { ...AV().novo('manutencao', P()), nome: r.nome || '', cidade: r.cidade || 'Ribeirão Preto', distanciaKm: cid ? cid.km : 12, placas: r.placas || 0, criadoPorVoz: r.texto }; B.salvar(o);
