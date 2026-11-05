@@ -573,6 +573,7 @@
       </div>
       <div class="lado"><div class="painel grade">
       <div class="campo"><span>Tipo de telhado</span><div class="chips">${[['ceramico', 'Cerâmico'], ['fibrocimento', 'Fibrocimento'], ['metalico', 'Metálico'], ['laje', 'Laje'], ['solo', 'Solo']].map(([v, t]) => `<button class="chip ${orc.telhado === v ? 'sel' : ''}" data-tel="${v}">${t}<small>${brl(D.catalogo.estrutura[v])}/pl</small></button>`).join('')}</div></div>
+      ${FIXACAO[orc.telhado] ? `<div class="campo"><span>${orc.telhado === 'fibrocimento' ? 'Fibrocimento sobre' : 'Fixação na telha metálica'} <small style="font-weight:400;opacity:.75">muda o kit e o preço</small></span><div class="chips">${FIXACAO[orc.telhado].map(([v, t]) => `<button class="chip ${(orc.fixacao || FIXACAO[orc.telhado][0][0]) === v ? 'sel' : ''}" data-fix="${v}">${t}</button>`).join('')}</div></div>` : ''}
       <div class="campo"><span>Orientação do telhado</span>
         <button class="chip ${!orc.orientacao || orc.orientacao === '?' ? 'sel' : ''}" data-ori="?" style="justify-self:start">A confirmar na visita técnica<small>perda de segurança ${n((p.perdaOrientacao ?? 0.07) * 100)}%</small></button>
         <details ${orc.orientacao && orc.orientacao !== '?' ? 'open' : ''}><summary class="mini" style="cursor:pointer">Já sei a orientação</summary>
@@ -583,7 +584,8 @@
       <div class="painel"><span class="rotulo">Sol no local</span><div class="numeros4" style="margin-top:12px">
         <div><span>${esc(orc.cidade || 'Ribeirão Preto')}</span><b>${n(hsp, 2)} HSP</b></div><div><span>${perda3 !== null ? 'Medido no 3D (direção + sombra)' : !orc.orientacao || orc.orientacao === '?' ? 'Com a perda de segurança' : 'Com a orientação'}</span><b>${n(hsp * (perda3 !== null ? 1 - perda3 : !orc.orientacao || orc.orientacao === '?' ? 1 - (p.perdaOrientacao ?? 0.07) : M.FATOR_ORIENTACAO[orc.orientacao]), 2)} HSP</b></div></div>
         <p class="mini" style="margin-top:10px">${perda3 !== null ? 'O 3D salvo manda na geração: a direção de cada água, a sombra placa a placa e a irradiação do local substituem a orientação e a perda de segurança.' : 'Irradiação da cidade. Com o projeto 3D, vem do PVGIS (satélite SARAH-3) pelo local exato. A perda de segurança cobre telhado leste/oeste até a visita técnica (ajustável em Parâmetros).'}</p></div></div>`;
-    el.querySelectorAll('[data-tel]').forEach((b) => b.onclick = () => { orc.telhado = b.dataset.tel; salvarR(); novo(); });
+    el.querySelectorAll('[data-tel]').forEach((b) => b.onclick = () => { orc.telhado = b.dataset.tel; orc.fixacao = null; salvarR(); novo(); });
+    el.querySelectorAll('[data-fix]').forEach((b) => b.onclick = () => { orc.fixacao = b.dataset.fix; salvarR(); novo(); });
     ligar3d(el);
     el.querySelectorAll('[data-ori]').forEach((b) => b.onclick = () => { orc.orientacao = b.dataset.ori; salvarR(); novo(); });
     $('#f-area').oninput = (e) => { orc.areaDisponivel = e.target.value; salvarR(); };
@@ -597,6 +599,8 @@
     return l.ok ? `<div class="aviso ok">✓ Inversor de ${n(l.potInvKw, 1)} kW dentro da demanda contratada (${n(l.demandaKw)} kW).</div>`
       : `<div class="aviso ruim">O inversor (${n(l.potInvKw, 1)} kW) passa da demanda contratada (${n(l.demandaKw)} kW). Para ligar assim, a demanda precisa ser revista com a CPFL (aumentar a demanda ou contratar demanda de geração), o que pode mudar a conta. Confira com a engenharia ou marque "Limitar a usina à demanda contratada" no passo 1.</div>`;
   }
+  /* fixação: escolhida no passo 2 e passada ao robô para achar o "Detalhe da estrutura" certo no portal */
+  const FIXACAO = { fibrocimento: [['madeira', 'Estrutura de madeira'], ['metal', 'Estrutura metálica']], metalico: [['minitrilho', 'Mini trilho'], ['minitrilhoAlto', 'Mini trilho alto'], ['suporteL', 'Suporte em pé (L)']] };
   function passo3(el) {
     const p = P(), op = C.opcoes({ ...orc, kitsFechados: null }, p)[1], d = op.dim;
     el.innerHTML = `<div class="kpis">
@@ -732,7 +736,7 @@
       const prog = $('#a-prog'), modo = cotModo || 'simulado', inicio = Date.now(), erros = [];
       orc.salvarBel = !!($('#a-salvar') && $('#a-salvar').checked);
       const base = { salvar: orc.salvarBel, kwp: +kwpSug.toFixed(2), ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[orc.ligacao], cidade: orc.cidade, frete: $('#a-frete').value,
-        estruturaTipo: { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' }[orc.telhado] };
+        estruturaTipo: { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' }[orc.telhado], fixacao: FIXACAO[orc.telhado] ? orc.fixacao || FIXACAO[orc.telhado][0][0] : null };
       for (let i = 0; i < NIVEIS_KIT.length; i++) {
         if (orc.kitsFechados[i] || !vaiCotar(i)) continue; // já cotada (use "Refazer") ou fora da escolha "só um"
         try {

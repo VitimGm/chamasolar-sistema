@@ -203,6 +203,10 @@
     const tipo = tipos.includes(base.estruturaTipo) ? base.estruturaTipo : tipos[0];
     let det = (s.opcoes.estruturas || {})[tipo] || [];
     if (!det.length) det = await detalhes(s, tipo);
+    // fixação pedida pelo vendedor (madeira/metal no fibrocimento; mini trilho, mini trilho alto ou suporte L na metálica)
+    const RX = { madeira: /madeira/i, metal: /met[aá]l|a[cç]o|perfil/i, minitrilho: /mini\s*-?\s*trilho(?!.*alto)/i, minitrilhoAlto: /mini\s*-?\s*trilho.*alto|alto.*mini\s*-?\s*trilho/i, suporteL: /\bL\b|em p[ée]|p[ée]\s*L|suporte\s*L/i };
+    const pref = base.fixacao && RX[base.fixacao] ? det.find((d) => RX[base.fixacao].test(d)) : null;
+    if (pref) det = [pref, ...det.filter((d) => d !== pref)];
     const placas = s.escolhas.modulo.qtd, linhas = placas > 12 ? 2 : 1;
     if (placas % linhas) { /* número ímpar em 2 linhas: usa 1 linha */ }
     const lin = placas % linhas ? 1 : linhas;
