@@ -722,6 +722,7 @@
     ['Custos por obra', [['maoDeObraPorPlaca', 'Terceiro por placa (R$)', 1], ['art', 'ART (R$)', 1], ['materialCaBase', 'Material CA fixo (R$)', 1], ['materialCaPorKwp', 'Material CA/kWp (R$)', 1], ['custoKm', 'Custo por km (R$)', 1], ['visitasObra', 'Viagens por obra', 1], ['trocaPadrao', 'Troca de padrão (R$)', 1], ['reservaGarantia', 'Reserva garantia (% kit)', 100]]],
     ['Resposta rápida', [['kitRefWp', 'Kit de referência (R$/Wp)', 1], ['moduloRefW', 'Placa de referência (W)', 1]]],
     ['Regras técnicas', [['limiteMonoEmTriKw', 'Cliente trifásico: inversor mono 220 V até (kW)', 1]]],
+    ['Meta', [['metaPropostasSemana', 'Propostas enviadas por semana (meta)', 1]]],
     ['Percentuais', [['impostoTotal', 'Imposto com kit (%)', 100], ['impostoServico', 'Imposto só serviço (%)', 100], ['reservaNegociacao', 'Reserva de negociação (%)', 100]]],
     ['Conversão e retorno', [['tarifaKwh', 'Tarifa padrão (R$/kWh)', 1], ['margemGeracao', 'Margem de geração (%)', 100], ['perdaOrientacao', 'Perda de segurança da orientação (%)', 100], ['reajusteAnual', 'Reajuste ao ano (%)', 100], ['simultaneidade', 'Simultaneidade (%)', 100], ['validadeDias', 'Validade da cotação (dias)', 1], ['manutencaoAnual', 'Manutenção/ano (R$)', 1], ['pr', 'PR (eficiência)', 1]]],
   ];
@@ -738,7 +739,10 @@
             <label class="campo"><span>Chave de API / App ID (se tiver)</span><input id="crChave" type="text" autocomplete="off"></label>
             <label class="campo"><span>Segredo da API / App Secret (se tiver)</span><input id="crSegredo" type="password" autocomplete="new-password"></label>
             <label class="campo"><span>Observação (ex.: servidor, empresa)</span><input id="crObs" type="text"></label></div>
-          <div class="acoes-r" style="margin-top:8px"><button class="btn sol pequeno" id="crSalvar">Guardar acesso</button><span class="mini" id="crStatus">carregando…</span></div></div>` : ''}<div class="painel"><div class="entre"><span class="rotulo">Treino do robô Belenergy</span><a class="btn vidro pequeno" href="#treino">Abrir treino ›</a></div><p class="sutil" style="margin:6px 0 0">Cotações automáticas em todas as combinações para achar e corrigir erros antes do cliente.</p></div><div class="painel"><span class="rotulo">Dados da empresa para contrato e procuração</span><div class="grade g2" style="margin-top:10px">${[['razao', 'Razão social'], ['cnpj', 'CNPJ'], ['endereco', 'Endereço da sede'], ['cidadeForo', 'Foro (cidade/UF)'], ['respTecnico', 'Responsável técnico'], ['crea', 'CREA'], ['garantiaInstalacaoAnos', 'Garantia da instalação (anos)', 1], ['prazoInstalacaoDias', 'Prazo de instalação (dias)', 1]].map(([c, r, num]) => `<label class="campo"><span>${r}</span><input type="${num ? 'number' : 'text'}" data-emp="${c}" ${num ? 'data-num="1"' : ''} value="${esc(Documentos.empresaDe(p)[c] ?? '')}"></label>`).join('')}</div></div><div class="painel"><span class="rotulo">Fórmula</span><p class="sutil" style="margin-top:8px">Preço = (custos diretos + taxa fixa) ÷ (1 − (impostos + taxa de pagamento + comissão + margem + reserva))</p></div>
+          <div class="acoes-r" style="margin-top:8px"><button class="btn sol pequeno" id="crSalvar">Guardar acesso</button><span class="mini" id="crStatus">carregando…</span></div></div>` : ''}<div class="painel" id="depPainel"><div class="entre"><span class="rotulo">Depoimentos e casos reais (Instagram)</span><button class="btn vidro pequeno" id="depNovo">＋ Adicionar</button></div>
+        <p class="sutil" style="margin:6px 0 8px">Aparecem na Proposta Viva em "Quem já tem perto de você?" e nas mensagens de prova social. Só casos reais, com autorização do cliente.</p>
+        ${(p.depoimentos || []).map((d, i) => `<div class="entre" style="padding:8px 0;border-top:1px dashed var(--linha)"><span><b>${esc(d.nome)}</b> <span class="mini">${esc(d.cidade || '')}${d.contaAntes ? ' · ' + brl(d.contaAntes) + ' → ' + brl(d.contaDepois) : ''}</span><br><span class="mini">${esc(String(d.texto || '').slice(0, 90))}</span></span><span><button class="link" data-dep-ed="${i}">editar</button> · <button class="link" data-dep-rm="${i}">tirar</button></span></div>`).join('') || '<p class="mini">Nenhum ainda. Comece pelos 3 melhores posts de cliente do Instagram.</p>'}</div>
+      <div class="painel"><div class="entre"><span class="rotulo">Treino do robô Belenergy</span><a class="btn vidro pequeno" href="#treino">Abrir treino ›</a></div><p class="sutil" style="margin:6px 0 0">Cotações automáticas em todas as combinações para achar e corrigir erros antes do cliente.</p></div><div class="painel"><span class="rotulo">Dados da empresa para contrato e procuração</span><div class="grade g2" style="margin-top:10px">${[['razao', 'Razão social'], ['cnpj', 'CNPJ'], ['endereco', 'Endereço da sede'], ['cidadeForo', 'Foro (cidade/UF)'], ['respTecnico', 'Responsável técnico'], ['crea', 'CREA'], ['garantiaInstalacaoAnos', 'Garantia da instalação (anos)', 1], ['prazoInstalacaoDias', 'Prazo de instalação (dias)', 1], ['anosRegiao', 'Anos de empresa na região (selo da proposta)', 1], ['seloConfianca', 'Selo de confiança (ex.: nota no Google), só se for real']].map(([c, r, num]) => `<label class="campo"><span>${r}</span><input type="${num ? 'number' : 'text'}" data-emp="${c}" ${num ? 'data-num="1"' : ''} value="${esc(Documentos.empresaDe(p)[c] ?? '')}"></label>`).join('')}</div></div><div class="painel"><span class="rotulo">Fórmula</span><p class="sutil" style="margin-top:8px">Preço = (custos diretos + taxa fixa) ÷ (1 − (impostos + taxa de pagamento + comissão + margem + reserva))</p></div>
         <div class="acoes-r" style="margin-top:14px"><button class="btn sol" id="salvarP">Salvar</button>${B.nuvem ? '' : '<button class="btn vidro" id="resetP">Voltar ao teste</button>'}</div></div></div>`;
     $('#salvarP').onclick = () => {
       const novoP = {}; app.querySelectorAll('[data-par]').forEach((i) => { novoP[i.dataset.par] = +i.value / +i.dataset.m; });
@@ -755,6 +759,27 @@
         try { await B.guardarCredencial($('#crMarca').value, dados); ['#crUser', '#crSenha', '#crChave', '#crSegredo', '#crObs'].forEach((id) => { $(id).value = ''; }); toast('Acesso guardado'); status(); } catch (e) { toast('Não guardou: ' + e.message.slice(0, 80)); }
       };
     }
+    const depForm = (i) => {
+      const d = i >= 0 ? { ...p.depoimentos[i] } : {};
+      const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:80;background:#0009;display:grid;place-items:center;padding:16px';
+      const c = (k, r, t = 'text', ph = '') => `<label class="campo"><span>${r}</span><input data-dp="${k}" type="${t}" step="any" placeholder="${esc(ph)}" value="${esc(d[k] ?? '')}"></label>`;
+      ov.innerHTML = `<div class="painel" style="max-width:560px;width:100%;max-height:92vh;overflow:auto"><div class="entre"><span class="rotulo" style="color:var(--sol)">Depoimento</span><button class="link" data-x>fechar</button></div>
+        <div class="grade g2" style="margin-top:10px">${c('nome', 'Nome como vai aparecer', 'text', 'Ex.: Dona Rosa')}${c('cidade', 'Cidade', 'text', 'Ribeirão Preto')}${c('contaAntes', 'Conta antes (R$)', 'number')}${c('contaDepois', 'Conta depois (R$)', 'number')}${c('desde', 'Instalado em', 'text', 'mar/2025')}${c('link', 'Link do post no Instagram', 'url', 'https://www.instagram.com/p/...')}</div>
+        <label class="campo" style="margin-top:8px"><span>Frase do cliente (curta, nas palavras dele)</span><textarea data-dp="texto" rows="3" style="width:100%">${esc(d.texto || '')}</textarea></label>
+        <div class="acoes-r" style="margin-top:10px"><button class="btn sol" data-ok>Salvar</button></div></div>`;
+      document.body.appendChild(ov);
+      ov.onclick = (e) => {
+        if (e.target === ov || e.target.closest('[data-x]')) return ov.remove();
+        if (!e.target.closest('[data-ok]')) return;
+        ov.querySelectorAll('[data-dp]').forEach((x) => { d[x.dataset.dp] = x.type === 'number' ? (x.value === '' ? null : +x.value) : x.value.trim(); });
+        if (!d.nome || !(d.texto || d.contaAntes)) return toast('Coloque o nome e a frase ou as contas');
+        const lista = [...(p.depoimentos || [])]; i >= 0 ? (lista[i] = d) : lista.push(d);
+        B.salvarParametros({ depoimentos: lista }); ov.remove(); toast('Depoimento salvo'); parametrosPag();
+      };
+    };
+    $('#depNovo').onclick = () => depForm(-1);
+    app.querySelectorAll('[data-dep-ed]').forEach((b) => b.onclick = () => depForm(+b.dataset.depEd));
+    app.querySelectorAll('[data-dep-rm]').forEach((b) => b.onclick = () => { const lista = (p.depoimentos || []).filter((_, k) => k !== +b.dataset.depRm); B.salvarParametros({ depoimentos: lista }); parametrosPag(); });
     if ($('#resetP')) $('#resetP').onclick = () => { B.zerarParametros(); parametrosPag(); toast('Voltou aos valores de teste'); };
   }
 
@@ -815,6 +840,57 @@
     ov.onclick = (e) => { const b = e.target.closest('[data-u]'); if (b) fn(lista.find((u) => String(u.id) === b.dataset.u)); ov.remove(); };
     document.body.appendChild(ov);
   }
+  /* ======================= MEU DIA =======================
+     O que fazer hoje, em 3 blocos curtos (para caber junto com a Chamae):
+     manhã = responder novos e mensagens · almoço = usinas · fim da tarde = ligações.
+     Cada item tem o botão de fazer (WhatsApp/ligar) e some quando feito. Vai também para o Google Agenda. */
+  const gcal = (titulo, ini, fim, det) => 'https://calendar.google.com/calendar/render?action=TEMPLATE&ctz=America/Sao_Paulo&text=' + encodeURIComponent(titulo) + '&dates=' + ini + '/' + fim + '&details=' + encodeURIComponent(det || '');
+  const hojeStr = (hh, mm) => { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}T${String(hh).padStart(2, '0')}${String(mm).padStart(2, '0')}00`; };
+  async function diaPag() {
+    const lista = B.orcamentos(), p = P(), evDe = (t) => B.eventos(t);
+    const ag = Cadencia.agenda(lista, evDe, (id) => B.interacoes(id));
+    const hoje = new Date().toISOString().slice(0, 10);
+    const feitosHoje = lista.flatMap((o) => B.interacoes(o.id).filter((i) => String(i.em).slice(0, 10) === hoje && /^Cadência/.test(i.texto || '')).map((i) => ({ o, i })));
+    const usAlerta = (B.usinas() || []).filter((u) => u.ativo !== false).map((u) => ({ u, s: window.Usinas.situacao(u, B.geracao(u.id)) })).filter((x) => x.s.alerta && x.s.alerta !== 'Sem leitura ainda');
+    const amanha = lista.map((o) => Cadencia.proximo(o, evDe(o.token), B.interacoes(o.id), Date.now() + 864e5)).filter((x) => x && x.hoje).length - ag.length;
+    const manha = ag.filter((x) => x.passo.quente || x.passo.canal !== 'ligacao'), tarde = ag.filter((x) => !x.passo.quente && x.passo.canal === 'ligacao');
+    const total = ag.length + usAlerta.length + feitosHoje.length, feitos = feitosHoje.length;
+    const min = manha.length * 3 + tarde.length * 7 + usAlerta.length * 5;
+    const semana = lista.flatMap((o) => B.interacoes(o.id)).filter((i) => Date.now() - new Date(i.em) < 7 * 864e5);
+    const enviadasSem = lista.filter((o) => o.enviadoEm && Date.now() - new Date(o.enviadoEm) < 7 * 864e5).length;
+    const metaSem = Number(p.metaPropostasSemana) || 3;
+    const item = ({ o, passo }) => `<div class="dia-item"><div class="ic">${passo.quente ? '🔥' : passo.canal === 'ligacao' ? '📞' : passo.grupo === 'novo' ? '⚡' : '💬'}</div><div>
+        <b><a href="#lead-${o.id}" style="color:inherit">${esc(o.nome)}</a></b> <span class="mini">${esc(passo.titulo)}${passo.atrasoDias > 0 ? ` · <span style="color:var(--laranja)">${passo.atrasoDias} dia(s) atrasado</span>` : ''}</span>
+        <p class="mini" style="margin:2px 0 6px">${passo.quente ? '<b>Está com a proposta aberta agora: ligue já.</b> ' : ''}${esc(passo.porque)}</p>
+        <div class="acoes-r">${passo.canal === 'ligacao' && !passo.quente ? `<a class="btn sol pequeno" href="tel:${esc(String(o.whatsapp || '').replace(/\D/g, ''))}">Ligar</a><button class="btn vidro pequeno" data-cad="lig" data-id="${o.id}" data-passo="${passo.id}">Liguei ✓</button>` : `<button class="btn zap pequeno" data-cad="zap" data-id="${o.id}" data-passo="${passo.id}">Mandar WhatsApp</button>`}
+          <a class="link" href="#lead-${o.id}">outras abordagens</a><button class="link" data-cad="ok" data-id="${o.id}" data-passo="${passo.id}">pular</button></div></div></div>`;
+    const bloco = (ic, titulo, hora, dur, desc, itens, chave) => `<div class="dia-bloco"><div class="entre"><h3>${ic} ${titulo}</h3><span class="mini">${hora} · ~${dur} min</span></div><p class="mini" style="margin:4px 0 6px">${desc}</p>
+        ${itens || '<p class="sutil" style="margin:6px 0">Nada para este bloco hoje 🎉</p>'}
+        ${itens ? `<a class="link mini" target="_blank" rel="noopener" href="${gcal('☀️ Chama Solar · ' + titulo, hojeStr(...chave[0]), hojeStr(...chave[1]), 'Abrir: ' + location.href.split('#')[0] + '#dia')}">📅 pôr este bloco no Google Agenda</a>` : ''}</div>`;
+    app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Seu dia na Chama Solar</h1><p class="sutil">${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })} · ${ag.length + usAlerta.length ? `${ag.length + usAlerta.length} tarefa(s), cerca de ${Math.max(min, 5)} min no total` : 'tudo em dia'}</p></div>
+        <div class="linha-h"><button class="btn vidro" id="rapida">⚡ Resposta rápida</button><a class="btn sol" href="#novo">＋ Novo orçamento</a></div></div>
+      <div class="painel"><div class="entre"><span class="rotulo">Progresso de hoje</span><b>${feitos} de ${total || 0}</b></div><div class="progresso"><i style="width:${total ? Math.round(feitos / total * 100) : 100}%"></i></div>
+        <p class="mini" style="margin:8px 0 0">${!total ? 'Sem contatos vencidos. Bom dia para pedir indicação a um cliente feliz ou postar um depoimento.' : feitos >= total ? 'Dia concluído. 👏' : 'Faça na ordem: os de cima são os que mais dão resultado.'}</p></div>
+      ${bloco('🌅', 'Bloco da manhã', '8h00', Math.max(manha.length * 3, 5), 'Leads novos e mensagens: responder rápido é o que mais fecha venda.', manha.map(item).join(''), [[8, 0], [8, 15]])}
+      ${bloco('☀️', 'Bloco do almoço', '12h30', Math.max(usAlerta.length * 5, 5), 'Usinas com alerta: ligue antes do cliente perceber.', usAlerta.map(({ u, s }) => `<div class="dia-item"><div class="ic">⚠️</div><div><b>${esc(u.cliente_nome)}</b> <span class="mini">${esc(u.marca)} · ${n(u.kwp, 2)} kWp</span><p class="mini" style="margin:2px 0 6px">${esc(s.alerta)}</p><div class="acoes-r"><a class="btn vidro pequeno" href="#usinas">Ver usina</a>${u.whatsapp ? `<a class="btn zap pequeno" target="_blank" rel="noopener" href="https://wa.me/55${String(u.whatsapp).replace(/\D/g, '').replace(/^55/, '')}">WhatsApp</a>` : ''}</div></div></div>`).join(''), [[12, 30], [12, 40]])}
+      ${bloco('🌇', 'Bloco do fim do dia', '17h30', Math.max(tarde.length * 7, 5), 'Ligações: no fim da tarde o cliente atende mais.', tarde.map(item).join(''), [[17, 30], [17, 50]])}
+      ${feitosHoje.length ? `<div class="dia-bloco"><div class="entre"><h3>✅ Feito hoje</h3><span class="mini">${feitosHoje.length}</span></div>${feitosHoje.map(({ o, i }) => `<div class="dia-item feito"><div class="ic">✓</div><div><b>${esc(o.nome)}</b> <span class="mini">${esc(String(i.texto).replace(/^Cadência \w\d · /, ''))} · ${new Date(i.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span></div></div>`).join('')}</div>` : ''}
+      <div class="kpis" style="margin-top:14px"><div class="kpi"><span class="rotulo">Amanhã</span><b>${Math.max(amanha, 0)}</b><span class="sutil">contato(s) novos na fila</span></div>
+        <div class="kpi"><span class="rotulo">Contatos na semana</span><b>${semana.length}</b><span class="sutil">mensagens e ligações</span></div>
+        <div class="kpi ${enviadasSem >= metaSem ? 'destaque' : ''}"><span class="rotulo">Propostas na semana</span><b>${enviadasSem} / ${metaSem}</b><span class="sutil">meta da semana</span></div></div>
+      <div class="painel" id="gAgenda"><span class="rotulo">Google Agenda</span><p class="sutil" style="margin:6px 0 0">carregando…</p></div>`;
+    const el = $('#gAgenda');
+    const link = await B.agendaLink().catch(() => null);
+    if (!el) return;
+    el.innerHTML = link ? `<span class="rotulo">Google Agenda</span>
+        <p class="sutil" style="margin:6px 0">Assine a agenda da Chama Solar uma vez: os contatos de cada dia aparecem sozinhos no seu Google Agenda (mensagens às 8h, ligações às 17h30, com aviso 5 min antes). O Google atualiza algumas vezes por dia; para o que é urgente, use os botões acima.</p>
+        <div class="entrada-ag"><input type="text" readonly value="${esc(link)}" id="gLink"></div>
+        <div class="acoes-r" style="margin-top:8px"><button class="btn sol pequeno" id="gCopiar">Copiar o link</button><a class="btn vidro pequeno" target="_blank" rel="noopener" href="https://calendar.google.com/calendar/u/0/r/settings/addbyurl">Abrir o Google Agenda › Adicionar por URL</a></div>
+        <p class="mini" style="margin-top:8px">No computador: copie o link, abra "Adicionar por URL", cole e toque em "Adicionar agenda". Depois ela aparece também no celular. Não compartilhe este link: ele mostra os nomes dos clientes.</p>`
+      : '<span class="rotulo">Google Agenda</span><p class="sutil" style="margin:6px 0 0">Disponível na versão dentro do Chamae (precisa do login). Use os botões "pôr no Google Agenda" de cada bloco.</p>';
+    const gc = $('#gCopiar'); if (gc) gc.onclick = () => copiar(link);
+  }
+
   /* ======================= TREINO DO ROBÔ =======================
      Roda cotações de teste em todas as combinações (potência × ligação × telhado × inversor/micro),
      sem salvar na Belenergy. Cada resultado fica gravado: o que falhou chega para correção com
@@ -998,11 +1074,11 @@
 
   /* ======================= ROTAS ======================= */
   function render() {
-    const h = location.hash.slice(1) || 'painel';
+    const h = location.hash.slice(1) || 'dia';
     const [rota, arg] = h.startsWith('lead-') ? ['lead', h.slice(5)] : [h, null];
     document.querySelectorAll('[data-rota]').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === (rota === 'lead' ? 'painel' : rota)));
     if (rota !== 'novo') { document.body.classList.remove('com-barra'); $('#barra').hidden = true; }
-    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'parametros') parametrosPag(); else painel(); };
+    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') diaPag(); else if (rota === 'parametros') parametrosPag(); else painel(); };
     if (document.startViewTransition) {
       const t = document.startViewTransition(ir);
       [t.ready, t.finished, t.updateCallbackDone].forEach((pr) => pr && pr.catch(() => {})); // navegação rápida cancela a animação, sem problema
@@ -1018,7 +1094,8 @@
     const o = B.obter(bt.dataset.id); if (!o) return;
     const passo = Object.values(Cadencia.PASSOS).flat().find((x) => x.id === bt.dataset.passo);
     if (bt.dataset.cad === 'zap') {
-      const a = C.analisar(o, P()), txt = Cadencia.mensagem(passo, o, { a, link: linkProposta(o) });
+      const a = C.analisar(o, P()), ab = window.Abordagens ? Abordagens.variantes(passo.id, o, { a, link: linkProposta(o) })[0] : null;
+      const txt = (ab && ab.texto.replace(/^\[ÁUDIO[^\]]*\]\s*/, '')) || Cadencia.mensagem(passo, o, { a, link: linkProposta(o) });
       window.open('https://wa.me/55' + String(o.whatsapp).replace(/\D/g, '').replace(/^55/, '') + '?text=' + encodeURIComponent(txt), '_blank', 'noopener');
       B.interacao(o.id, 'whatsapp', `Cadência ${passo.id} · ${passo.titulo}`);
       if (passo.id === 'P0' && o.status === 'novo') { o.status = 'proposta'; o.enviadoEm = new Date().toISOString(); B.salvar(o); }

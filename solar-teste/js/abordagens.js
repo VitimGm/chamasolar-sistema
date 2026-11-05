@@ -36,7 +36,7 @@
     const cidade = o.cidade || 'Ribeirão';
     const conta = brl(eco.contaAtual), econ = brl(eco.economiaMes1), parcela = b.parcela ? `${b.prazo}x de ${brl(b.parcela)}` : '';
     const validade = (raiz.Banco && raiz.Banco.parametros && raiz.Banco.parametros().validadeDias) || 7;
-    const vizTxt = viz.total ? `já temos ${viz.total} usinas instaladas aqui na região, com economia média de ${brl(viz.economiaMedia)} por mês` : `nossos clientes aqui de ${cidade} já estão pagando só a taxa mínima`;
+    const vizTxt = viz.total && viz.economiaMedia && (viz.reais || !(raiz.Banco && raiz.Banco.nuvem)) ? `nossos clientes aqui da região estão pagando em média ${brl(viz.economiaMedia)} a menos de luz por mês` : `nossos clientes aqui de ${cidade} já estão pagando só a taxa mínima`;
     const V = {
       N0: [
         ['rapport', 'Acolher e pedir a conta', `${periodo()}, ${nm}! Aqui é o ${v}, da Chama Solar ☀️ Obrigado por chamar. Me conta: hoje sua conta de luz vem mais ou menos quanto por mês?`],

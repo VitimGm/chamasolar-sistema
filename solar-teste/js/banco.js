@@ -25,7 +25,7 @@
   const Banco = {
     cepInfo,
     parametros() { return Object.assign(json(D.parametros), ler('parametros', {})); },
-    salvarParametros(p) { gravar('parametros', json(p)); },
+    salvarParametros(p) { gravar('parametros', { ...ler('parametros', {}), ...json(p) }); },
     zerarParametros() { gravar('parametros', {}); },
 
     orcamentos() { return ler('orcamentos', []); },
@@ -108,6 +108,7 @@
 
     modelo() { return null; }, // teste: usa os modelos genéricos
     async execucoes() { return []; },
+    async agendaLink() { return null; },
     _treino: [],
     async treinoGravar(r) { this._treino.unshift({ ...r, id: this._treino.length + 1, em: new Date().toISOString() }); },
     async treino() { return this._treino.slice(); },

@@ -143,11 +143,15 @@
   }
 
   /* ---------- Prova social real: usinas na mesma cidade ---------- */
-  function vizinhos(o) {
-    const lista = D.usinasVizinhas.filter((u) => u.cidade === o.cidade);
-    const base = lista.length ? lista : D.usinasVizinhas.filter((u) => u.cidade === 'Ribeirão Preto');
+  /* Prova social: no oficial, SÓ casos reais cadastrados em Parâmetros → Depoimentos (nada inventado).
+     No modo teste, usa os exemplos fictícios. */
+  function vizinhos(o, p) {
+    const reais = ((p && p.depoimentos) || []).filter((d) => d && (d.texto || d.contaAntes)).map((d) => ({ ...d, contaMes: Number(d.contaDepois) || 0, contaAntes: Number(d.contaAntes) || 0, real: true }));
+    const fonte = reais.length ? reais : raiz.Banco && raiz.Banco.nuvem ? [] : D.usinasVizinhas;
+    const lista = fonte.filter((u) => u.cidade === o.cidade);
+    const base = reais.length ? [...lista, ...fonte.filter((u) => u.cidade !== o.cidade)] : lista.length ? lista : fonte.filter((u) => u.cidade === 'Ribeirão Preto');
     const econMedia = base.length ? soma(base.map((u) => u.contaAntes - u.contaMes)) / base.length : 0;
-    return { usinas: base, mesmaCidade: lista.length > 0, economiaMedia: Math.round(econMedia), total: base.length };
+    return { usinas: base, mesmaCidade: lista.length > 0, economiaMedia: Math.round(econMedia), total: base.length, reais: reais.length > 0 };
   }
 
   /* ---------- Análise completa de um orçamento ---------- */
@@ -157,7 +161,7 @@
     const rx = raioX(o, p, op);
     return {
       opcoes: ops, op, raioX: rx, espera: espera(o, p, op), energia: custoEnergia(op, p),
-      boleto: boleto(op, p, prazo || p.financiamento.prazos[2]), perfil: perfil(o, rx), vizinhos: vizinhos(o),
+      boleto: boleto(op, p, prazo || p.financiamento.prazos[2]), perfil: perfil(o, rx), vizinhos: vizinhos(o, p),
     };
   }
 

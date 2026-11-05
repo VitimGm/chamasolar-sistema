@@ -50,7 +50,7 @@
       N2: `${nome}, tudo bem? Para fechar o seu orçamento só falta a conta de luz (pode ser foto). Assim te mando o valor exato ainda hoje.`,
       P0: `${nome}, sua proposta está pronta! Fiz um raio-x da sua conta e montei o sistema certo para a sua casa:\n${link}\n\nDá para simular as parcelas e mandar para a família. Qualquer dúvida, me chama aqui.`,
       P1: `Oi ${nome}! Conseguiu abrir a proposta? Se quiser, te explico em 5 minutos por ligação.`,
-      P2: `${nome}, só para você ver: ${viz && viz.total ? `já temos ${viz.total} usinas na região e a economia média é de ${brl(viz.economiaMedia)} por mês` : 'nossos clientes da região já estão economizando todo mês'}. Posso te mostrar uma perto de você?`,
+      P2: `${nome}, só para você ver: ${viz && viz.total && viz.economiaMedia ? `nossos clientes da região estão pagando em média ${brl(viz.economiaMedia)} a menos por mês` : 'nossos clientes da região já estão economizando todo mês'}. Posso te mostrar uma perto de você?`,
       P3: `${nome}, fiz a conta: hoje você paga cerca de ${brl(eco && eco.contaAtual)} de luz. Com o solar financiado, a parcela fica no lugar da conta e depois de quitado sobra ${brl(eco && eco.economiaMes1)} por mês no seu bolso. Quer que eu simule com entrada?`,
       P4: `${nome}, o valor dos equipamentos que reservei para você vale até o fim desta semana; depois o distribuidor atualiza a tabela. Quer que eu segure o kit?`,
       P5: `${nome}, posso ser direto? O que falta para você decidir: valor, forma de pagamento ou ainda tem alguma dúvida técnica?`,

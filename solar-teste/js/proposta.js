@@ -89,11 +89,11 @@
       </section>
 
       <section class="bloco" data-secao="vizinhos" aria-labelledby="t-viz">
-        <h2 id="t-viz"><i class="bolha">${Icone('casa')}</i>Quem já tem perto de você?</h2>
-        <p class="apoio">Contas reais de clientes Chama Solar${a.vizinhos.mesmaCidade ? ' em ' + esc(o.cidade) : ' na região'}. <em>(Teste: dados simulados.)</em></p>
-        ${a.vizinhos.usinas.slice(0, 3).map((u) => `<div class="viz"><b>Bairro ${esc(u.bairro)}</b><div class="de-para"><s>${brl(u.contaAntes)}</s><span>${brl(u.contaMes)}</span></div><small>Pagava ${brl(u.contaAntes)} por mês. Hoje paga ${brl(u.contaMes)}. Instalado em ${u.desde}.</small></div>`).join('')}
+        <h2 id="t-viz"><i class="bolha">${Icone('casa')}</i>${a.vizinhos.total ? 'Quem já tem perto de você?' : 'Por que a Chama Solar?'}</h2>
+        ${a.vizinhos.total ? `<p class="apoio">${a.vizinhos.reais ? 'Clientes Chama Solar' + (a.vizinhos.mesmaCidade ? ' em ' + esc(o.cidade) : ' da região') + ' contando como ficou.' : 'Exemplos do modo teste (fictícios).'}</p>` : ''}
+        ${a.vizinhos.usinas.slice(0, 3).map((u) => `<div class="viz"><b>${u.real ? esc(u.nome || 'Cliente') + (u.cidade ? ' · ' + esc(u.cidade) : '') : 'Bairro ' + esc(u.bairro)}</b>${u.contaAntes ? `<div class="de-para"><s>${brl(u.contaAntes)}</s><span>${brl(u.contaMes)}</span></div>` : ''}<small>${u.texto ? '“' + esc(u.texto) + '”' : `Pagava ${brl(u.contaAntes)} por mês. Hoje paga ${brl(u.contaMes)}.`}${u.desde ? ' Instalado em ' + esc(u.desde) + '.' : ''}${u.link ? ` <a href="${esc(u.link)}" target="_blank" rel="noopener">ver no Instagram</a>` : ''}</small></div>`).join('')}
         <div class="selos">
-          <div>${Icone('medalha')} ${D.empresa.anos} anos na região</div><div>${Icone('estrela')} ${esc(D.empresa.selo)}</div>
+          ${(() => { const ed = p.empresaDoc || {}, teste = !B.nuvem; const anos = ed.anosRegiao || (teste ? D.empresa.anos : 0), selo = ed.seloConfianca || (teste ? D.empresa.selo : ''); return (anos ? `<div>${Icone('medalha')} ${esc(anos)} anos na região</div>` : '') + (selo ? `<div>${Icone('estrela')} ${esc(selo)}</div>` : ''); })()}
           <div>${Icone('documento')} Papelada da CPFL por nossa conta</div><div>${Icone('monitor')} Acompanhamos sua usina todo mês</div>
         </div>
       </section>

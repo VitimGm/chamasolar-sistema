@@ -21,7 +21,7 @@
       { t: 'Custo real da energia', d: `A energia do sistema sai a R$ ${n(a.energia.rsKwh, 2)}/kWh em 25 anos, contra R$ ${n(rx.tarifa, 2)}/kWh da CPFL hoje (e subindo).` },
       { t: 'Custo da espera', d: `Cada mês sem o sistema custa ${brl(a.espera.porMes)}. Seis meses pensando = ${brl(a.espera.seisMeses)}.` },
     ];
-    if (a.vizinhos.total) argumentos.push({ t: 'Prova vizinha', d: `${a.vizinhos.total} usinas da Chama Solar em ${a.vizinhos.mesmaCidade ? o.cidade : 'Ribeirão Preto'} economizam em média ${brl(a.vizinhos.economiaMedia)}/mês.` });
+    if (a.vizinhos.total && a.vizinhos.economiaMedia) argumentos.push({ t: 'Prova vizinha', d: `${a.vizinhos.reais ? 'Clientes reais' : 'Exemplos (teste)'} em ${a.vizinhos.mesmaCidade ? o.cidade : 'Ribeirão Preto'} economizam em média ${brl(a.vizinhos.economiaMedia)}/mês.` });
     return {
       titulo: `Dor principal: ${pf.principal.titulo}`,
       resumo: pf.principal.texto,
