@@ -102,6 +102,17 @@
         <div id="comparar"></div>
       </section>
 
+      ${o.projeto3d && o.projeto3d.fotos ? `<section class="bloco" data-secao="usina3d" aria-labelledby="t-3d">
+        <h2 id="t-3d"><i class="bolha">${Icone('casa')}</i>Sua usina em 3D</h2>
+        <p class="apoio">Montada sobre a foto ${o.projeto3d.fonte === 'google' ? 'de satélite' : 'aérea'} do seu telhado, com a posição de cada placa e a sombra calculada para o ano inteiro.</p>
+        <div class="v3d" id="v3d"><img src="${o.projeto3d.fotos.d3}" alt="Usina solar em 3D no seu telhado"></div>
+        <div class="v3d-ctl" id="v3dCtl" hidden>
+          <label>Mês <input type="range" id="v3dMes" min="0" max="11" value="5"></label>
+          <label>Hora <input type="range" id="v3dHora" min="6" max="18" step="0.25" value="9.5"></label>
+          <span id="v3dTxt"></span></div>
+        <button class="btn-g contorno" id="v3dGirar" style="margin-top:10px">${Icone('casa')} Girar a minha casa em 3D</button>
+        <p class="apoio" style="margin-top:8px">${o.projeto3d.resultado ? `${o.projeto3d.resultado.placas} placas · perda por sombra medida: ${n(o.projeto3d.resultado.perdaSom * 100, 1)}%` : ''}${o.projeto3d.fonte === 'google' ? ' · Imagens © Google' : ''}</p>
+      </section>` : ''}
       <section class="bloco" data-secao="sistema" aria-labelledby="t-sis">
         <h2 id="t-sis"><i class="bolha">${Icone('painel')}</i>O que vamos instalar?</h2>
         <div id="sistema"></div>
@@ -253,6 +264,17 @@
 
   /* ---------- Interações ---------- */
   raiz.addEventListener('click', (ev) => {
+    if (ev.target.closest('#v3dGirar')) {
+      const bt = ev.target.closest('#v3dGirar'); bt.disabled = true; bt.textContent = 'Carregando o 3D…';
+      window.Usina3D.carregarThree().then(() => {
+        const box = document.getElementById('v3d'); box.innerHTML = ''; box.classList.add('vivo');
+        const v = window.Usina3D.criar(box, JSON.parse(JSON.stringify(o.projeto3d)), { placas: () => o.projeto3d.placasKit, aoSol: (k, dia) => { const t = document.getElementById('v3dTxt'); if (t) t.textContent = !dia ? 'noite' : k ? k + ' placa(s) na sombra agora' : 'todas as placas no sol'; } });
+        const ctl = document.getElementById('v3dCtl'); ctl.hidden = false; bt.remove();
+        const mover = () => v.sol(+document.getElementById('v3dMes').value, +document.getElementById('v3dHora').value);
+        ctl.addEventListener('input', mover); mover(); registrar('abriu3d', {});
+      }).catch(() => { bt.disabled = false; bt.textContent = 'Não carregou: tocar para tentar de novo'; });
+      return;
+    }
     const t = ev.target.closest('[data-prazo],[data-op],[data-hr],#aceitar,#compartilhar,#baixarPdf,#zap,#zap-fixo,#letra,#ouvir');
     if (!t) return;
     if (t.dataset.prazo !== undefined) { est.prazo = +t.dataset.prazo; registrar('simulou', { prazo: est.prazo }); desenhar(); }

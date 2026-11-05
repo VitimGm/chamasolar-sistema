@@ -485,7 +485,17 @@
 
   function passo2(el) {
     const p = P(), hsp = (D.cidades[orc.cidade] || D.cidades['Ribeirão Preto']).hsp;
-    el.innerHTML = `<div class="lado"><div class="painel grade">
+    const p3 = orc.projeto3d, r3 = p3 && p3.resultado;
+    el.innerHTML = `<div class="painel" style="margin-bottom:14px">
+        <div class="entre"><span class="rotulo">Telhado e projeto 3D</span>${p3 ? `<span class="mini">${p3.aguas.length} água(s) · ${p3.fonte === 'google' ? 'satélite Google' : 'foto própria'}</span>` : ''}</div>
+        ${p3 ? `<div style="display:grid;grid-template-columns:minmax(0,180px) 1fr;gap:14px;align-items:center;margin-top:10px">
+            ${p3.fotos && p3.fotos.d3 ? `<img src="${p3.fotos.d3}" alt="Projeto 3D" style="width:100%;border-radius:12px;aspect-ratio:4/3;object-fit:cover">` : '<span></span>'}
+            <div><b>${r3 ? r3.placas : 0} placas desenhadas no telhado</b><br><span class="sutil">perda pela direção ${n((r3 ? r3.perdaOri : 0) * 100, 1)}% · sombra ${n((r3 ? r3.perdaSom : 0) * 100, 1)}% · entra no dimensionamento no lugar da perda de segurança</span>
+            <div class="acoes-r" style="margin-top:8px"><button class="btn sol pequeno" id="t3Abrir">Editar o 3D</button><button class="link" id="t3Tirar">tirar o 3D</button></div></div></div>`
+        : `<p class="sutil" style="margin:6px 0 10px">Pelo endereço, o Google traz a foto de satélite e as águas do telhado. Você confere, marca árvores e caixa d'água, e a sombra medida entra na geração. Também dá para usar a foto do drone.</p>
+          <button class="btn sol" id="t3Abrir">🛰️ Montar o telhado em 3D</button>`}
+      </div>
+      <div class="lado"><div class="painel grade">
       <div class="campo"><span>Tipo de telhado</span><div class="chips">${[['ceramico', 'Cerâmico'], ['fibrocimento', 'Fibrocimento'], ['metalico', 'Metálico'], ['laje', 'Laje'], ['solo', 'Solo']].map(([v, t]) => `<button class="chip ${orc.telhado === v ? 'sel' : ''}" data-tel="${v}">${t}<small>${brl(D.catalogo.estrutura[v])}/pl</small></button>`).join('')}</div></div>
       <div class="campo"><span>Orientação do telhado</span>
         <button class="chip ${!orc.orientacao || orc.orientacao === '?' ? 'sel' : ''}" data-ori="?" style="justify-self:start">A confirmar na visita técnica<small>perda de segurança ${n((p.perdaOrientacao ?? 0.07) * 100)}%</small></button>
@@ -498,6 +508,12 @@
         <div><span>${esc(orc.cidade || 'Ribeirão Preto')}</span><b>${n(hsp, 2)} HSP</b></div><div><span>${!orc.orientacao || orc.orientacao === '?' ? 'Com a perda de segurança' : 'Com a orientação'}</span><b>${n(hsp * (!orc.orientacao || orc.orientacao === '?' ? 1 - (p.perdaOrientacao ?? 0.07) : M.FATOR_ORIENTACAO[orc.orientacao]), 2)} HSP</b></div></div>
         <p class="mini" style="margin-top:10px">Irradiação de teste. No oficial vem da base pública pelo endereço. A perda de segurança cobre telhado leste/oeste até a visita técnica (ajustável em Parâmetros).</p></div></div>`;
     el.querySelectorAll('[data-tel]').forEach((b) => b.onclick = () => { orc.telhado = b.dataset.tel; salvarR(); novo(); });
+    $('#t3Abrir').onclick = () => {
+      const ops = C.opcoes(orc, p), op = ops[orc.opcaoEscolhida ?? 0] || ops[0];
+      const placas = (orc.kitsFechados || []).filter(Boolean).map((k) => k.modulo && k.modulo.qtd).find(Boolean) || (op && op.dim.placas) || 12;
+      Telhado.abrir({ orc, placasKit: orc.projeto3d ? orc.projeto3d.placasKit : placas, tipoTelhado: orc.telhado, aoSalvar: (proj) => { orc.projeto3d = proj; salvarR(); novo(); toast('Projeto 3D salvo no orçamento'); } });
+    };
+    if ($('#t3Tirar')) $('#t3Tirar').onclick = () => { delete orc.projeto3d; salvarR(); novo(); };
     el.querySelectorAll('[data-ori]').forEach((b) => b.onclick = () => { orc.orientacao = b.dataset.ori; salvarR(); novo(); });
     $('#f-area').oninput = (e) => { orc.areaDisponivel = e.target.value; salvarR(); };
     $('#f-km').oninput = (e) => { orc.distanciaKm = e.target.value; salvarR(); };

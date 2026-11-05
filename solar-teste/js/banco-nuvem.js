@@ -87,7 +87,8 @@
       return { ...resto, valorKit: op ? Math.round(op.preco.precoFinal * 100) / 100 : 0, frete: '' };
     });
     const cliente = { ...o, kitsFechados: kits, comissaoParceria: 0, descontoPct: 0, kitFaturadoDireto: false, distanciaKm: 0 };
-    ['whatsapp', 'email', 'documento', 'endereco', 'selKits', 'freteAuto', 'motivoPerda', 'origem', 'interacoes', 'aceite'].forEach((c) => delete cliente[c]);
+    ['whatsapp', 'email', 'documento', 'endereco', 'selKits', 'freteAuto', 'motivoPerda', 'origem', 'interacoes', 'aceite', 'contrato', 'indicadoPor', 'posVenda', 'presenteEntregue', 'mensagem', 'contaInformada'].forEach((c) => delete cliente[c]);
+    if (cliente.projeto3d) { const { endereco, lng, precisao, ...p3 } = cliente.projeto3d; void endereco; void lng; void precisao; cliente.projeto3d = { ...p3, lat: Math.round((p3.lat || -21.2) * 10) / 10 }; } // o 3D vai; o endereço exato não
     return { orc: json(cliente), parametros: paramsPublicos(p), geradoEm: agora() };
   }
 
@@ -174,6 +175,16 @@
 
     modelo(chave) { return modelos[chave] || null; },
     async agendaLink() { return api('rpc/sol_agenda_link', { method: 'POST', body: '{}' }); },
+    /* telhado pelo satélite (Google, chave no servidor) */
+    async telhado(q) {
+      const t = await token(); if (!t) throw new Error('entre com o login do Chamae');
+      const r = await fetch(SB + '/functions/v1/sol-telhado', { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify(q) });
+      const j = await r.json().catch(() => ({})); if (!r.ok && !j.aguas) throw new Error(j.erro || 'HTTP ' + r.status); return j;
+    },
+    async tile(z, x, y) {
+      const t = await token(); const r = await fetch(SB + '/functions/v1/sol-telhado?tile=' + z + '/' + x + '/' + y, { headers: { apikey: KEY, Authorization: 'Bearer ' + t } });
+      if (!r.ok) throw new Error('tile ' + r.status); return r.blob();
+    },
     async treinoGravar(r) { await api('sol_robo_treino', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(r) }); },
     async treino(limite = 300) { return api('sol_robo_treino?select=id,em,lote,cenario,ok,segundos,valor_kit,rs_wp,etapa,erro&order=em.desc&limit=' + limite); },
     async faturas(usinaId) { return api('sol_faturas?select=*&usina_id=eq.' + usinaId + '&order=leitura_fim.desc'); },

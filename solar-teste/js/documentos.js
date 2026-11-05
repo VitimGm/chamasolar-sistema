@@ -89,6 +89,9 @@
         <tr><td>Custo da energia gerada (LCOE)</td><td class="v">R$ ${n(C().analisar(o, p).energia.rsKwh, 2)}/kWh (rede: R$ ${n(p.tarifaKwh, 2)})</td></tr>
         <tr><td>Economia em 25 anos</td><td class="v">${brl(op.eco.economia25, 0)}</td></tr>
         ${o.segmento === 'grandes' ? `<tr><td>Geração garantida em contrato</td><td class="v">${n(op.dim.geracaoMes * 12 * 0.9)} kWh/ano (90% da simulada, média de 12 meses)</td></tr>` : ''}</table>` : ''}
+      ${o.projeto3d && o.projeto3d.fotos ? `<h2>Projeto da sua usina</h2><p class="mini">Montado sobre a foto ${o.projeto3d.fonte === 'google' ? 'de satélite (Imagens © Google)' : 'aérea'} do seu telhado, com a posição real das placas e a sombra calculada para o ano inteiro.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0"><img src="${o.projeto3d.fotos.topo}" alt="Vista de cima" style="width:100%;border-radius:6px"><img src="${o.projeto3d.fotos.d3}" alt="Vista 3D" style="width:100%;border-radius:6px"></div>
+        ${o.projeto3d.resultado ? `<p class="mini">Perda pela direção do telhado: ${n(o.projeto3d.resultado.perdaOri * 100, 1)}% · perda por sombra medida: ${n(o.projeto3d.resultado.perdaSom * 100, 1)}% · já consideradas na geração abaixo.</p>` : ''}` : ''}
       <h2>O sistema</h2>
       <table><tr><th>Item</th><th>Detalhe</th></tr>
         <tr><td>Placas solares</td><td>${esc(eq.modulo)}</td></tr><tr><td>${eq.tipo === 'micro' ? 'Microinversores' : 'Inversor'}</td><td>${esc(eq.inversor)}</td></tr>

@@ -184,3 +184,24 @@ body.com-barra { padding-bottom: 150px; }
 .nav a.ativo span .ico { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--laranja) 70%, transparent)); }
 .chip .ico { width: 18px; height: 18px; vertical-align: -4px; margin-right: 2px; }
 @media (min-width: 900px) { .nav a span { width: 22px; } }
+
+/* ---------- editor do telhado / 3D ---------- */
+.t3-ov { position: fixed; inset: 0; z-index: 90; background: #000b; display: grid; place-items: center; padding: max(10px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-right, 0px)) 10px max(10px, env(safe-area-inset-left, 0px)); }
+.t3-caixa { width: min(1360px, 100%); max-height: 100%; overflow: auto; background: var(--fundo-2, #121a2e); border: 1px solid var(--linha-forte); border-radius: 20px; padding: 16px; display: grid; gap: 10px; }
+.t3-barra { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.t3-barra input[type=text] { flex: 1 1 260px; min-width: 0; }
+.t3-aviso { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--vidro); }
+.t3-aviso.ruim { color: var(--laranja); }
+.t3-corpo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.t3-esq, .t3-dir { display: grid; gap: 10px; min-width: 0; }
+.t3-ferr { display: flex; gap: 6px; flex-wrap: wrap; }
+.t3-ferr button { font: 600 13px inherit; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--linha-forte); background: var(--vidro); color: var(--texto); cursor: pointer; }
+.t3-ferr button[aria-pressed="true"] { background: var(--grad-sol); color: #1a1205; border-color: transparent; }
+.t3-foto { aspect-ratio: 1 / 1; border-radius: 14px; overflow: hidden; background: #2b3a2a; }
+.t3-foto canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+.t3-3d { position: relative; aspect-ratio: 4 / 3; border-radius: 14px; overflow: hidden; background: linear-gradient(180deg, #a9cdee, #e4eef7 60%, #f6efe3); }
+.t3-3d canvas { touch-action: none; }
+.t3-carr { position: absolute; inset: 45% 0 auto; text-align: center; color: #1d283e; }
+.t3-agua { padding: 10px 12px; border-radius: 12px; background: var(--vidro); }
+.t3-agua input[type=range], .t3-dir input[type=range] { width: 100%; accent-color: var(--sol); }
+@media (max-width: 900px) { .t3-corpo { grid-template-columns: 1fr; } }

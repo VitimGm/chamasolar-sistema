@@ -214,3 +214,12 @@ details.item .explica { padding: 0 16px 16px 70px; color: var(--tinta-2); font-s
 .tab-exe td { padding: 9px 4px; border-bottom: 1px solid var(--linha, #e3e6ec); vertical-align: top; }
 .tab-exe td:first-child { color: var(--texto-2, #5b6478); }
 .tab-exe td:last-child { text-align: right; }
+
+/* usina em 3D */
+.v3d { position: relative; border-radius: 16px; overflow: hidden; aspect-ratio: 4 / 3; background: linear-gradient(180deg, #a9cdee, #f6efe3); }
+.v3d img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.v3d.vivo { touch-action: none; }
+.v3d-ctl { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: .9rem; }
+.v3d-ctl label { display: grid; gap: 4px; }
+.v3d-ctl input { width: 100%; accent-color: #ff6700; }
+.v3d-ctl span { grid-column: 1 / -1; color: var(--texto-2, #5b6478); }
