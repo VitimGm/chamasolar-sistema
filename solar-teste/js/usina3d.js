@@ -131,27 +131,106 @@
   const normalPlano = (incl, az) => { const t = rad(incl), d = desce(az); return [Math.sin(t) * d[0], Math.cos(t), Math.sin(t) * d[1]]; };
   let seq = 0; const novoId = (p) => p + Date.now().toString(36) + (seq++).toString(36);
 
-  /* águas do Google → blocos (com altura relativa entre elas) */
+  /* ---------- telhado pronto: 1, 2 ou 4 águas sobre um retângulo ----------
+     O vendedor desenha só o contorno (3 toques) e escolhe a forma; as águas, a cumeeira e os
+     espigões saem da geometria, com a mesma inclinação. Paredes só no contorno de fora. */
+  const PONTOS8 = ['norte', 'nordeste', 'leste', 'sudeste', 'sul', 'sudoeste', 'oeste', 'noroeste'];
+  const pontoDe = (a) => PONTOS8[Math.round((((a % 360) + 360) % 360) / 45) % 8];
+  const azDeVetor = (v) => Math.round(((Math.atan2(v[0], -v[1]) * 180 / Math.PI) + 360) % 360);
+  function retanguloDe(pts) { // retângulo alinhado à primeira aresta que cobre o desenho
+    const a = pts[0], b = pts[1], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, u = [(b[0] - a[0]) / L, (b[1] - a[1]) / L], v = [-u[1], u[0]];
+    const us = pts.map((p) => (p[0] - a[0]) * u[0] + (p[1] - a[1]) * u[1]), vs = pts.map((p) => (p[0] - a[0]) * v[0] + (p[1] - a[1]) * v[1]);
+    const u0 = Math.min(...us), u1 = Math.max(...us), v0 = Math.min(...vs), v1 = Math.max(...vs), P = (x, y) => [a[0] + u[0] * x + v[0] * y, a[1] + u[1] * x + v[1] * y];
+    return { u, v, u0, u1, v0, v1, P, cantos: [P(u0, v0), P(u1, v0), P(u1, v1), P(u0, v1)] };
+  }
+  function faces(proj) {
+    const out = [];
+    (proj.blocos || []).forEach((b) => {
+      const forma = b.forma || '1';
+      if (forma === '1' || b.pts.length < 3) { out.push({ ...b, pai: b.id, paredes: null }); return; }
+      const R = retanguloDe(b.pts), Lu = R.u1 - R.u0, Lv = R.v1 - R.v0;
+      // eixo da cumeeira: no 4 águas sempre ao longo do lado maior; no 2 águas o vendedor escolhe
+      const aoLongoU = forma === '4' ? Lu >= Lv : (b.cumeeira === 'curto' ? Lu < Lv : Lu >= Lv);
+      const [s0, s1, t0, t1] = aoLongoU ? [R.u0, R.u1, R.v0, R.v1] : [R.v0, R.v1, R.u0, R.u1];
+      const Q = (sv, tv) => (aoLongoU ? R.P(sv, tv) : R.P(tv, sv)), sd = aoLongoU ? R.u : R.v, td = aoLongoU ? R.v : R.u;
+      const tm = (t0 + t1) / 2, Ls = s1 - s0, Lt = t1 - t0, neg = (v) => [-v[0], -v[1]];
+      const face = (k, pts, dvec, paredes, nomeExtra) => { const az = azDeVetor(dvec); out.push({ ...b, id: `${b.id}~${k}`, pai: b.id, nome: `${b.nome} · ${nomeExtra || pontoDe(az)}`, pts, az, platibanda: 0, paredes }); };
+      if (forma === '2') {
+        face(0, [Q(s0, t0), Q(s1, t0), Q(s1, tm), Q(s0, tm)], neg(td), [true, true, false, true]);
+        face(1, [Q(s0, tm), Q(s1, tm), Q(s1, t1), Q(s0, t1)], td, [false, true, true, true]);
+        return;
+      }
+      // 4 águas (espigões a 45° na planta, todas com a mesma inclinação); quadrado vira pirâmide
+      const meio = Math.min(Lt / 2, Ls / 2), r1 = Q(s0 + meio, tm), r2 = Q(s1 - meio, tm), piramide = Ls - 2 * meio < 0.05;
+      face(0, piramide ? [Q(s0, t0), Q(s1, t0), r1] : [Q(s0, t0), Q(s1, t0), r2, r1], neg(td), piramide ? [true, false, false] : [true, false, false, false]);
+      face(1, piramide ? [r1, Q(s1, t1), Q(s0, t1)] : [r1, r2, Q(s1, t1), Q(s0, t1)], td, piramide ? [false, true, false] : [false, false, true, false]);
+      face(2, [Q(s0, t0), r1, Q(s0, t1)], neg(sd), [false, false, true]);
+      face(3, [Q(s1, t0), Q(s1, t1), r2], sd, [true, false, false]);
+    });
+    return out;
+  }
+
+  /* águas do Google → sugestão de telhado. O Google manda, por água, só o centro, a direção, a inclinação
+     e uma caixa alinhada ao norte, que se sobrepõem: desenhar uma caixa por água dá retângulos tortos
+     e encavalados. Aqui as águas que se encostam viram UM contorno (alinhado às paredes, com a área
+     que o Google mediu) e a forma sai das direções: 4 direções = 4 águas, 2 opostas = 2 águas. */
   function blocosDoGoogle(proj, g) {
-    const pg = g.placaGoogle || {}, alt = pg.alturaM || 1.879, larg = pg.larguraM || 1.045;
-    const alturas = (g.aguas || []).map((s) => s.alturaM).filter(Number.isFinite), hMin = alturas.length ? Math.min(...alturas) : 0;
-    return (g.aguas || []).map((s, k) => {
-      const az = rad(s.az), d = [Math.sin(az), -Math.cos(az)], a = [Math.cos(az), Math.sin(az)];
-      const pls = (g.placas || []).filter((p) => p.s === s.i).map((p) => ({ m: paraMetros(proj, p.c.latitude, p.c.longitude), o: p.o }));
-      let pts;
-      if (pls.length >= 2) {
-        let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9;
-        pls.forEach(({ m, o }) => { const u = m[0] * a[0] + m[1] * a[1], v = m[0] * d[0] + m[1] * d[1], hu = (o === 'LANDSCAPE' ? alt : larg) / 2 + 0.35, hv = (o === 'LANDSCAPE' ? larg : alt) / 2 * Math.cos(rad(s.incl)) + 0.35; u0 = Math.min(u0, u - hu); u1 = Math.max(u1, u + hu); v0 = Math.min(v0, v - hv); v1 = Math.max(v1, v + hv); });
-        pts = [[u0, v1], [u1, v1], [u1, v0], [u0, v0]].map(([u, v]) => [u * a[0] + v * d[0], u * a[1] + v * d[1]]);
-      } else if (s.caixa) {
-        const sw = paraMetros(proj, s.caixa.sw.latitude, s.caixa.sw.longitude), ne = paraMetros(proj, s.caixa.ne.latitude, s.caixa.ne.longitude);
-        pts = [[sw[0], ne[1]], [ne[0], ne[1]], [ne[0], sw[1]], [sw[0], sw[1]]];
-      } else return null;
-      const centro = Number.isFinite(s.alturaM) ? 3 + (s.alturaM - hMin) : 3;
-      const b = { id: novoId('b'), nome: 'Telhado ' + (k + 1), pts: pts.map((p) => [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100]), incl: Math.max(0, Math.round(s.incl)), az: Math.round(s.az / 5) * 5 % 360, alturaBeiral: 3, platibanda: 0, telha: proj.tipoTelhado || 'metalico', usar: s.incl < 40, orientacao: 'retrato', fonte: 'google' };
-      b.alturaBeiral = Math.max(2.4, Math.round((centro - (alturaEm({ ...b, alturaBeiral: 0 }, centroide(b.pts)))) * 10) / 10);
-      return b;
-    }).filter(Boolean);
+    const ag = (g.aguas || []).filter((x) => x.caixa && x.centro && x.caixa.sw && x.caixa.ne);
+    if (!ag.length) return [];
+    const cx = ag.map((x) => { const sw = paraMetros(proj, x.caixa.sw.latitude, x.caixa.sw.longitude), ne = paraMetros(proj, x.caixa.ne.latitude, x.caixa.ne.longitude);
+      return { s: x, x0: Math.min(sw[0], ne[0]), x1: Math.max(sw[0], ne[0]), z0: Math.min(sw[1], ne[1]), z1: Math.max(sw[1], ne[1]), c: paraMetros(proj, x.centro.latitude, x.centro.longitude) }; });
+    const pai = cx.map((_, i) => i), raizDe = (i) => (pai[i] === i ? i : (pai[i] = raizDe(pai[i])));
+    const toca = (a, b) => a.x0 - 0.3 <= b.x1 && b.x0 - 0.3 <= a.x1 && a.z0 - 0.3 <= b.z1 && b.z0 - 0.3 <= a.z1;
+    for (let i = 0; i < cx.length; i++) for (let j = i + 1; j < cx.length; j++) if (toca(cx[i], cx[j]) && Math.abs((cx[i].s.alturaM ?? 0) - (cx[j].s.alturaM ?? 0)) < 2.5) pai[raizDe(j)] = raizDe(i);
+    const grupos = {}; cx.forEach((x, i) => { (grupos[raizDe(i)] = grupos[raizDe(i)] || []).push(x); });
+    const lista = Object.values(grupos).sort((a, b) => b.reduce((t, x) => t + (x.s.areaChaoM2 || 0), 0) - a.reduce((t, x) => t + (x.s.areaChaoM2 || 0), 0)).map((G) => {
+      const area = G.reduce((t, x) => t + (x.s.areaChaoM2 || (x.x1 - x.x0) * (x.z1 - x.z0) * 0.5), 0);
+      // direção das paredes: azimutes "dobrados" de 90 em 90 graus, pesados pela área
+      let sx = 0, sy = 0; G.forEach((x) => { const w = x.s.areaChaoM2 || 1, t = rad(x.s.az) * 4; sx += Math.cos(t) * w; sy += Math.sin(t) * w; });
+      const fi = Math.atan2(sy, sx) / 4 * 180 / Math.PI, e1 = desce(fi), e2 = desce(fi + 90);
+      const cant = G.flatMap((x) => [[x.x0, x.z0], [x.x1, x.z0], [x.x1, x.z1], [x.x0, x.z1]]);
+      const p1 = cant.map((p) => p[0] * e1[0] + p[1] * e1[1]), p2 = cant.map((p) => p[0] * e2[0] + p[1] * e2[1]);
+      let a0 = Math.min(...p1), a1 = Math.max(...p1), b0 = Math.min(...p2), b1 = Math.max(...p2);
+      const f = Math.min(1, Math.sqrt(area / Math.max((a1 - a0) * (b1 - b0), 1))), am = (a0 + a1) / 2, bm = (b0 + b1) / 2; // as caixas do Google incham o contorno: volta para a área medida
+      a0 = am + (a0 - am) * f; a1 = am + (a1 - am) * f; b0 = bm + (b0 - bm) * f; b1 = bm + (b1 - bm) * f;
+      const Pt = (x, y) => [Math.round((x * e1[0] + y * e2[0]) * 100) / 100, Math.round((x * e1[1] + y * e2[1]) * 100) / 100];
+      // quais direções aparecem (0 = e1, 1 = e2, 2 = −e1, 3 = −e2)
+      const setor = (az) => ((Math.round((((az - fi) % 360) + 360) % 360 / 90)) % 4), presentes = new Set(G.map((x) => setor(x.s.az)));
+      // medidas pela geometria das águas (mais fiel que as caixas): 4 águas = 2 triângulos + 2 trapézios;
+      // 2 águas = a distância entre os centros das águas é metade da largura
+      const peso = (x) => x.s.areaChaoM2 || 1, pesoT = G.reduce((t, x) => t + peso(x), 0);
+      const ctr = [G.reduce((t, x) => t + x.c[0] * peso(x), 0) / pesoT, G.reduce((t, x) => t + x.c[1] * peso(x), 0) / pesoT], ca = ctr[0] * e1[0] + ctr[1] * e1[1], cb = ctr[0] * e2[0] + ctr[1] * e2[1];
+      const areaSetor = (k) => G.filter((x) => setor(x.s.az) === k).reduce((t, x) => t + (x.s.areaChaoM2 || 0), 0);
+      let A = 0, Bl = 0;
+      if ([0, 1, 2, 3].every((k) => presentes.has(k))) {
+        const p02 = (areaSetor(0) + areaSetor(2)) / 2, p13 = (areaSetor(1) + areaSetor(3)) / 2, T = Math.min(p02, p13), Z = Math.max(p02, p13), S = 2 * Math.sqrt(T), Lg = (4 * Z / Math.max(S, 0.5) + S) / 2;
+        if (p02 <= p13) { Bl = S; A = Lg; } else { A = S; Bl = Lg; }
+      } else if (presentes.size === 2 && ((presentes.has(0) && presentes.has(2)) || (presentes.has(1) && presentes.has(3)))) {
+        const ks = presentes.has(0) ? [0, 2] : [1, 3], eixo = ks[0] === 0 ? e1 : e2;
+        const cen = (k) => { const gs = G.filter((x) => setor(x.s.az) === k), w = gs.reduce((t, x) => t + peso(x), 0); return gs.reduce((t, x) => t + (x.c[0] * eixo[0] + x.c[1] * eixo[1]) * peso(x), 0) / w; };
+        const S = 2 * Math.abs(cen(ks[0]) - cen(ks[1])), Lr = area / Math.max(S, 1);
+        if (ks[0] === 0) { A = S; Bl = Lr; } else { Bl = S; A = Lr; }
+      }
+      if (A > 1.5 && Bl > 1.5 && A < 150 && Bl < 150) { a0 = ca - A / 2; a1 = ca + A / 2; b0 = cb - Bl / 2; b1 = cb + Bl / 2; }
+      const incl = (() => { const ord = [...G].sort((x, y) => x.s.incl - y.s.incl); return Math.max(0, Math.round(ord[Math.floor(ord.length / 2)].s.incl)); })();
+      const maior = [...G].sort((x, y) => (y.s.areaChaoM2 || 0) - (x.s.areaChaoM2 || 0))[0].s;
+      let forma = '1', cumeeira = 'longo', pts = [Pt(a0, b0), Pt(a1, b0), Pt(a1, b1), Pt(a0, b1)]; // primeira aresta ao longo de e1
+      if (presentes.size >= 3) forma = '4';
+      else if (presentes.size === 2 && ((presentes.has(0) && presentes.has(2)) || (presentes.has(1) && presentes.has(3)))) {
+        forma = '2';
+        const aguaEmE1 = presentes.has(0); // água escorre ao longo de e1 → cumeeira ao longo de e2
+        const ladoE1 = a1 - a0, ladoE2 = b1 - b0; cumeeira = (aguaEmE1 ? ladoE2 >= ladoE1 : ladoE1 >= ladoE2) ? 'longo' : 'curto';
+      }
+      const curto = Math.min(a1 - a0, b1 - b0), hMed = G.reduce((t, x) => t + (x.s.alturaM ?? 0), 0) / G.length;
+      return { pts, forma, cumeeira, incl, az: Math.round(maior.az / 5) * 5 % 360, beiralRel: hMed - (forma === '1' ? 0 : curto / 4 * Math.tan(rad(incl))), area };
+    });
+    const hMin = Math.min(...lista.map((x) => x.beiralRel));
+    return lista.map((x, k) => ({ id: novoId('b'), nome: lista.length > 1 ? 'Telhado ' + (k + 1) : 'Telhado', pts: x.pts, forma: x.forma, cumeeira: x.cumeeira, incl: x.incl, az: x.az,
+      alturaBeiral: Math.round((2.8 + (x.beiralRel - hMin)) * 10) / 10, platibanda: 0, telha: proj.tipoTelhado || (x.incl > 12 ? 'ceramico' : 'metalico'), usar: x.incl < 40, orientacao: 'retrato', fonte: 'google' }));
+  }
+  /* pistas do Google para o desenho: cada água com a seta da direção e a inclinação */
+  function pistasGoogle(proj, g) {
+    return (g.aguas || []).filter((x) => x.centro).map((x) => ({ c: paraMetros(proj, x.centro.latitude, x.centro.longitude), az: Math.round(x.az), incl: Math.round(x.incl), area: Math.round(x.areaM2 || 0) }));
   }
   /* projeto da versão 1 (águas) → blocos */
   function migrar(p) {
@@ -171,7 +250,7 @@
   };
   function baseObst(proj, o) {
     if ((o.base || OBST[o.tipo].base) === 'chao') return 0;
-    let y = 0; (proj.blocos || []).forEach((b) => { if (dentro([o.x, o.z], b.pts)) y = Math.max(y, alturaEm(b, [o.x, o.z])); });
+    let y = 0; faces(proj).forEach((b) => { if (dentro([o.x, o.z], b.pts)) y = Math.max(y, alturaEm(b, [o.x, o.z])); });
     return y;
   }
   function pegadaObst(o, folga = 0) { // polígono no chão (para tirar placas de cima)
@@ -186,32 +265,40 @@
     const L = proj.layout || {}, mod = L.modulo || { c: 2.382, l: 1.134 }, out = [];
     const gU = (L.entrePlacasMm ?? 20) / 1000, gV = (L.entreFileirasMm ?? 20) / 1000, borda = L.bordaM ?? 0.3, corr = L.corredorM ?? 0.6, cada = L.corredorCada || 0;
     const kps = (proj.obst || []).map((o) => pegadaObst(o, 0.25));
-    const todos = proj.blocos || [];
+    const todos = faces(proj);
     // vaga coberta por outro telhado mais alto (ex.: um caixote em cima da laje) não vale
-    const coberta = (b, cantos) => todos.some((o) => o !== b && cantos.some((q) => dentro(q, o.pts) && alturaEm(o, q) > alturaEm(b, q) + 0.05));
-    (proj.blocos || []).forEach((b, bi) => {
+    const coberta = (b, cantos) => todos.some((o) => o !== b && o.pai !== b.pai && cantos.some((q) => dentro(q, o.pts) && alturaEm(o, q) > alturaEm(b, q) + 0.05));
+    todos.forEach((b, bi) => {
       if (!b.usar || b.incl > 45 || b.pts.length < 3) return;
       const util = recuar(internoDe(b), borda); if (areaPol(util) < 1) return;
       const d = desce(b.az), a = [-d[1], d[0]], cosI = Math.cos(rad(b.incl));
       const retr = (b.orientacao || 'retrato') === 'retrato', w = retr ? mod.l : mod.c, hs = retr ? mod.c : mod.l, hg = hs * cosI;
       const us = util.map((p) => p[0] * a[0] + p[1] * a[1]), vs = util.map((p) => p[0] * d[0] + p[1] * d[1]);
       const u0 = Math.min(...us), u1 = Math.max(...us), v0 = Math.min(...vs), v1 = Math.max(...vs);
+      // cada fileira usa o trecho do telhado que cabe nela (no trapézio do 4 águas a fileira de cima é menor)
+      const uDe = (p) => p[0] * a[0] + p[1] * a[1], vDe = (p) => p[0] * d[0] + p[1] * d[1];
+      const trechos = (v) => { const xs = []; for (let k = 0; k < util.length; k++) { const p = util[k], q = util[(k + 1) % util.length], vp = vDe(p), vq = vDe(q); if ((vp > v) !== (vq > v)) { const t = (v - vp) / (vq - vp); xs.push(uDe(p) + t * (uDe(q) - uDe(p))); } } xs.sort((x, y) => x - y); const out = []; for (let k = 0; k + 1 < xs.length; k += 2) out.push([xs[k], xs[k + 1]]); return out; };
+      const cruzar = (A, B) => { const out = []; A.forEach(([a0, a1]) => B.forEach(([b0, b1]) => { const lo = Math.max(a0, b0), hi = Math.min(a1, b1); if (hi > lo) out.push([lo, hi]); })); return out; };
       let melhor = [];
-      for (const [au, av] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+      for (const [au, av] of [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]]) {
         const lista = [], passoU = w + gU;
-        const nU = Math.floor((u1 - u0 + gU) / passoU);
-        const sobraU = (u1 - u0) - (nU * passoU - gU);
-        const iniU = au ? u0 + sobraU : u0;
         let v = av ? v1 - hg / 2 : v0 + hg / 2, linha = 0;
         while (av ? v - hg / 2 >= v0 - 1e-6 : v + hg / 2 <= v1 + 1e-6) {
-          for (let i = 0; i < nU; i++) {
-            const u = iniU + w / 2 + i * passoU, c = [u * a[0] + v * d[0], u * a[1] + v * d[1]];
-            const cantos = [[-w / 2, -hg / 2], [w / 2, -hg / 2], [w / 2, hg / 2], [-w / 2, hg / 2]].map(([du, dv]) => [c[0] + du * a[0] + dv * d[0], c[1] + du * a[1] + dv * d[1]]);
-            if (!cantos.every((q) => dentro(q, util))) continue;
-            if (kps.some((k) => cantos.some((q) => dentro(q, k)) || k.some((q) => dentro(q, cantos)) || dentro(c, k))) continue;
-            if (coberta(b, cantos)) continue;
-            lista.push({ k: `${b.id}:${i}:${linha}`, bi, b: b.id, c, cantos, i, linha, w, hs, a, d, incl: b.incl, az: b.az });
-          }
+          const ints = cruzar(cruzar(trechos(v - hg / 2 + 0.003), trechos(v + hg / 2 - 0.003)), trechos(v));
+          ints.forEach(([lo, hi]) => {
+            const nU = Math.floor((hi - lo + gU) / passoU); if (nU < 1) return;
+            const sobra = (hi - lo) - (nU * passoU - gU), ini = au === 0 ? lo : au === 1 ? lo + sobra : lo + sobra / 2;
+            for (let j = 0; j < nU; j++) {
+              const u = ini + w / 2 + j * passoU, c = [u * a[0] + v * d[0], u * a[1] + v * d[1]], i = Math.round((u - u0) / passoU);
+              const cantos = [[-w / 2, -hg / 2], [w / 2, -hg / 2], [w / 2, hg / 2], [-w / 2, hg / 2]].map(([du, dv]) => [c[0] + du * a[0] + dv * d[0], c[1] + du * a[1] + dv * d[1]]);
+              // a fileira encosta exatamente na borda: testa os cantos 2 mm para dentro
+              const teste = [[-w / 2 + 0.002, -hg / 2 + 0.002], [w / 2 - 0.002, -hg / 2 + 0.002], [w / 2 - 0.002, hg / 2 - 0.002], [-w / 2 + 0.002, hg / 2 - 0.002]].map(([du, dv]) => [c[0] + du * a[0] + dv * d[0], c[1] + du * a[1] + dv * d[1]]);
+              if (!teste.every((q) => dentro(q, util))) continue;
+              if (kps.some((k) => cantos.some((q) => dentro(q, k)) || k.some((q) => dentro(q, cantos)) || dentro(c, k))) continue;
+              if (coberta(b, cantos)) continue;
+              lista.push({ k: `${b.id}:${i}:${linha}`, bi, b: b.id, c, cantos, i, linha, w, hs, a, d, incl: b.incl, az: b.az });
+            }
+          });
           linha++;
           const extra = cada && linha % cada === 0 ? corr * cosI : 0;
           v += (av ? -1 : 1) * (hg + gV * cosI + extra);
@@ -270,9 +357,9 @@
     const objs = [];
     const add = (tris) => { if (!tris.length) return; const t = new Float32Array(tris), mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9]; for (let i = 0; i < t.length; i += 3) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], t[i + k]); mx[k] = Math.max(mx[k], t[i + k]); } objs.push({ t, mn, mx }); };
     const quad = (T, a, b, c, d) => T.push(...a, ...b, ...c, ...a, ...c, ...d);
-    (proj.blocos || []).forEach((b) => {
+    faces(proj).forEach((b) => {
       const T = [], topo = topoParede(b), P = b.pts;
-      P.forEach((p, i) => { const q = P[(i + 1) % P.length], hp = topo ?? alturaEm(b, p), hq = topo ?? alturaEm(b, q); quad(T, [p[0], 0, p[1]], [q[0], 0, q[1]], [q[0], hq, q[1]], [p[0], hp, p[1]]); });
+      P.forEach((p, i) => { if (b.paredes && b.paredes[i] === false) return; const q = P[(i + 1) % P.length], hp = topo ?? alturaEm(b, p), hq = topo ?? alturaEm(b, q); quad(T, [p[0], 0, p[1]], [q[0], 0, q[1]], [q[0], hq, q[1]], [p[0], hp, p[1]]); });
       const I = internoDe(b), tri = triangular(I); tri.forEach(([i, j, k]) => T.push(I[i][0], alturaEm(b, I[i]), I[i][1], I[j][0], alturaEm(b, I[j]), I[j][1], I[k][0], alturaEm(b, I[k]), I[k][1]));
       add(T);
     });
@@ -371,36 +458,53 @@
     return { amostras: am, Eideal };
   }
 
-  /* escolhe as N vagas (as manuais primeiro), do jeito que um instalador faria:
-     1) só as boas (até 6% abaixo da melhor posição do telhado todo) entram primeiro;
-     2) entre as boas, enche um telhado de cada vez, começando pelo de melhor sol
-        (empate: o que cabe mais placas), para sair um arranjo junto e montável;
-     3) dentro do telhado, o sol em faixas de 2,5% e depois a ordem das fileiras. */
+  /* ajustes à mão guardados pela POSIÇÃO (água + ponto): sobrevivem quando o desenho ou o espaçamento muda */
+  function marcados(lista, entradas) {
+    const ks = new Set();
+    (entradas || []).forEach((e) => {
+      if (typeof e === 'string') { ks.add(e); return; }
+      let melhor = null, dm = 0.6; const paiE = String(e.b).split('~')[0];
+      lista.forEach((s) => { if (String(s.b).split('~')[0] !== paiE) return; const d = Math.hypot(s.c[0] - e.x, s.c[1] - e.z); if (d < dm) { dm = d; melhor = s; } });
+      if (melhor) ks.add(melhor.k);
+    });
+    return ks;
+  }
+  /* escolhe as N vagas (as manuais primeiro).
+     "fileiras" (padrão): como o instalador monta. Enche uma água de cada vez, começando pela de melhor
+       sol (empate: a que cabe mais), fileira por fileira e sem buracos; só deixa de fora placa com sombra
+       forte (aproveitamento abaixo de 75%) enquanto houver lugar melhor.
+     "sol": placa a placa pelo melhor sol, em faixas de 2,5% (pode sair salteado). */
   function escolher(lista, qtd, L = {}) {
-    const on = new Set(L.forcarOn || []), off = new Set(L.forcarOff || []);
+    const on = marcados(lista, L.forcarOn), off = marcados(lista, L.forcarOff);
     const ok = lista.filter((s) => !off.has(s.k)), fixas = ok.filter((s) => on.has(s.k)), livres = ok.filter((s) => !on.has(s.k));
-    const t = (s) => (s.analise ? s.analise.tsrf : 1), faixa = (s) => Math.round(t(s) * 40);
-    const melhor = livres.reduce((m, s) => Math.max(m, t(s)), 0), boa = (s) => t(s) >= melhor - 0.06;
-    const nota = {};
-    livres.filter(boa).forEach((s) => { (nota[s.b] = nota[s.b] || []).push(t(s)); });
-    const rank = Object.keys(nota).map((b) => { const ts = nota[b].sort((x, y) => y - x), k = Math.max(1, Math.min(ts.length, qtd)); return { b, media: ts.slice(0, k).reduce((a, c) => a + c, 0) / k, cap: ts.length }; })
-      .sort((x, y) => Math.round(y.media * 50) - Math.round(x.media * 50) || y.cap - x.cap);
-    const pos = Object.fromEntries(rank.map((r, i) => [r.b, i])), ordem = (s) => pos[s.b] ?? 99;
-    const ordemFila = (x, y) => x.linha - y.linha || x.i - y.i;
-    const boas = livres.filter(boa).sort((x, y) => ordem(x) - ordem(y) || faixa(y) - faixa(x) || ordemFila(x, y));
-    const fracas = livres.filter((s) => !boa(s)).sort((x, y) => faixa(y) - faixa(x) || ordem(x) - ordem(y) || x.bi - y.bi || ordemFila(x, y));
-    return [...fixas, ...boas, ...fracas].slice(0, Math.max(qtd, fixas.length));
+    const t = (s) => (s.analise ? s.analise.tsrf : 1), faixa = (s) => Math.round(t(s) * 40), n = Math.max(qtd, fixas.length);
+    const notaAguas = (ls) => { const porB = {}; ls.forEach((s) => { (porB[s.b] = porB[s.b] || []).push(s); }); return Object.entries(porB).map(([b, v]) => { const ts = v.map(t).sort((x, y) => y - x), k = Math.max(1, Math.min(ts.length, qtd)); return { b, v, media: ts.slice(0, k).reduce((a, c) => a + c, 0) / k, cap: v.length }; }).sort((x, y) => Math.round(y.media * 50) - Math.round(x.media * 50) || y.cap - x.cap); };
+    if (L.arranjo === 'sol') {
+      const melhor = livres.reduce((m, s) => Math.max(m, t(s)), 0), boa = (s) => t(s) >= melhor - 0.06;
+      const pos = Object.fromEntries(notaAguas(livres.filter(boa)).map((r, i) => [r.b, i])), ordem = (s) => pos[s.b] ?? 99, fila = (x, y) => x.linha - y.linha || x.i - y.i;
+      return [...fixas, ...livres.filter(boa).sort((x, y) => ordem(x) - ordem(y) || faixa(y) - faixa(x) || fila(x, y)), ...livres.filter((s) => !boa(s)).sort((x, y) => faixa(y) - faixa(x) || ordem(x) - ordem(y) || fila(x, y))].slice(0, n);
+    }
+    const FORTE = 0.75, boas = livres.filter((s) => t(s) >= FORTE), fracas = livres.filter((s) => t(s) < FORTE).sort((x, y) => t(y) - t(x));
+    const ordem = [];
+    notaAguas(boas).forEach(({ v }) => {
+      const filas = {}; v.forEach((s) => { (filas[s.linha] = filas[s.linha] || []).push(s); });
+      const fl = Object.entries(filas).map(([l, x]) => ({ l: +l, x: x.sort((a, b) => a.i - b.i), m: x.reduce((a, s) => a + t(s), 0) / x.length }));
+      const top = fl.reduce((a, f) => (f.m > a.m + 1e-9 ? f : a), fl[0]);
+      fl.sort((a, b) => Math.round(b.m * 40) - Math.round(a.m * 40) || Math.abs(a.l - top.l) - Math.abs(b.l - top.l) || a.l - b.l);
+      fl.forEach((f) => { const h = Math.ceil(f.x.length / 2), ini = f.x.slice(0, h).reduce((a, s) => a + t(s), 0) / h, fim = f.x.slice(-h).reduce((a, s) => a + t(s), 0) / h; ordem.push(...(fim > ini + 0.01 ? [...f.x].reverse() : f.x)); });
+    });
+    return [...fixas, ...ordem, ...fracas].slice(0, n);
   }
 
   /* geração: PVGIS por água × (1 − sombra de cada placa) */
   const chaveFace = (incl, az) => `${Math.round(incl)}|${(Math.round(az / 5) * 5) % 360}`;
   function gerar(proj, escolhidas, { pvgis, hsp = 5.4, pr = 0.776 } = {}) {
     const potKw = ((proj.layout && proj.layout.modulo && proj.layout.modulo.potW) || 615) / 1000;
-    const faces = (pvgis && pvgis.faces) || {};
+    const facesPv = (pvgis && pvgis.faces) || {};
     const mes = new Array(12).fill(0); let ano = 0, semSombra = 0;
     const porBloco = {};
     escolhidas.forEach((s) => {
-      const f = faces[chaveFace(s.incl, s.az)], a = s.analise || { acesso: 1, tof: 1, tsrf: 1 };
+      const f = facesPv[chaveFace(s.incl, s.az)], a = s.analise || { acesso: 1, tof: 1, tsrf: 1 };
       const ey = f ? f.ey : hsp * 360 * pr * a.tof;
       ano += potKw * ey * a.acesso; semSombra += potKw * ey;
       (f ? f.em : new Array(12).fill(ey / 12)).forEach((v, m) => { mes[m] += potKw * v * a.acesso; });
@@ -410,7 +514,7 @@
     return {
       placas: escolhidas.length, kwp, geracaoAnual: ano, geracaoMes: mes, perdaSombra: semSombra ? 1 - ano / semSombra : 0,
       tsrfMedio: escolhidas.length ? escolhidas.reduce((t, s) => t + (s.analise ? s.analise.tsrf : 1), 0) / escolhidas.length : 0,
-      porBloco: Object.entries(porBloco).map(([id, v]) => { const b = (proj.blocos || []).find((x) => x.id === id) || {}; return { id, nome: b.nome, incl: b.incl, az: b.az, placas: v.placas, geracao: v.ger, tsrf: v.tsrf / v.placas }; }),
+      porBloco: Object.entries(porBloco).map(([id, v]) => { const b = faces(proj).find((x) => x.id === id) || {}; return { id, nome: b.nome, incl: b.incl, az: b.az, placas: v.placas, geracao: v.ger, tsrf: v.tsrf / v.placas }; }),
       fonte: pvgis && pvgis.db ? pvgis.db : 'estimativa pela irradiação da cidade',
       // perda equivalente para o motor de preço (que usa a irradiação da cidade × PR)
       perda: kwp ? Math.max(-0.25, Math.min(0.6, 1 - ano / (kwp * hsp * 360 * pr))) : 0,
@@ -487,11 +591,11 @@
     function montar() {
       if (grupo) cena.remove(grupo); grupo = new T.Group(); cena.add(grupo); placasMesh = [];
       const texTelhado = imgDrone || imgFundo;
-      (proj.blocos || []).forEach((b) => {
+      faces(proj).forEach((b) => {
         if (b.pts.length < 3) return;
         const topo = topoParede(b), P = b.pts, I = internoDe(b);
-        // paredes de fora
-        const pw = []; P.forEach((p, i) => { const q = P[(i + 1) % P.length], hp = topo ?? alturaEm(b, p), hq = topo ?? alturaEm(b, q); pw.push(p[0], 0, p[1], q[0], 0, q[1], q[0], hq, q[1], p[0], 0, p[1], q[0], hq, q[1], p[0], hp, p[1]); });
+        // paredes de fora (no telhado pronto, só no contorno da casa)
+        const pw = []; P.forEach((p, i) => { if (b.paredes && b.paredes[i] === false) return; const q = P[(i + 1) % P.length], hp = topo ?? alturaEm(b, p), hq = topo ?? alturaEm(b, q); pw.push(p[0], 0, p[1], q[0], 0, q[1], q[0], hq, q[1], p[0], 0, p[1], q[0], hq, q[1], p[0], hp, p[1]); });
         const gp = new T.BufferGeometry(); gp.setAttribute('position', new T.Float32BufferAttribute(pw, 3)); gp.computeVertexNormals();
         const par = new T.Mesh(gp, M.parede); par.castShadow = par.receiveShadow = true; grupo.add(par);
         // platibanda: parede de dentro + rufo no topo
@@ -581,5 +685,5 @@
     };
   }
 
-  raiz.Usina3D = { carregarThree, fotoSatelite, reduzir, lerMetadados, colocarDrone, resolucao, paraMetros, paraLatLng, medidasModulo, centroide, dentro, areaPol, recuar, retangulo3, desce, alturaEm, topoTelhado, topoParede, normalPlano, novoId, blocosDoGoogle, migrar, OBST, baseObst, pegadaObst, vagas, DIAS, KD_PADRAO, H_PADRAO, posSol, amostras, oclusores, bate, pontosPlaca, analisar, escolher, gerar, chaveFace, corTsrf, mapaSombra, criar };
+  raiz.Usina3D = { marcados, faces, retanguloDe, pontoDe, pistasGoogle, carregarThree, fotoSatelite, reduzir, lerMetadados, colocarDrone, resolucao, paraMetros, paraLatLng, medidasModulo, centroide, dentro, areaPol, recuar, retangulo3, desce, alturaEm, topoTelhado, topoParede, normalPlano, novoId, blocosDoGoogle, migrar, OBST, baseObst, pegadaObst, vagas, DIAS, KD_PADRAO, H_PADRAO, posSol, amostras, oclusores, bate, pontosPlaca, analisar, escolher, gerar, chaveFace, corTsrf, mapaSombra, criar };
 })(window);

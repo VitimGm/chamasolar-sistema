@@ -489,7 +489,7 @@
     const p = P(), kits = (orc.kitsFechados || []).filter(Boolean), k = (orc.kitsFechados || [])[PRINCIPAL] || kits[0];
     let modulo = k && k.modulo ? k.modulo : null, qtd = modulo ? modulo.qtd : 0;
     if (!modulo) { const ops = C.opcoes(orc, p), op = ops[orc.opcaoEscolhida ?? 0] || ops[0]; if (op) { modulo = { nome: op.modulo.nome, potenciaW: op.modulo.potenciaW }; qtd = op.dim.placas; } }
-    Telhado.abrir({ orc, modulo, qtd, aba, tipoTelhado: orc.telhado, aoSalvar: (proj) => { orc.projeto3d = proj; salvarR(); novo(); toast('Projeto 3D salvo no orçamento'); } });
+    Telhado.abrir({ orc, modulo, qtd, aba, kits, tipoTelhado: orc.telhado, aoSalvar: (proj) => { orc.projeto3d = proj; salvarR(); novo(); toast('Projeto 3D salvo no orçamento'); } });
   }
   function cartao3d(p3) {
     const r = p3.resultado, M = (p3.layout && p3.layout.modulo) || {};
@@ -585,6 +585,8 @@
       ${p3 ? cartao3d(p3) : `<p class="sutil" style="margin:6px 0 10px">Com o kit fechado, o 3D usa a medida real da placa${med ? ` (${n(med.c * 1000)} × ${n(med.l * 1000)} mm, confira na ficha)` : ''} e as ${qtd} placas: testa todas as posições no telhado, evita a sombra das platibandas, da caixa d'água e das árvores, e calcula a geração com a irradiação do local (PVGIS). É a base para a geração que vai no contrato.</p>
         <div class="acoes-r" style="justify-content:flex-start"><button class="btn sol" data-abrir3d>🏠 Montar o 3D com as ${qtd} placas do kit</button></div>`}
       ${avisos.map((a) => `<div class="aviso ruim" style="margin-top:8px">${a}</div>`).join('')}
+      ${r && r.cabos ? r.cabos.map((c) => c.tipo === 'string' ? (c.erro ? `<p class="mini" style="margin-top:6px">Cabos (${esc(c.nivel || 'inversor')}): marque onde fica o inversor no passo 6 do 3D.</p>` : `<p class="mini" style="margin-top:6px">Cabo solar (${esc(c.nivel || 'inversor')}, ${c.porString.join(' + ')} placas por string): frog ${n(c.frog.vermelho, 1)} + ${n(c.frog.preto, 1)} m · seguro ${n(c.seguro.vermelho, 1)} + ${n(c.seguro.preto, 1)} m (vermelho + preto)${c.conf && !c.conf.semDados ? ` · no kit ${n(c.conf.kitVermelho, 1)} + ${n(c.conf.kitPreto, 1)} m${c.conf.faltaVermelho || c.conf.faltaPreto ? ` · <b style="color:var(--laranja)">faltam ${n(c.conf.faltaVermelho, 1)} + ${n(c.conf.faltaPreto, 1)} m no cálculo ${c.modo === 'frog' ? 'frog' : 'seguro'}</b>` : ' · <b>basta</b>'}` : ''}.</p>`)
+        : `<p class="mini" style="margin-top:6px">Micro (${esc(c.nivel || '')}): cabo tronco ≈ ${n(c.troncoM, 1)} m (${c.conexoes} conexões)${c.caM != null ? `, CA até o quadro ≈ ${n(c.caM, 1)} m por condutor` : ' · marque o quadro no passo 6 do 3D'}${c.conf && c.conf.faltaTronco ? ` · <b style="color:var(--laranja)">faltam ${c.conf.faltaTronco} cabo(s) tronco</b>` : ''}.</p>`).join('') : ''}
       ${r && !outra ? `<p class="mini" style="margin-top:8px">Geração no 3D: <b>${n(ger)} kWh/mês</b> (${n(r.geracaoAnual)} kWh/ano)${alvo ? ` · consumo a cobrir: ${n(alvo)} kWh/mês` : ''}.${r.placas >= qtd ? ' Já é a geração usada no preço e na proposta.' : ''}</p>` : ''}
     </div>`;
   }

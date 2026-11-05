@@ -93,7 +93,8 @@
     if (cliente.projeto3d) { // o 3D vai; o endereço exato e os ids internos não
       const { endereco, lng, precisao, ...p3 } = cliente.projeto3d; void endereco; void lng; void precisao;
       const semId = (x) => (x ? (({ id, auto, ...r }) => { void id; void auto; return r; })(x) : x);
-      cliente.projeto3d = { ...p3, lat: Math.round((p3.lat || -21.2) * 10) / 10, fundo: semId(p3.fundo), drone: semId(p3.drone), pvgis: p3.pvgis ? { db: p3.pvgis.db, faces: p3.pvgis.faces } : null };
+      const { cabos, ...res3 } = p3.resultado || {}; void cabos;
+      cliente.projeto3d = { ...p3, lat: Math.round((p3.lat || -21.2) * 10) / 10, fundo: semId(p3.fundo), drone: semId(p3.drone), pvgis: p3.pvgis ? { db: p3.pvgis.db, faces: p3.pvgis.faces } : null, resultado: p3.resultado ? res3 : p3.resultado, cabos: null, pistas: null };
     }
     return { orc: json(cliente), parametros: paramsPublicos(p), geradoEm: agora() };
   }

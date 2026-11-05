@@ -19,7 +19,7 @@
   const ICONE = { caixa: '💧', ar: '❄️', respiro: '🔩', arvore: '🌳', predio: '🏢' };
   const hhmm = (h) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
 
-  function abrir({ orc, modulo, qtd, tipoTelhado, aba, aoSalvar }) {
+  function abrir({ orc, modulo, qtd, tipoTelhado, aba, aoSalvar, kits = [] }) {
     const U = raiz.Usina3D, B = raiz.Banco, P = (B.parametros && B.parametros()) || {};
     const proj = U.migrar(orc.projeto3d ? JSON.parse(JSON.stringify(orc.projeto3d)) : null) || { versao: 2, lat: -21.1775, lng: -47.8103, blocos: [], obst: [] };
     proj.versao = 2; proj.blocos = proj.blocos || []; proj.obst = proj.obst || []; proj.tipoTelhado = tipoTelhado || proj.tipoTelhado || 'metalico';
@@ -28,14 +28,16 @@
     const modAnt = proj.layout.modulo, nomeKit = modulo ? (((modulo.marca && !String(modulo.nome || '').toLowerCase().includes(String(modulo.marca).toLowerCase())) ? modulo.marca + ' ' : '') + (modulo.nome || '')).trim() || `Placa ${modulo.potenciaW} W` : null;
     if (modAnt && modAnt.c && (!modulo || (modAnt.nome === nomeKit && modAnt.potW === modulo.potenciaW))) proj.layout.modulo = modAnt;
     else { const w = (modulo && modulo.potenciaW) || (modAnt && modAnt.potW) || 615, med = U.medidasModulo(modulo ? `${modulo.sku || ''} ${modulo.nome || ''}` : modAnt && modAnt.nome, w); proj.layout.modulo = { nome: nomeKit || (modAnt && modAnt.nome) || `Placa ${w} W`, potW: w, c: med.c, l: med.l, estimada: true }; }
-    if (qtd) { if (proj.layout.qtd !== qtd) { proj.layout.forcarOn = []; proj.layout.forcarOff = []; } proj.layout.qtd = qtd; } else proj.layout.qtd = proj.layout.qtd || 12;
+    if (qtd) proj.layout.qtd = qtd; else proj.layout.qtd = proj.layout.qtd || 12;
+    proj.layout.arranjo = proj.layout.arranjo || 'fileiras';
     const cid = (raiz.DadosTeste && raiz.DadosTeste.cidades) || {}, hsp = (cid[orc.cidade] || cid['Ribeirão Preto'] || { hsp: 5.4 }).hsp, pr = P.pr || 0.776;
+    proj.cabos = Object.assign({ modo: 'seguro', nStrings: 0, inv: null, quadro: null }, proj.cabos || {});
     const st = { aba: aba || (proj.blocos.length ? 'telhados' : 'foto'), ferr: null, sel: null, des: [], ponteiro: null, view: { esc: 14, ox: 0, oz: 0 }, vagas: [], escolhidas: [], analisado: false, ocupado: false, ver: 0, di: 6, hora: 9.5, play: false, regua: [], alfaDrone: 1, corPlacas: 'tsrf', mapas: false, imgsNovas: {} };
 
     const ov = document.createElement('div'); ov.className = 't3-ov';
     ov.innerHTML = `<div class="t3-caixa" role="dialog" aria-label="Projeto 3D do telhado">
       <div class="entre t3-cab"><div><b style="font-size:18px">Projeto 3D do telhado</b> <span class="mini">${esc(orc.nome || '')}</span></div><button class="link" data-x>fechar sem salvar</button></div>
-      <nav class="t3-passos" id="t3Abas">${[['foto', '1 Foto'], ['telhados', '2 Telhados'], ['obst', '3 Obstáculos'], ['placas', '4 Placas'], ['sol', '5 Sol e sombra']].map(([k, t]) => `<button data-aba="${k}">${t}</button>`).join('')}</nav>
+      <nav class="t3-passos" id="t3Abas">${[['foto', '1 Foto'], ['telhados', '2 Telhados'], ['obst', '3 Obstáculos'], ['placas', '4 Placas'], ['sol', '5 Sol e sombra'], ['cabos', '6 Cabos']].map(([k, t]) => `<button data-aba="${k}">${t}</button>`).join('')}</nav>
       <p class="t3-aviso" id="t3Msg"></p>
       <div class="t3-corpo">
         <div class="t3-esq">
@@ -81,30 +83,38 @@
     }
     function desenhar() {
       const w = W(), h = H(); g.clearRect(0, 0, w, h); g.fillStyle = '#26332a'; g.fillRect(0, 0, w, h);
-      if (imgFundo && proj.fundo) { const L = proj.fundo.ladoM, a = m2tela([-L / 2, -L / 2]); g.drawImage(imgFundo, a[0], a[1], L * st.view.esc, L * st.view.esc); }
-      if (imgDrone && proj.drone) { const d = proj.drone, c = m2tela([d.cx || 0, d.cz || 0]); g.save(); g.globalAlpha = st.aba === 'foto' ? st.alfaDrone : 1; g.translate(c[0], c[1]); g.rotate((d.rot || 0) * Math.PI / 180); const e = d.escala * st.view.esc; g.drawImage(imgDrone, -d.w / 2 * e, -d.h / 2 * e, d.w * e, d.h * e); g.restore(); }
+      const encaixe = st.ferr === 'encaixar', soDrone = encaixe && st.enc.length % 2 === 0, soSat = encaixe && st.enc.length % 2 === 1;
+      if (imgFundo && proj.fundo && !soDrone) { const L = proj.fundo.ladoM, a = m2tela([-L / 2, -L / 2]); g.drawImage(imgFundo, a[0], a[1], L * st.view.esc, L * st.view.esc); }
+      if (imgDrone && proj.drone && !soSat) { const d = proj.drone, c = m2tela([d.cx || 0, d.cz || 0]); g.save(); g.globalAlpha = st.aba === 'foto' ? st.alfaDrone : 1; g.translate(c[0], c[1]); g.rotate((d.rot || 0) * Math.PI / 180); const e = d.escala * st.view.esc; g.drawImage(imgDrone, -d.w / 2 * e, -d.h / 2 * e, d.w * e, d.h * e); g.restore(); }
       if (!imgFundo && !imgDrone) { g.fillStyle = '#fff8'; g.font = '15px system-ui'; g.textAlign = 'center'; g.fillText('Busque o satélite ou envie a foto do drone (passo 1)', w / 2, h / 2); }
-      const escurecer = st.aba === 'placas' || st.aba === 'sol'; if (escurecer) { g.fillStyle = '#0006'; g.fillRect(0, 0, w, h); }
+      const escurecer = st.aba === 'placas' || st.aba === 'sol' || st.aba === 'cabos'; if (escurecer) { g.fillStyle = '#0006'; g.fillRect(0, 0, w, h); }
       // blocos
+      const todasFaces = U.faces(proj);
       proj.blocos.forEach((b, i) => {
-        const cor = CORES[i % CORES.length], sel = st.sel && st.sel.t === 'b' && st.sel.id === b.id;
+        const cor = CORES[i % CORES.length], sel = st.sel && st.sel.t === 'b' && st.sel.id === b.id, pronto = (b.forma || '1') !== '1';
         caminho(b.pts); g.fillStyle = cor + (escurecer ? '30' : sel ? '55' : '33'); g.fill(); g.lineWidth = sel ? 3 : 2; g.strokeStyle = cor; g.stroke();
-        if (b.platibanda > 0) { caminho(U.recuar(b.pts, 0.15)); g.lineWidth = 1; g.setLineDash([4, 3]); g.stroke(); g.setLineDash([]); }
+        if (b.platibanda > 0 && !pronto) { caminho(U.recuar(b.pts, 0.15)); g.lineWidth = 1; g.setLineDash([4, 3]); g.stroke(); g.setLineDash([]); }
         const c = m2tela(U.centroide(b.pts)), d = U.desce(b.az), L = 26;
-        if (!escurecer) seta(c, [d[0], d[1]], L, '#fff');
-        if (sel && st.aba === 'telhados') rotulo(`${b.nome} · ${n(b.alturaBeiral, 1)} m · ${pct(b.incl)}%${b.platibanda > 0 ? ' · plat. ' + n(b.platibanda, 2) : ''}${b.usar ? '' : ' · sem placas'}`, c[0], c[1] - L - 8);
+        if (pronto) { // cumeeira e espigões + seta de cada água
+          todasFaces.filter((f) => f.pai === b.id).forEach((f) => {
+            g.strokeStyle = cor; g.lineWidth = 1.5; g.setLineDash([5, 4]); f.pts.forEach((p2, k) => { if (!f.paredes || f.paredes[k] !== false) return; const q2 = f.pts[(k + 1) % f.pts.length], a2 = m2tela(p2), z2 = m2tela(q2); g.beginPath(); g.moveTo(a2[0], a2[1]); g.lineTo(z2[0], z2[1]); g.stroke(); }); g.setLineDash([]);
+            if (!escurecer) { const cf = m2tela(U.centroide(f.pts)), df = U.desce(f.az); seta(cf, df, 14, '#fff'); }
+          });
+        } else if (!escurecer) seta(c, [d[0], d[1]], L, '#fff');
+        if (sel && st.aba === 'telhados') rotulo(`${b.nome} · ${pronto ? b.forma + ' águas · ' : ''}${n(b.alturaBeiral, 1)} m · ${pct(b.incl)}%${b.platibanda > 0 && !pronto ? ' · plat. ' + n(b.platibanda, 2) : ''}${b.usar ? '' : ' · sem placas'}`, c[0], c[1] - L - 8);
         else if (!escurecer || st.view.esc > 18) rotulo(`${b.nome} ${n(b.alturaBeiral, 1)} m`, c[0], c[1] + (escurecer ? 4 : -L - 8));
         if (sel && st.aba === 'telhados') {
           b.pts.forEach((p, k) => { const q = b.pts[(k + 1) % b.pts.length], a = m2tela(p), z = m2tela(q), mid = [(a[0] + z[0]) / 2, (a[1] + z[1]) / 2], len = Math.hypot(q[0] - p[0], q[1] - p[1]);
             rotulo(n(len, 2) + ' m', mid[0], mid[1] + 14, '#ffd23d');
-            const nr = normalFora(b, k); g.fillStyle = '#ffb000'; g.beginPath(); g.arc(mid[0] + nr[0] * 16, mid[1] + nr[1] * 16, 9, 0, 7); g.fill(); seta([mid[0] + nr[0] * 10, mid[1] + nr[1] * 10], nr, 12, '#1a1205');
+            if (!pronto) { const nr = normalFora(b, k); g.fillStyle = '#ffb000'; g.beginPath(); g.arc(mid[0] + nr[0] * 16, mid[1] + nr[1] * 16, 9, 0, 7); g.fill(); seta([mid[0] + nr[0] * 10, mid[1] + nr[1] * 10], nr, 12, '#1a1205'); }
             g.fillStyle = '#fff'; g.beginPath(); g.arc(a[0], a[1], 7, 0, 7); g.fill(); g.strokeStyle = cor; g.lineWidth = 3; g.stroke(); });
         }
       });
+      if (st.aba === 'telhados' && proj.pistas && proj.pistas.length) proj.pistas.forEach((pi) => { const c2 = m2tela(pi.c), d2 = U.desce(pi.az); g.globalAlpha = 0.8; seta(c2, d2, 11, '#5cf0ff'); g.globalAlpha = 1; rotulo(`${pct(pi.incl)}%`, c2[0], c2[1] + 18, '#5cf0ff'); });
       // obstáculos
       proj.obst.forEach((o) => { const pg = U.pegadaObst(o), sel = st.sel && st.sel.t === 'o' && st.sel.id === o.id; caminho(pg); g.fillStyle = o.tipo === 'arvore' ? '#2f7d3a99' : '#ffffffaa'; g.fill(); g.strokeStyle = sel ? '#ffb000' : '#222'; g.lineWidth = sel ? 3 : 1.5; g.stroke(); if (escurecer && !sel) return; const c = m2tela([o.x, o.z]); rotulo(`${ICONE[o.tipo] || ''} ${n(o.h ?? U.OBST[o.tipo].h, 1)} m`, c[0], c[1] - 12); });
       // placas
-      if (st.aba === 'placas' || st.aba === 'sol') {
+      if (st.aba === 'placas' || st.aba === 'sol' || st.aba === 'cabos') {
         const esc2 = new Set(st.escolhidas.map((s) => s.k));
         st.vagas.forEach((s) => { caminho(s.cantos); if (esc2.has(s.k)) { g.fillStyle = st.analisado && s.analise ? U.corTsrf(s.analise.tsrf) : '#1c3a7a'; g.globalAlpha = 0.9; g.fill(); g.globalAlpha = 1; g.strokeStyle = '#0d1a38'; g.lineWidth = 1; g.stroke(); } else { g.strokeStyle = '#ffffff55'; g.lineWidth = 1; g.stroke(); } });
       }
@@ -116,6 +126,8 @@
         st.des.forEach((p, k) => { const q = m2tela(p); g.fillStyle = k ? '#ffb000' : '#ff6700'; g.beginPath(); g.arc(q[0], q[1], 6, 0, 7); g.fill(); });
         if (pts.length >= 2) { const a = pts[pts.length - 2], z = pts[pts.length - 1], m = m2tela([(a[0] + z[0]) / 2, (a[1] + z[1]) / 2]); rotulo(n(Math.hypot(z[0] - a[0], z[1] - a[1]), 2) + ' m', m[0], m[1] - 10, '#ffd23d'); }
       }
+      if (st.aba === 'cabos') desenharCabos();
+      if (st.enc && st.enc.length) st.enc.forEach((p, k) => { const q = m2tela(p); g.fillStyle = k % 2 ? '#5cf0ff' : '#ff3df0'; g.beginPath(); g.arc(q[0], q[1], 7, 0, 7); g.fill(); rotulo(String(Math.floor(k / 2) + 1), q[0], q[1] - 12, k % 2 ? '#5cf0ff' : '#ff3df0'); });
       if (st.regua.length) { g.strokeStyle = '#ff3df0'; g.lineWidth = 3; caminho(st.regua, false); g.stroke(); st.regua.forEach((p) => { const q = m2tela(p); g.fillStyle = '#ff3df0'; g.beginPath(); g.arc(q[0], q[1], 6, 0, 7); g.fill(); }); }
       // escala e norte
       const alvo = 80 / st.view.esc, pass = [0.5, 1, 2, 5, 10, 20, 50].find((v) => v >= alvo) || 50, bw = pass * st.view.esc;
@@ -156,7 +168,8 @@
     const fim = (e) => {
       toques.delete(e.pointerId); if (toques.size < 2) pinca = null;
       if (!arrasto) return; const a = arrasto; arrasto = null;
-      if (!a.moveu) tocar(tela2m(...a.ini), a.ini, a.alvo); else if (a.alvo) { painel(); refazer(); }
+      if (!a.moveu) tocar(tela2m(...a.ini), a.ini, a.alvo);
+      else if (a.alvo) { if (a.alvo.tipo === 'vertice') { const b = bloco(a.alvo.id); if (b && (b.forma || '1') !== '1') { b.pts = U.retanguloDe(b.pts).cantos; sujar(); desenhar(); } } painel(); refazer(); }
     };
     cv.addEventListener('pointerup', fim); cv.addEventListener('pointercancel', fim);
     cv.addEventListener('wheel', (e) => { e.preventDefault(); const sp = pos(e), m0 = tela2m(...sp); st.view.esc = Math.max(2, Math.min(200, st.view.esc * (e.deltaY < 0 ? 1.15 : 1 / 1.15))); const m1 = tela2m(...sp); st.view.ox += m0[0] - m1[0]; st.view.oz += m0[1] - m1[1]; desenhar(); }, { passive: false });
@@ -165,7 +178,7 @@
     function pegarAlvo(sp, m) {
       if (st.aba === 'telhados' && (!st.ferr || st.ferr === 'ajustar') && st.sel && st.sel.t === 'b') {
         const b = bloco(st.sel.id); if (b) { const k = b.pts.findIndex((p) => { const q = m2tela(p); return Math.hypot(q[0] - sp[0], q[1] - sp[1]) < 13; }); if (k >= 0) return { tipo: 'vertice', id: b.id, k };
-          for (let i = 0; i < b.pts.length; i++) { const p = b.pts[i], q = b.pts[(i + 1) % b.pts.length], a = m2tela(p), z = m2tela(q), nr = normalFora(b, i), c = [(a[0] + z[0]) / 2 + nr[0] * 16, (a[1] + z[1]) / 2 + nr[1] * 16]; if (Math.hypot(c[0] - sp[0], c[1] - sp[1]) < 12) return { tipo: 'caimento', id: b.id, k: i }; }
+          if ((b.forma || '1') === '1') for (let i = 0; i < b.pts.length; i++) { const p = b.pts[i], q = b.pts[(i + 1) % b.pts.length], a = m2tela(p), z = m2tela(q), nr = normalFora(b, i), c = [(a[0] + z[0]) / 2 + nr[0] * 16, (a[1] + z[1]) / 2 + nr[1] * 16]; if (Math.hypot(c[0] - sp[0], c[1] - sp[1]) < 12) return { tipo: 'caimento', id: b.id, k: i }; }
           if (U.dentro(m, b.pts)) return { tipo: 'bloco', id: b.id }; }
       }
       if (st.aba === 'obst' && st.ferr === 'ajustar') { const o = proj.obst.find((x) => U.dentro(m, U.pegadaObst(x, 0.3))); if (o) return { tipo: 'obst', id: o.id }; }
@@ -183,9 +196,11 @@
       return m;
     }
     function tocar(m, sp, alvo) {
+      if (st.aba === 'cabos' && (st.ferr === 'posInv' || st.ferr === 'posQuadro')) { const C2 = proj.cabos, k = st.ferr === 'posInv' ? 'inv' : 'quadro'; C2[k] = { x: Math.round(m[0] * 100) / 100, z: Math.round(m[1] * 100) / 100, h: (C2[k] && C2[k].h) || 1.5 }; st.ferr = null; painel(); desenhar(); return; }
+      if (st.aba === 'foto' && st.ferr === 'encaixar') { st.enc.push(m); if (st.enc.length === 4) encaixar2(); desenhar(); painel(); return; }
       if (st.aba === 'foto' && st.ferr === 'regua') { st.regua.push(m); if (st.regua.length > 2) st.regua = [m]; desenhar(); painel(); return; }
       if (st.aba === 'telhados') {
-        if (alvo && alvo.tipo === 'caimento') { const b = bloco(alvo.id); b.az = azDe(normalFora(b, alvo.k)); sujar(); painel(); desenhar(); return; }
+        if (alvo && alvo.tipo === 'caimento') { const b = bloco(alvo.id); if ((b.forma || '1') !== '1') return; b.az = azDe(normalFora(b, alvo.k)); sujar(); painel(); desenhar(); return; }
         if (st.ferr === 'ret' || st.ferr === 'pol') {
           const p = encaixar(m, sp);
           if (st.ferr === 'pol' && st.des.length >= 3) { const q = m2tela(st.des[0]); if (Math.hypot(q[0] - sp[0], q[1] - sp[1]) < 14) { fecharDesenho(st.des); return; } }
@@ -199,17 +214,19 @@
       }
       if (st.aba === 'placas') {
         const s = st.vagas.find((v) => U.dentro(m, v.cantos)); if (!s) return;
-        const L = proj.layout, on = new Set(L.forcarOn), off = new Set(L.forcarOff), esta = st.escolhidas.some((x) => x.k === s.k);
-        if (esta) { on.delete(s.k); off.add(s.k); } else { off.delete(s.k); on.add(s.k); }
-        L.forcarOn = [...on]; L.forcarOff = [...off]; recompor(); return;
+        const L = proj.layout, esta = st.escolhidas.some((x) => x.k === s.k), aqui = { b: s.b, x: Math.round(s.c[0] * 100) / 100, z: Math.round(s.c[1] * 100) / 100 };
+        const longe = (e) => typeof e === 'string' ? e !== s.k : (String(e.b).split('~')[0] !== String(s.b).split('~')[0] || Math.hypot(e.x - s.c[0], e.z - s.c[1]) > 0.5);
+        L.forcarOn = (L.forcarOn || []).filter(longe); L.forcarOff = (L.forcarOff || []).filter(longe);
+        (esta ? L.forcarOff : L.forcarOn).push(aqui); recompor(); painel(); return;
       }
     }
     function fecharDesenho(pts) {
       const T = proj.tipoTelhado, ref = st.sel && st.sel.t === 'b' ? bloco(st.sel.id) : proj.blocos[proj.blocos.length - 1];
-      const b = { id: U.novoId('b'), nome: 'Telhado ' + (proj.blocos.length + 1), pts, incl: ref ? ref.incl : grausDe(T === 'ceramico' ? 36 : T === 'laje' ? 0 : 10), az: 0, alturaBeiral: ref ? ref.alturaBeiral : 3, platibanda: ref ? ref.platibanda : (T === 'ceramico' ? 0 : 0.5), telha: ref ? ref.telha : T, usar: true, orientacao: 'retrato' };
+      const telha = ref ? ref.telha : T, forma = pts.length === 4 && st.ferr === 'ret' ? (ref && ref.forma) || (telha === 'ceramico' ? '4' : '1') : '1';
+      const b = { id: U.novoId('b'), nome: 'Telhado ' + (proj.blocos.length + 1), pts, forma, cumeeira: 'longo', incl: ref ? ref.incl : grausDe(telha === 'ceramico' ? 35 : telha === 'laje' ? 0 : 10), az: 0, alturaBeiral: ref ? ref.alturaBeiral : 3, platibanda: forma !== '1' ? 0 : ref ? ref.platibanda : (telha === 'ceramico' ? 0 : 0.5), telha, usar: true, orientacao: 'retrato' };
       b.az = azDe(normalFora(b, 0)); // caimento inicial para a primeira borda desenhada
       proj.blocos.push(b); st.des = []; st.ponteiro = null; st.sel = { t: 'b', id: b.id }; st.ferr = 'ajustar'; sujar(); painel(); desenhar();
-      msg(`Telhado criado. Agora ajuste <b>altura</b>, <b>inclinação</b> e <b>platibanda</b> ao lado, e toque na <b>bolinha laranja</b> da borda para onde a água escorre.`);
+      msg(b.forma === '1' ? 'Telhado criado. Ajuste <b>altura</b>, <b>inclinação</b> e <b>platibanda</b> ao lado e toque na <b>bolinha laranja</b> da borda por onde a água sai.' : `Telhado de <b>${b.forma} águas</b> criado: as águas, a cumeeira e os espigões saem sozinhos. Confira a <b>forma</b>, a <b>altura do beiral</b> e a <b>inclinação</b> ao lado.`);
     }
 
     /* ---------- mudanças → recalcular ---------- */
@@ -223,8 +240,9 @@
       clearTimeout(refazer.t);
       refazer.t = setTimeout(() => {
         if (!st.analisado) { st.vagas = U.vagas(proj); st.escolhidas = U.escolher(st.vagas, proj.layout.qtd, proj.layout); } // analisado = desenho não mudou desde a conta
-        if (viewer) viewer.atualizar(st.aba === 'placas' || st.aba === 'sol' ? st.escolhidas : []); desenhar(); lado();
-        if ((st.aba === 'placas' || st.aba === 'sol') && !st.analisado && !st.ocupado) { clearTimeout(refazer.a); refazer.a = setTimeout(analisar, 700); } // recalcula sozinho depois de parar de mexer
+        if (viewer) viewer.atualizar(st.aba === 'placas' || st.aba === 'sol' || st.aba === 'cabos' ? st.escolhidas : []); desenhar(); lado();
+        if (st.aba === 'cabos') { const el = $('#t3Cabos', ov); if (el) el.innerHTML = relatorioCabos(); }
+        if ((st.aba === 'placas' || st.aba === 'sol' || st.aba === 'cabos') && !st.analisado && !st.ocupado) { clearTimeout(refazer.a); refazer.a = setTimeout(analisar, 700); } // recalcula sozinho depois de parar de mexer
       }, 200);
     }
     function recompor() { st.escolhidas = U.escolher(st.vagas, proj.layout.qtd, proj.layout); proj.resultado = null; if (viewer) viewer.atualizar(st.escolhidas); desenhar(); lado(); }
@@ -249,16 +267,17 @@
     function irAba(a) {
       st.aba = a; st.ferr = a === 'telhados' ? (proj.blocos.length ? 'ajustar' : 'ret') : a === 'obst' ? 'ajustar' : null; st.des = []; st.regua = [];
       ov.querySelectorAll('[data-aba]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.aba === a)));
-      const dica = { foto: proj.drone ? 'Ajuste a escala com a <b>régua</b> (toque nas 2 pontas de uma medida conhecida) e gire até o <b>norte</b> ficar para cima.' : 'Busque o satélite pelo endereço e, se tiver, envie a <b>foto de cima do drone</b> (câmera a 90°, 40 a 60 m de altura).', telhados: 'Desenhe cada parte do telhado com <b>3 toques</b>: 2 cantos de uma parede e o terceiro para a profundidade. Os cantos grudam nos telhados vizinhos.', obst: "Toque no tipo e depois no lugar: caixa d'água, condensadora, respiro, árvore ou prédio vizinho. A altura faz a sombra.", placas: 'As placas usam a medida da placa do kit. Toque em <b>Calcular o melhor sol</b>: o sistema testa todas as posições e escolhe as melhores.', sol: 'Veja o sol passar no dia escolhido. Placa vermelha = na sombra naquele horário.' }[a];
-      if ((a === 'placas' || a === 'sol') && proj.blocos.length && !st.enquadrado) { st.enquadrado = true; centralizar(); }
+      const dica = { cabos: temKit('micro') && !temKit('string') ? 'Toque em <b>Onde fica o quadro</b> e marque no desenho o quadro de ligação: o sistema mede o cabo tronco e o CA dos micros.' : 'Toque em <b>Onde fica o inversor</b> e marque no desenho: o sistema mede o cabo de cada string pelo caminho da estrutura e das paredes.', foto: proj.drone ? 'Ajuste a escala com a <b>régua</b> (toque nas 2 pontas de uma medida conhecida) e gire até o <b>norte</b> ficar para cima.' : 'Busque o satélite pelo endereço e, se tiver, envie a <b>foto de cima do drone</b> (câmera a 90°, 40 a 60 m de altura).', telhados: 'Desenhe cada parte do telhado com <b>3 toques</b>: 2 cantos de uma parede e o terceiro para a profundidade. Os cantos grudam nos telhados vizinhos.', obst: "Toque no tipo e depois no lugar: caixa d'água, condensadora, respiro, árvore ou prédio vizinho. A altura faz a sombra.", placas: 'As placas usam a medida da placa do kit. Toque em <b>Calcular o melhor sol</b>: o sistema testa todas as posições e escolhe as melhores.', sol: 'Veja o sol passar no dia escolhido. Placa vermelha = na sombra naquele horário.' }[a];
+      if ((a === 'placas' || a === 'sol' || a === 'cabos') && proj.blocos.length && !st.enquadrado) { st.enquadrado = true; centralizar(); }
+      st.enc = [];
       msg(dica); painel(); refazer();
-      if ((a === 'placas' || a === 'sol') && !st.analisado && !st.ocupado) analisar();
+      if ((a === 'placas' || a === 'sol' || a === 'cabos') && !st.analisado && !st.ocupado) analisar();
       if (viewer) { viewer.cor(a === 'sol' ? (st.corPlacas === 'agora' ? 'agora' : 'tsrf') : 'tsrf'); if (a !== 'sol' && st.play) parar(); }
     }
     ov.addEventListener('click', (e) => {
       if (e.target.closest('[data-x]')) { fechar(); return; }
       const ab = e.target.closest('[data-aba]'); if (ab) { irAba(ab.dataset.aba); return; }
-      const f = e.target.closest('[data-ferr]'); if (f) { st.ferr = f.dataset.ferr; st.des = []; st.regua = []; painel(); desenhar(); return; }
+      const f = e.target.closest('[data-ferr]'); if (f) { st.ferr = f.dataset.ferr; st.des = []; st.regua = []; st.enc = []; painel(); desenhar(); if (/^(posInv|posQuadro|regua|encaixar|ret|pol)$/.test(st.ferr)) { const r = tela.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) tela.scrollIntoView({ block: 'center', behavior: 'smooth' }); } return; }
       const ac = e.target.closest('[data-acao]'); if (ac) acao(ac.dataset.acao, ac);
     });
     const ehEscolha = (t) => t.type === 'checkbox' || t.type === 'radio' || t.type === 'file' || t.tagName === 'SELECT';
@@ -277,7 +296,8 @@
         const d = proj.drone;
         el.innerHTML = `<div class="t3-linha"><input type="text" id="t3End" placeholder="Rua, número, bairro, cidade" value="${esc(proj.endereco || enderecoOrc())}"><button class="btn sol pequeno" data-acao="buscar">🛰️ Satélite</button></div>
           <div class="t3-linha"><label class="btn vidro pequeno" style="cursor:pointer">📷 ${d ? 'Trocar' : 'Enviar'} foto do drone<input type="file" id="t3Arq" accept="image/*" hidden></label>${d ? '<button class="link" data-acao="tirarDrone">tirar a foto do drone</button>' : ''}</div>
-          ${d ? `<div class="t3-ferr"><button data-ferr="regua" aria-pressed="${st.ferr === 'regua'}">📏 Régua (escala)</button><button data-ferr="moverDrone" aria-pressed="${st.ferr === 'moverDrone'}">✋ Mover a foto</button></div>
+          ${d ? `<div class="t3-ferr"><button data-ferr="regua" aria-pressed="${st.ferr === 'regua'}">📏 Régua (escala)</button><button data-ferr="moverDrone" aria-pressed="${st.ferr === 'moverDrone'}">✋ Mover a foto</button>${proj.fundo ? `<button data-ferr="encaixar" aria-pressed="${st.ferr === 'encaixar'}">📍 Encaixar no satélite (2 pontos)</button>` : ''}</div>
+            ${st.ferr === 'encaixar' ? `<p class="mini"><b>${['1º canto na FOTO DO DRONE', 'o mesmo 1º canto no SATÉLITE', '2º canto na FOTO DO DRONE (longe do 1º)', 'o mesmo 2º canto no SATÉLITE'][st.enc.length] || ''}</b>: toque num canto bem visível (quina da casa, do muro ou da piscina). A escala e o norte saem do satélite, sem trena.</p>` : ''}
             ${st.ferr === 'regua' ? `<div class="t3-linha"><span class="mini">${st.regua.length < 2 ? 'Toque nas 2 pontas de uma medida que você conhece (uma parede medida na trena, a piscina, a frente do lote).' : `Medida tocada: ${n(Math.hypot(st.regua[1][0] - st.regua[0][0], st.regua[1][1] - st.regua[0][1]), 2)} m na foto. Quanto mede de verdade?`}</span>${st.regua.length === 2 ? '<input type="text" inputmode="decimal" id="t3Real" placeholder="metros" style="width:90px" autocomplete="off"><button class="btn sol pequeno" data-acao="aplicarRegua">Aplicar</button>' : ''}</div>` : ''}
             <label class="campo"><span>Norte da foto: girar <b id="t3RotO">${n(d.rot || 0, 1)}°</b>${d.auto && d.auto.rot ? '<small>veio da bússola do drone</small>' : '<small>deixe a frente da casa como ela é na rua: norte para cima</small>'}</span><input type="range" id="t3Rot" min="-180" max="180" step="0.5" value="${d.rot || 0}"></label>
             <div class="t3-linha"><button class="link" data-acao="rot-90">↺ 90°</button><button class="link" data-acao="rot90">↻ 90°</button><span class="mini">escala: ${n(d.escala * 100, 2)} cm por ponto · a foto cobre ${n(d.w * d.escala, 1)} × ${n(d.h * d.escala, 1)} m${d.escalaConferida ? ' · <b style="color:var(--verde,#3ddc97)">conferida na régua</b>' : d.auto && d.auto.escala ? ' · pela altura do voo' : ' · <b style="color:var(--laranja)">confira na régua</b>'}</span></div>
@@ -289,14 +309,15 @@
         el.innerHTML = `<div class="t3-ferr"><button data-ferr="ret" aria-pressed="${st.ferr === 'ret'}">▭ Retângulo (3 toques)</button><button data-ferr="pol" aria-pressed="${st.ferr === 'pol'}">⬠ Formato livre</button><button data-ferr="ajustar" aria-pressed="${st.ferr === 'ajustar'}">✋ Ajustar</button></div>
           ${desenhando ? `<div class="t3-linha"><span class="mini">${st.ferr === 'ret' ? ['', 'Toque no outro canto da mesma parede.', 'Agora toque do outro lado, para dar a profundidade.'][st.des.length] : `${st.des.length} ponto(s). Toque no primeiro ponto para fechar.`}</span><button class="link" data-acao="desfazerPonto">desfazer ponto</button>${st.ferr === 'pol' && st.des.length >= 3 ? '<button class="btn sol pequeno" data-acao="fecharPol">Fechar o telhado</button>' : ''}<button class="link" data-acao="cancelarDes">cancelar</button></div>` : ''}
           <div class="t3-chips">${proj.blocos.map((x, i) => `<button class="t3-chip" data-acao="sel-b" data-id="${x.id}" style="border-color:${CORES[i % CORES.length]}" aria-pressed="${!!(b && b.id === x.id)}">${esc(x.nome)}</button>`).join('')}</div>
-          ${b ? `<div class="grade g2 t3-form">
+          ${b ? `${b.pts.length === 4 ? `<div class="t3-linha"><span class="mini">Forma:</span><div class="t3-chips">${[['1', '1 água / laje'], ['2', '2 águas'], ['4', '4 águas']].map(([v, t]) => `<button class="t3-chip" data-acao="forma" data-v="${v}" aria-pressed="${(b.forma || '1') === v}">${t}</button>`).join('')}</div>${b.forma === '2' ? `<select data-b="cumeeira" style="width:auto"><option value="longo" ${b.cumeeira !== 'curto' ? 'selected' : ''}>cumeeira no lado maior</option><option value="curto" ${b.cumeeira === 'curto' ? 'selected' : ''}>cumeeira no lado menor</option></select>` : ''}</div>` : ''}
+            <div class="grade g2 t3-form">
             <label class="campo"><span>Nome</span><input data-b="nome" value="${esc(b.nome)}"></label>
             <label class="campo"><span>Altura do beiral (m)<small>do chão até a telha, no lado mais baixo</small></span><input type="number" step="0.1" min="0" data-b="alturaBeiral" value="${b.alturaBeiral}"></label>
             <label class="campo"><span>Inclinação (%)<small data-dica="incl">${n(b.incl, 1)}° · metálica 5–10%, cerâmica 30–40%</small></span><input type="number" step="1" min="0" max="100" data-b="inclPct" value="${pct(b.incl)}"></label>
-            <label class="campo"><span>Platibanda (m acima da telha)<small>0 se não tiver mureta</small></span><input type="number" step="0.05" data-b="platibanda" value="${b.platibanda}"></label>
+            ${(b.forma || '1') === '1' ? `<label class="campo"><span>Platibanda (m acima da telha)<small>0 se não tiver mureta</small></span><input type="number" step="0.05" data-b="platibanda" value="${b.platibanda}"></label>` : '<span></span>'}
             <label class="campo"><span>Telha</span><select data-b="telha">${[['metalico', 'Metálica'], ['fibrocimento', 'Fibrocimento'], ['ceramico', 'Cerâmica'], ['laje', 'Laje']].map(([v, t]) => `<option value="${v}" ${b.telha === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
             <label class="campo"><span>Placas neste telhado</span><select data-b="orientacao"><option value="retrato" ${b.orientacao !== 'paisagem' ? 'selected' : ''}>em pé (retrato)</option><option value="paisagem" ${b.orientacao === 'paisagem' ? 'selected' : ''}>deitadas (paisagem)</option></select></label></div>
-            <p class="mini">A água escorre para o <b>${ponto(b.az)}</b> (${b.az}°): as placas ficam viradas para lá. Para mudar, toque na <b>bolinha laranja</b> da borda por onde a água sai. <button class="link" data-acao="inverter">inverter</button></p>
+            ${(b.forma || '1') === '1' ? `<p class="mini">A água escorre para o <b>${ponto(b.az)}</b> (${b.az}°): as placas ficam viradas para lá. Para mudar, toque na <b>bolinha laranja</b> da borda por onde a água sai. <button class="link" data-acao="inverter">inverter</button></p>` : `<p class="mini">Águas: ${U.faces({ blocos: [b] }).map((f) => `<b>${ponto(f.az)}</b>`).join(', ')}. As placas vão para as que pegam mais sol.</p>`}
             <div class="t3-linha"><label class="chk"><input type="checkbox" data-b="usar" ${b.usar ? 'checked' : ''}> pode receber placas</label><button class="link" data-acao="dup">duplicar</button><button class="link" data-acao="apagarB">apagar</button></div>` : `<p class="mini">${proj.blocos.length ? 'Toque num telhado para editar.' : 'Nenhum telhado ainda.'} Comece pelo maior.</p>`}`;
       } else if (A === 'obst') {
         const o = st.sel && st.sel.t === 'o' ? obst(st.sel.id) : null, T = o ? U.OBST[o.tipo] : null;
@@ -316,7 +337,17 @@
             <label class="campo"><span>Afastamento da borda/platibanda (m)</span><input type="number" step="0.05" data-l="bordaM" value="${L.bordaM}"></label>
             <label class="campo"><span>Corredor de manutenção (m)</span><input type="number" step="0.05" data-l="corredorM" value="${L.corredorM}"></label>
             <label class="campo"><span>Corredor a cada (fileiras)<small>0 = sem corredor</small></span><input type="number" step="1" min="0" data-l="corredorCada" value="${L.corredorCada}"></label></div>
-          <div class="t3-linha"><button class="btn sol pequeno" data-acao="calcular">☀️ Calcular o melhor sol</button><button class="link" data-acao="limparManual">desfazer ajustes manuais</button></div>`;
+          <div class="t3-linha"><span class="mini">Arranjo:</span><div class="t3-chips">${[['fileiras', 'Em fileiras (como se monta)'], ['sol', 'Placa a placa pelo sol']].map(([v, t]) => `<button class="t3-chip" data-acao="arranjo" data-v="${v}" aria-pressed="${(L.arranjo || 'fileiras') === v}">${t}</button>`).join('')}</div></div>
+          <div class="t3-linha"><button class="btn sol pequeno" data-acao="calcular">☀️ Calcular o melhor sol</button>${(L.forcarOn || []).length + (L.forcarOff || []).length ? `<span class="mini">${(L.forcarOn || []).length + (L.forcarOff || []).length} ajuste(s) à mão</span><button class="link" data-acao="limparManual">desfazer ajustes à mão</button>` : '<span class="mini">Toque numa placa para tirar, ou num espaço vazio para pôr: o ajuste fica mesmo se você mexer no desenho.</span>'}</div>`;
+      } else if (A === 'cabos') {
+        const C2 = proj.cabos, str = temKit('string') || !kits.length, mic = temKit('micro');
+        el.innerHTML = `<div class="t3-ferr">${str ? `<button data-ferr="posInv" aria-pressed="${st.ferr === 'posInv'}">📍 Onde fica o inversor${C2.inv ? ' ✓' : ''}</button>` : ''}${mic ? `<button data-ferr="posQuadro" aria-pressed="${st.ferr === 'posQuadro'}">📍 Onde fica o quadro${C2.quadro ? ' ✓' : ''}</button>` : ''}</div>
+          ${st.ferr === 'posInv' || st.ferr === 'posQuadro' ? '<p class="mini">Agora toque no desenho, na parede onde ele vai ficar.</p>' : ''}
+          <div class="grade g2 t3-form">${str ? `<label class="campo"><span>Altura do inversor (m)<small>do chão, na parede</small></span><input type="number" step="0.1" min="0" data-cb="inv" value="${C2.inv ? C2.inv.h : 1.5}"></label>
+            <label class="campo"><span>Strings<small>0 = automático pela tensão</small></span><input type="number" step="1" min="0" data-cb="nStrings" value="${C2.nStrings || 0}"></label>` : ''}
+            ${mic ? `<label class="campo"><span>Altura do quadro (m)</span><input type="number" step="0.1" min="0" data-cb="quadro" value="${C2.quadro ? C2.quadro.h : 1.5}"></label>` : ''}</div>
+          ${str ? `<div class="t3-linha"><span class="mini">Ligação das strings:</span><div class="t3-chips">${[['frog', 'Frog (economiza cabo)'], ['seguro', 'Em sequência + 15% (seguro)']].map(([v, t]) => `<button class="t3-chip" data-acao="modoCabo" data-v="${v}" aria-pressed="${C2.modo === v}">${t}</button>`).join('')}</div></div>` : ''}
+          <div id="t3Cabos">${relatorioCabos()}</div>`;
       } else {
         el.innerHTML = `<div class="t3-chips">${U.DIAS.map((D, i) => `<button class="t3-chip" data-acao="dia" data-i="${i}" aria-pressed="${st.di === i}">${D.nome}</button>`).join('')}</div>
           <div class="t3-linha"><button class="btn sol pequeno" data-acao="play">${st.play ? '❚❚ Pausar' : '▶ Ver o dia passar'}</button><input type="range" id="t3Hora" min="5.5" max="18.5" step="0.05" value="${st.hora}" style="flex:1"><b id="t3HoraO">${hhmm(st.hora)}</b></div>
@@ -342,7 +373,7 @@
       const b = st.sel && st.sel.t === 'b' ? bloco(st.sel.id) : null, o = st.sel && st.sel.t === 'o' ? obst(st.sel.id) : null;
       if (t.dataset.b && b) {
         const k = t.dataset.b;
-        if (k === 'usar') b.usar = t.checked; else if (k === 'nome') b.nome = t.value; else if (k === 'telha' || k === 'orientacao') b[k] = t.value;
+        if (k === 'usar') b.usar = t.checked; else if (k === 'nome') b.nome = t.value; else if (k === 'telha' || k === 'orientacao' || k === 'cumeeira') b[k] = t.value;
         else if (k === 'inclPct') { b.incl = Math.min(45, grausDe(t.value)); const d = $('[data-dica=incl]', ov); if (d) d.textContent = `${n(b.incl, 1)}° · metálica 5–10%, cerâmica 30–40%`; }
         else if (t.value !== '') b[k] = Math.max(0, Number(t.value) || 0);
         if (k === 'nome') { const c = $(`[data-acao="sel-b"][data-id="${b.id}"]`, ov); if (c) c.textContent = b.nome; desenhar(); lado(); return; }
@@ -353,9 +384,10 @@
         const L = proj.layout, k = t.dataset.l, v = Number(t.value) || 0; if (t.value === '') return;
         if (k === 'qtd') { L.qtd = Math.max(1, Math.round(v)); if (st.analisado) recompor(); else refazer(); return; } // quantidade só re-escolhe as melhores vagas
         if (k === 'mc') { L.modulo.c = v / 1000; L.modulo.estimada = false; } else if (k === 'ml') { L.modulo.l = v / 1000; L.modulo.estimada = false; } else L[k] = v;
-        L.forcarOn = []; L.forcarOff = []; sujar(); return;
+        sujar(); return; // os ajustes à mão são guardados pela posição: continuam valendo
       }
       if (t.id === 't3Rot' && proj.drone) { girarFoto(+t.value - (proj.drone.rot || 0)); const r = $('#t3RotO', ov); if (r) r.textContent = n(proj.drone.rot, 1) + '°'; return; }
+      if (t.dataset.cb) { const C2 = proj.cabos, k = t.dataset.cb, v = Math.max(0, Number(t.value) || 0); if (k === 'nStrings') C2.nStrings = Math.round(v); else if (C2[k]) C2[k].h = v; else C2[k] = null; const el = $('#t3Cabos', ov); if (el) el.innerHTML = relatorioCabos(); desenhar(); return; }
       if (t.id === 't3Alfa') { st.alfaDrone = +t.value; desenhar(); return; }
       if (t.id === 't3Hora') { st.hora = +t.value; $('#t3HoraO', ov).textContent = hhmm(st.hora); if (viewer) viewer.sol(st.di, st.hora); grafico(); return; }
       if (t.name === 't3Cor') { st.corPlacas = t.value; if (viewer) viewer.cor(t.value); return; }
@@ -378,14 +410,69 @@
       if (a === 'desfazerPonto') { st.des.pop(); desenhar(); painel(); return; }
       if (a === 'cancelarDes') { st.des = []; st.ponteiro = null; desenhar(); painel(); return; }
       if (a === 'fecharPol') { if (st.des.length >= 3) fecharDesenho(st.des); return; }
+      if (a === 'forma') { const b = bloco(st.sel.id); b.forma = el.dataset.v; if (b.forma !== '1') { b.pts = U.retanguloDe(b.pts).cantos; b.platibanda = 0; if (b.incl < 10) b.incl = grausDe(35); } sujar(); painel(); desenhar(); return; }
       if (a === 'inverter') { const b = bloco(st.sel.id); b.az = (b.az + 180) % 360; sujar(); painel(); desenhar(); return; }
       if (a === 'dup') { const b = bloco(st.sel.id), c = JSON.parse(JSON.stringify(b)); c.id = U.novoId('b'); c.nome = b.nome + ' (cópia)'; c.pts = c.pts.map((p) => [p[0] + 1, p[1] + 1]); proj.blocos.push(c); st.sel = { t: 'b', id: c.id }; sujar(); painel(); desenhar(); return; }
       if (a === 'apagarB') { proj.blocos = proj.blocos.filter((b) => b.id !== st.sel.id); st.sel = null; sujar(); painel(); desenhar(); return; }
       if (a === 'apagarO') { proj.obst = proj.obst.filter((o) => o.id !== st.sel.id); st.sel = null; sujar(); painel(); desenhar(); return; }
       if (a === 'calcular') { st.analisado = false; return analisar(); }
-      if (a === 'limparManual') { proj.layout.forcarOn = []; proj.layout.forcarOff = []; recompor(); return; }
+      if (a === 'limparManual') { proj.layout.forcarOn = []; proj.layout.forcarOff = []; recompor(); painel(); return; }
+      if (a === 'modoCabo') { proj.cabos.modo = el.dataset.v; painel(); desenhar(); return; }
+      if (a === 'arranjo') { proj.layout.arranjo = el.dataset.v; recompor(); painel(); return; }
       if (a === 'dia') { st.di = +el.dataset.i; if (viewer) viewer.sol(st.di, st.hora); painel(); return; }
       if (a === 'play') { if (st.play) parar(); else tocarDia(); painel(); }
+    }
+    /* ---------- cabos ---------- */
+    const tipoKit = (k) => (k && k.inversor && k.inversor.tipo === 'micro' ? 'micro' : 'string');
+    const temKit = (t) => kits.some((k) => tipoKit(k) === t);
+    function calcCabos() {
+      const C2 = proj.cabos, out = [], ls = kits.length ? kits : [null];
+      ls.forEach((k) => {
+        if (tipoKit(k) === 'micro') { const r = Cabos.micros(st.escolhidas, { kit: k, pos: C2.quadro }); out.push({ k, tipo: 'micro', r, conf: k ? Cabos.conferir(k, r) : null }); }
+        else { const r = Cabos.strings(st.escolhidas, { inversor: k && k.inversor, modulo: proj.layout.modulo, pos: C2.inv, nStrings: C2.nStrings, modo: C2.modo }); out.push({ k, tipo: 'string', r, conf: k && r.escolhido ? Cabos.conferir(k, r) : null }); }
+      });
+      return out;
+    }
+    function relatorioCabos() {
+      if (!st.escolhidas.length) return '<p class="mini">Primeiro escolha as placas (passo 4).</p>';
+      return calcCabos().map(({ k, tipo, r, conf }) => {
+        const nome = k ? `${esc(k.nivel)}: ${esc(k.inversor.nome || '')}` : 'Inversor (cote o kit para comparar com o cabo que vem nele)';
+        if (tipo === 'micro') return `<div class="painel" style="margin-top:8px"><b>${nome}</b><p class="mini" style="margin:4px 0">${r.micros} micro(s) com ${r.porMicro} placa(s) cada · cabo tronco ≈ <b>${n(r.troncoM, 1)} m</b> (${r.conexoes} conexões)${r.caM != null ? ` · cabo CA até o quadro ≈ <b>${n(r.caM, 1)} m</b> por condutor` : ''}</p>
+          ${r.erro ? `<p class="mini" style="color:var(--laranja)">${esc(r.erro)}</p>` : ''}${conf && !conf.semDados ? `<p class="mini">No kit: ${conf.kit.troncoUn ? conf.kit.troncoUn + ' cabo(s) tronco' : 'sem cabo tronco listado'}${conf.kit.ca ? ` · ${n(conf.kit.ca)} m de cabo CA` : ''}. ${conf.faltaTronco ? `<b style="color:var(--laranja)">Faltam ${conf.faltaTronco} cabo(s) tronco.</b>` : ''}${conf.faltaCa ? ` <b style="color:var(--laranja)">Faltam ${n(conf.faltaCa, 1)} m de cabo CA.</b>` : ''}</p>` : conf && conf.semDados ? '<p class="mini">O kit não listou os itens elétricos: confira no PDF da Belenergy.</p>' : ''}</div>`;
+        if (r.erro) return `<div class="painel" style="margin-top:8px"><b>${nome}</b><p class="mini" style="margin:4px 0">${r.porString.length} string(s): ${r.porString.join(' + ')} placas (até ${r.maxPorString} por string)</p><p class="mini" style="color:var(--laranja)">${esc(r.erro)}</p></div>`;
+        const linha = (x, i) => `<tr><td>String ${i + 1} · ${x.placas} placas</td><td class="v">${n(r.frog.lista[i].mais, 1)} + ${n(r.frog.lista[i].menos, 1)} m</td><td class="v">${n(r.seguro.lista[i].mais, 1)} + ${n(r.seguro.lista[i].menos, 1)} m</td></tr>`;
+        const falta = conf && !conf.semDados ? (conf.faltaVermelho || conf.faltaPreto ? `<b style="color:var(--laranja)">Faltam ${n(conf.faltaVermelho, 1)} m de vermelho e ${n(conf.faltaPreto, 1)} m de preto</b> no cálculo ${proj.cabos.modo === 'frog' ? 'frog' : 'seguro'}.` : `<b style="color:var(--verde,#3ddc97)">O cabo do kit basta</b> no cálculo ${proj.cabos.modo === 'frog' ? 'frog' : 'seguro'} (sobram ${n(conf.sobraVermelho, 1)} m vermelho e ${n(conf.sobraPreto, 1)} m preto).`) : '';
+        return `<div class="painel" style="margin-top:8px"><b>${nome}</b>
+          <p class="mini" style="margin:4px 0">${r.porString.length} string(s): ${r.porString.join(' + ')} placas (até ${r.maxPorString} por string) · cabo da placa ${n(r.lead, 1)} m por polo</p>
+          <table><tr><th></th><th class="v">Frog</th><th class="v">Seguro</th></tr>${r.frog.lista.map(linha).join('')}
+            <tr class="total"><td>Total vermelho + preto</td><td class="v">${n(r.frog.vermelho, 1)} + ${n(r.frog.preto, 1)} m</td><td class="v">${n(r.seguro.vermelho, 1)} + ${n(r.seguro.preto, 1)} m</td></tr></table>
+          ${conf && !conf.semDados ? `<p class="mini" style="margin-top:6px">No kit: ${n(conf.kit.vermelho + conf.kit.semCor / 2, 1)} m vermelho + ${n(conf.kit.preto + conf.kit.semCor / 2, 1)} m preto. ${falta}</p>` : conf && conf.semDados ? '<p class="mini">O kit não listou os itens elétricos: confira no PDF da Belenergy.</p>' : ''}
+          ${r.frog.lista.reduce((t, x) => t + x.extensoes, 0) > 1 ? `<p class="mini">No frog, ${n(r.frog.lista.reduce((t, x) => t + x.extensoes, 0), 1)} m de extensão entre placas (placa deitada ou fileiras separadas): já está somado.</p>` : ''}</div>`;
+      }).join('') + '<p class="mini" style="margin-top:6px">Caminho em L pela estrutura e pelas paredes, descendo até o equipamento. Frog: sem margem, as duas pontas da string saem juntas. Seguro: ligação em sequência, 15% de margem e 2 m a mais em cada ponta.</p>';
+    }
+    function desenharCabos() {
+      const C2 = proj.cabos, CS = ['#ff3d6e', '#3db4ff', '#ffd23d', '#3ddc97', '#b48cff', '#ff8a3d'];
+      calcCabos().forEach(({ tipo, r }) => {
+        if (tipo === 'string' && r.grupos) r.grupos.forEach((gr, i) => {
+          const cor = CS[i % CS.length]; g.strokeStyle = cor; g.lineWidth = 3; g.beginPath(); gr.forEach((sl, k) => { const q = m2tela(sl.c); k ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }); g.stroke();
+          if (C2.inv) { const fim = C2.modo === 'frog' ? (gr[1] || gr[0]) : gr[gr.length - 1], alvo = m2tela([C2.inv.x, C2.inv.z]); g.setLineDash([6, 4]); g.lineWidth = 2; [gr[0], fim].forEach((sl) => { const q = m2tela(sl.c); g.beginPath(); g.moveTo(q[0], q[1]); g.lineTo(alvo[0], q[1]); g.lineTo(alvo[0], alvo[1]); g.stroke(); }); g.setLineDash([]); }
+          const q0 = m2tela(gr[0].c); rotulo('S' + (i + 1), q0[0], q0[1] - 10, cor);
+        });
+        if (tipo === 'micro' && r.pontos) { g.strokeStyle = '#ffd23d'; g.lineWidth = 3; g.beginPath(); r.pontos.forEach((pt, k) => { const q = m2tela(pt.c); k ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }); g.stroke(); r.pontos.forEach((pt) => { const q = m2tela(pt.c); g.fillStyle = '#ffd23d'; g.fillRect(q[0] - 5, q[1] - 5, 10, 10); }); }
+      });
+      [['inv', 'INV', '#ff8a3d'], ['quadro', 'QD', '#5cf0ff']].forEach(([k, t, cor]) => { const P2 = C2[k]; if (!P2) return; const q = m2tela([P2.x, P2.z]); g.fillStyle = cor; g.fillRect(q[0] - 14, q[1] - 10, 28, 20); g.fillStyle = '#10141f'; g.font = 'bold 11px system-ui'; g.textAlign = 'center'; g.fillText(t, q[0], q[1] + 4); });
+    }
+    /* encaixa a foto do drone no satélite por 2 pontos: escala, norte e posição de uma vez */
+    function encaixar2() {
+      const d = proj.drone, [p1, q1, p2, q2] = st.enc; st.enc = []; st.ferr = null;
+      const toPix = (p) => { const c = Math.cos(-(d.rot || 0) * Math.PI / 180), s2 = Math.sin(-(d.rot || 0) * Math.PI / 180), dx = p[0] - (d.cx || 0), dz = p[1] - (d.cz || 0); return [(dx * c - dz * s2) / d.escala + d.w / 2, (dx * s2 + dz * c) / d.escala + d.h / 2]; };
+      const a1 = toPix(p1), a2 = toPix(p2), va = [a2[0] - a1[0], a2[1] - a1[1]], vb = [q2[0] - q1[0], q2[1] - q1[1]], la = Math.hypot(va[0], va[1]), lb = Math.hypot(vb[0], vb[1]);
+      if (la < 30 || lb < 3) { msg('Os dois cantos ficaram perto demais: escolha cantos mais longe um do outro (de preferência em lados opostos da casa).', true); return; }
+      const rot = (Math.atan2(vb[1], vb[0]) - Math.atan2(va[1], va[0])) * 180 / Math.PI, rr = rot * Math.PI / 180, c = Math.cos(rr), s2 = Math.sin(rr), esc2 = lb / la;
+      const ux = (a1[0] - d.w / 2) * esc2, uy = (a1[1] - d.h / 2) * esc2;
+      Object.assign(d, { escala: esc2, rot: Math.round(((((rot % 360) + 540) % 360) - 180) * 10) / 10, cx: q1[0] - (ux * c - uy * s2), cz: q1[1] - (ux * s2 + uy * c), escalaConferida: true, rotConferida: true, encaixada: true });
+      st.alfaDrone = 0.6; sujar(true); desenhar(); painel();
+      msg(`Foto encaixada no satélite: ${n(d.escala * 100, 2)} cm por ponto, norte corrigido (${n(d.rot, 1)}°). Com a transparência, confira se as bordas da casa batem; se não, refaça com cantos mais afastados.`);
     }
     /* girar a foto do drone (norte para cima). Sem satélite, o que já foi desenhado gira junto. */
     function girarFoto(delta) {
@@ -416,7 +503,7 @@
     }
     async function mapasSombra() {
       if (!viewer) return; if (!st.mapas) { viewer.mostrarMapas([]); return; }
-      const lista = []; const usar = proj.blocos.filter((b) => b.usar);
+      const lista = []; const usar = U.faces(proj).filter((b) => b.usar && b.incl <= 45);
       for (let i = 0; i < usar.length; i++) { msg(`Desenhando o mapa de sombra do ano no telhado ${i + 1} de ${usar.length}…`); const mp = await U.mapaSombra(proj, usar[i], { kd: proj.kd }); mp.bloco = usar[i]; lista.push(mp); }
       viewer.mostrarMapas(lista); msg('Mapa de sombra: <b style="color:#22a35a">verde</b> pega sol o ano todo, <b style="color:#ffb000">amarelo</b> perde até 20%, <b style="color:#e5483b">vermelho</b> é sombra forte.');
     }
@@ -444,10 +531,11 @@
         msg('Baixando a foto de satélite…');
         const f = await U.fotoSatelite(proj, (z, x, y) => B.tile(z, x, y), 60);
         proj.fundo = { img: f.cheia, mini: f.mini, ladoM: 60 }; st.imgsNovas.fundo = true; imgFundo = await carregarImg(f.cheia);
+        proj.pistas = U.pistasGoogle(proj, r);
         if (!proj.blocos.length) proj.blocos = U.blocosDoGoogle(proj, r);
         sujar(true); centralizar(); painel();
         const dt = r.data ? `${String(r.data.month).padStart(2, '0')}/${r.data.year}` : '';
-        msg(`${proj.blocos.length ? `O Google achou ${proj.blocos.length} parte(s) do telhado (foto de ${dt}, precisão básica).` : 'O Google não tem o desenho deste telhado: desenhe no passo 2.'} ${r.precisao && r.precisao !== 'ROOFTOP' ? '<b>O endereço foi achado por aproximação: confira se é esta casa.</b> ' : ''}Se tiver a foto do drone, envie para ganhar detalhe.`);
+        msg(`${proj.blocos.length ? `O Google achou ${proj.pistas.length} água(s) (foto de ${dt}, precisão básica) e eu montei ${proj.blocos.length > 1 ? proj.blocos.length + ' contornos' : 'o contorno'} com ${proj.blocos.map((b) => (b.forma || '1') + (b.forma === '1' ? ' água' : ' águas')).join(', ')}. <b>Confira os cantos no passo 2</b>: as setas azuis são as águas que o Google viu.` : 'O Google não tem o desenho deste telhado: desenhe no passo 2.'} ${r.precisao && r.precisao !== 'ROOFTOP' ? '<b>O endereço foi achado por aproximação: confira se é esta casa.</b> ' : ''}Se tiver a foto do drone, envie para ganhar detalhe.`);
       } catch (err) { msg('Não consegui buscar: ' + esc(err.message), true); }
     }
 
@@ -481,7 +569,9 @@
         if (st.imgsNovas[k] && B.guardarImagem && proj[k].img) { try { fim[k].id = await B.guardarImagem('P3D-' + (orc.id || 'rascunho'), k + '.jpg', proj[k].img); } catch { /* fica só a leve */ } }
         delete fim[k].img;
       }
+      try { fim.resultado_cabos = calcCabos().map(({ k, tipo, r, conf }) => ({ nivel: k ? k.nivel : null, tipo, porString: r.porString, modo: proj.cabos.modo, frog: r.frog ? { vermelho: r.frog.vermelho, preto: r.frog.preto } : null, seguro: r.seguro ? { vermelho: r.seguro.vermelho, preto: r.seguro.preto } : null, troncoM: r.troncoM, conexoes: r.conexoes, caM: r.caM, erro: r.erro || null, conf: conf ? { faltaVermelho: conf.faltaVermelho, faltaPreto: conf.faltaPreto, faltaTronco: conf.faltaTronco, faltaCa: conf.faltaCa, semDados: !!conf.semDados, kitVermelho: conf.kit ? conf.kit.vermelho + conf.kit.semCor / 2 : null, kitPreto: conf.kit ? conf.kit.preto + conf.kit.semCor / 2 : null } : null })); } catch { /* cabos são extra */ }
       fim.resultado = { ...res, escolhidas: st.escolhidas.map((s) => s.k), placasPos: st.escolhidas.map((s) => ({ k: s.k, tsrf: s.analise ? Math.round(s.analise.tsrf * 1000) / 1000 : null })) };
+      if (fim.resultado_cabos) { fim.resultado.cabos = fim.resultado_cabos; delete fim.resultado_cabos; }
       fim.perda = res.perda; fim.fotos = fotos; fim.salvoEm = new Date().toISOString();
       delete fim.tipoTelhado;
       aoSalvar(fim); fechar();
