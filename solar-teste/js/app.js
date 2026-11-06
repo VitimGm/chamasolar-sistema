@@ -1045,7 +1045,12 @@
     app.innerHTML = `${cabCelular()}<div class="cab"><div><h1>Parâmetros</h1><p class="sutil">${B.nuvem ? 'Valores usados em todos os orçamentos. Cada vez que salvar, a versão anterior fica guardada.' : 'Valores de teste. Troque pelos reais quando tiver custo fixo, alíquota e preço do terceiro.'}</p></div></div>
       <div class="lado"><div>${CAMPOS.map(([t, cs]) => `<div class="painel"><span class="rotulo">${t}</span><div class="grade g2" style="margin-top:12px">${cs.map(([k, r, m]) => `<label class="campo"><span>${r}</span><input type="number" step="any" data-par="${k}" data-m="${m}" value="${+(p[k] * m).toFixed(4)}"></label>`).join('')}</div></div>`).join('')}</div>
       <div><div class="painel"><span class="rotulo">Robô do escritório (fila do Jarvis)</span><p class="mini" style="margin:6px 0">O robô no computador do escritório pega na fila os pedidos do Jarvis, cota na Belenergy e devolve o preço real. Copie a chave para o arquivo <b>robo-config.json</b> da pasta do robô (uma vez).</p>
-        <div class="acoes-r"><button class="btn vidro pequeno" id="rbChave">Mostrar a chave do robô</button><span class="mini" id="rbFila"></span></div><div id="rbOut"></div></div>
+        <div class="acoes-r"><button class="btn vidro pequeno" id="rbChave">Mostrar a chave do robô</button><span class="mini" id="rbFila"></span></div><div id="rbOut"></div>
+        <div style="border-top:1px dashed var(--linha);margin-top:12px;padding-top:10px"><label class="entre mini"><span><b>Pré-propostas todo dia de manhã</b> (as mais vendidas, já cotadas na Belenergy)</span><span><input type="checkbox" id="ppAtivo" ${(p.prePropostas || {}).ativo ? 'checked' : ''}> ligado · às <input type="time" id="ppHora" value="${esc((p.prePropostas || {}).hora || '07:00')}" style="width:96px;padding:4px 6px"></span></label>
+          <p class="mini" style="margin:6px 0">Se o computador estiver desligado nesse horário, o robô faz assim que ligar. Quando o Jarvis criar uma proposta de tamanho parecido (até 10%), o preço da pré-proposta entra na hora e o robô ainda cota o tamanho exato.</p>
+          <div id="ppLista"></div>
+          <div class="acoes-r" style="margin-top:6px"><button class="btn vidro pequeno" id="ppSugerir">Sugerir pelas mais vendidas</button><button class="btn vidro pequeno" id="ppMais">+ tamanho</button><button class="btn sol pequeno" id="ppSalvar">Salvar pré-propostas</button></div>
+          <div id="ppHoje" class="mini" style="margin-top:8px"></div></div></div>
       <div class="painel"><span class="rotulo">Margem por tamanho</span><table style="margin-top:8px">${p.margens.map((x, i) => `<tr><td>até ${x.ate >= 1e9 ? '∞' : x.ate} kWp</td><td class="v"><input type="number" step="0.5" data-mg="${i}" value="${+(x.margem * 100).toFixed(2)}" style="width:90px;padding:6px 8px;text-align:right"> %</td></tr>`).join('')}</table></div>
         <div class="painel"><span class="rotulo">Comparação com a Groner</span><p class="sutil" style="margin:6px 0 8px">Como a Groner calcula: (kit + engenharia + mão de obra + ART + deslocamento + outros) ÷ (1 − (percentual + Fator X + comissão)). Fator X: 0% até R$ 100 mil, 5% até R$ 500 mil, 6% acima.</p>
           <div class="grade g2">${[['percentual', 'Percentual (imposto + lucro + comissão) %', 100], ['maoDeObraPorPlaca', 'Mão de obra por placa (R$)', 1], ['art', 'ART (R$)', 1], ['custoKm', 'Deslocamento (R$/km)', 1], ['eng0', 'Engenharia até 10 kWp (R$)', 1], ['eng1', 'Engenharia até 30 kWp (R$)', 1], ['eng2', 'Engenharia acima de 30 kWp (R$)', 1], ['kmIdaVolta', 'Contar o km ida e volta (1 = sim)', 1]].map(([k, r, m]) => { const G = { percentual: 0.365, maoDeObraPorPlaca: 100, art: 70, custoKm: 1, kmIdaVolta: 0, eng: [300, 500, 700], ...(p.groner || {}) }; const v = /^eng\d$/.test(k) ? G.eng[+k.slice(3)] : G[k]; return `<label class="campo"><span>${r}</span><input type="number" step="any" data-gr="${k}" data-m="${m}" value="${+(v * m).toFixed(3)}"></label>`; }).join('')}</div></div>
@@ -1074,6 +1079,19 @@
     };
     if ($('#rbChave')) { $('#rbChave').onclick = async () => { try { const k = await B.roboChave(); $('#rbOut').innerHTML = `<pre class="mini" style="white-space:pre-wrap;user-select:all;background:var(--vidro);padding:8px;border-radius:8px;margin-top:6px">{ "chave": "${esc(k || '')}" }</pre><p class="mini">Cole isso num arquivo robo-config.json na pasta do robô. Não mande por mensagem.</p>`; } catch (e) { toast(e.message); } };
         B.filaRoboLer().then((f) => { const pend = (f || []).filter((x) => x.status === 'pendente' || x.status === 'rodando').length; $('#rbFila').textContent = pend ? `${pend} pedido(s) na fila` : 'fila vazia'; }).catch(() => {}); }
+    if ($('#ppLista')) {
+      let itens = ((p.prePropostas || {}).itens || []).map((x) => ({ kwp: x.kwp, telhado: x.telhado || 'ceramico', ligacao: x.ligacao || 'bi' }));
+      const TL = { ceramico: 'Cerâmico', fibrocimento: 'Fibrocimento', metalico: 'Metálico', laje: 'Laje', solo: 'Solo' }, LG = { mono: 'Mono', bi: 'Bi', tri: 'Tri' };
+      const sel = (o, v, k, i) => `<select data-pp="${k}" data-i="${i}" style="padding:4px 6px">${Object.entries(o).map(([a, b]) => `<option value="${a}" ${a === v ? 'selected' : ''}>${b}</option>`).join('')}</select>`;
+      const desenhar = () => { $('#ppLista').innerHTML = itens.length ? itens.map((x, i) => `<div class="entre mini" style="padding:4px 0;gap:6px"><span><input type="number" step="0.1" data-pp="kwp" data-i="${i}" value="${x.kwp}" style="width:76px;padding:4px 6px"> kWp</span>${sel(TL, x.telhado, 'telhado', i)}${sel(LG, x.ligacao, 'ligacao', i)}<button class="link" data-ppx="${i}">tirar</button></div>`).join('') : '<p class="mini">Nenhum tamanho ainda. Toque em "Sugerir pelas mais vendidas".</p>';
+        app.querySelectorAll('[data-pp]').forEach((el) => { el.onchange = () => { const it = itens[+el.dataset.i]; it[el.dataset.pp] = el.dataset.pp === 'kwp' ? +el.value : el.value; }; });
+        app.querySelectorAll('[data-ppx]').forEach((el) => { el.onclick = () => { itens.splice(+el.dataset.ppx, 1); desenhar(); }; }); };
+      desenhar();
+      $('#ppSugerir').onclick = () => { itens = maisVendidas(); desenhar(); toast('Sugestão pelas vendas. Revise e salve.'); };
+      $('#ppMais').onclick = () => { itens.push({ kwp: 5, telhado: 'ceramico', ligacao: 'bi' }); desenhar(); };
+      $('#ppSalvar').onclick = () => { const cfg = { ativo: $('#ppAtivo').checked, hora: $('#ppHora').value || '07:00', itens: itens.filter((x) => x.kwp > 0).map((x) => ({ ...x, rotulo: `${x.kwp} kWp ${TL[x.telhado]} ${LG[x.ligacao]}`, pedido: pedidoPre(x) })) }; B.salvarParametros({ prePropostas: cfg }); toast(cfg.ativo ? `Pré-propostas salvas: ${cfg.itens.length} tamanho(s), todo dia às ${cfg.hora}` : 'Pré-propostas salvas (desligadas)'); };
+      B.filaRoboLer().then((f) => { const pre = prePropostasProntas(f); $('#ppHoje').innerHTML = pre.length ? '<b>Últimas pré-propostas:</b> ' + pre.map((j) => `${esc(j.pedido.rotulo || j.pedido.base.kwp + ' kWp')}: ${(j.resultado.kits || []).map((k) => k.nivel + ' ' + brl(k.valorKit)).join(' · ')}`).join(' | ') : ''; }).catch(() => {});
+    }
     if ($('#crSalvar')) {
       const status = () => B.credenciaisStatus().then((l) => { $('#crStatus').textContent = l.length ? 'Guardados: ' + l.map((x) => x.marca + ' (' + new Date(x.atualizado_em).toLocaleDateString('pt-BR') + ')').join(', ') : 'Nenhum acesso guardado ainda.'; }).catch(() => { $('#crStatus').textContent = ''; });
       status();
@@ -1538,10 +1556,39 @@
   }
   /* pedido para o robô do escritório (mesmo do passo 4): potência pela estimativa, uma linha por opção */
   function pedidoRobo(o) {
-    const est = C.opcoes(o, P())[0], kwp = est ? +est.dim.kwpNecessario.toFixed(2) : 0, quais = o.cotarQuais || 'ambos';
+    let est = null; try { est = C.opcoes(o, P())[0]; } catch { /* sem consumo */ } const kwp = est ? +est.dim.kwpNecessario.toFixed(2) : 0, quais = o.cotarQuais || 'ambos';
     const base = { salvar: true, kwp, ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[o.ligacao] || 'BIFÁSICO', cidade: o.cidade || 'Ribeirão Preto', frete: P().freteRobo || 'Cliente Retira',
       estruturaTipo: { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' }[o.telhado], fixacao: FIXACAO[o.telhado] ? o.fixacao || FIXACAO[o.telhado][0][0] : null };
     return { base, opcoes: NIVEIS_KIT.map((nivel, i) => ({ nivel, tipoInversor: TIPO_POR_OPCAO[i], nome: `${o.id} ${o.nome} ${nivel}` })).filter((x, i) => quais === 'ambos' || (quais === 'inversor' ? i === 0 : i === 1)) };
+  }
+  /* pré-proposta: o mesmo pedido, com o tamanho fixo */
+  function pedidoPre(x) {
+    const o = { id: 'PRE', nome: `${x.kwp} kWp`, telhado: x.telhado, ligacao: x.ligacao, cidade: 'Ribeirão Preto', cotarQuais: 'ambos' };
+    const ped = pedidoRobo(Object.assign(o, { _kwp: x.kwp })); ped.base.kwp = +x.kwp; ped.opcoes.forEach((op) => { op.nome = `PRE ${x.kwp} kWp ${op.nivel}`; }); return ped;
+  }
+  /* tamanhos mais vendidos (orçamentos ganhos), arredondados de 0,5 em 0,5 kWp */
+  function maisVendidas() {
+    const cont = {};
+    B.orcamentos().filter((o) => o.status === 'ganho').forEach((o) => { let kwp = 0; try { kwp = C.opcoes(o, P())[0].dim.kwpNecessario; } catch { /* sem consumo */ } if (!(kwp > 0)) return;
+      const k = `${Math.round(kwp * 2) / 2}|${o.telhado || 'ceramico'}|${o.ligacao || 'bi'}`; cont[k] = (cont[k] || 0) + 1; });
+    const top = Object.entries(cont).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k]) => { const [kwp, telhado, ligacao] = k.split('|'); return { kwp: +kwp, telhado, ligacao }; });
+    return top.length >= 3 ? top.sort((a, b) => a.kwp - b.kwp) : [3, 4.5, 6, 8, 10].map((kwp) => ({ kwp, telhado: 'ceramico', ligacao: 'bi' }));
+  }
+  /* a pré-proposta mais recente de cada tamanho (até 3 dias) */
+  function prePropostasProntas(fila) {
+    const vistos = new Set();
+    return (fila || []).filter((j) => j.tipo === 'pre' && j.status === 'feito' && j.resultado && (j.resultado.kits || []).length && Date.now() - new Date(j.atualizado || j.criado) < 3 * 864e5)
+      .sort((a, b) => new Date(b.atualizado || b.criado) - new Date(a.atualizado || a.criado)).filter((j) => { const k = j.pedido.rotulo || j.pedido.base.kwp; if (vistos.has(k)) return false; vistos.add(k); return true; });
+  }
+  /* proposta do Jarvis: se houver pré-proposta parecida, o preço entra já (o robô ainda cota o exato) */
+  async function usarPre(o) {
+    let fila = []; try { fila = (await B.filaRoboLer()) || []; } catch { return null; }
+    const alvo = pedidoRobo(o).base; if (!(alvo.kwp > 0)) return null;
+    const cand = prePropostasProntas(fila).map((j) => ({ j, d: Math.abs(j.pedido.base.kwp - alvo.kwp) / alvo.kwp + (j.pedido.base.estruturaTipo === alvo.estruturaTipo ? 0 : 0.05) + (j.pedido.base.ligacao === alvo.ligacao ? 0 : 0.03) })).filter((x) => x.d <= 0.1).sort((a, b) => a.d - b.d)[0];
+    if (!cand) return null;
+    o.kitsFechados = o.kitsFechados || [null, null];
+    (cand.j.resultado.kits || []).forEach((k) => { const i = NIVEIS_KIT.indexOf(k.nivel); if (i >= 0 && k.valorKit > 0 && !(o.kitsFechados[i] && !o.kitsFechados[i].pre)) o.kitsFechados[i] = { ...k, pre: true, preKwp: cand.j.pedido.base.kwp }; });
+    B.salvar(o); return cand.j.pedido.base.kwp;
   }
   async function mandarParaRobo(o) {
     try { await B.filaRobo({ orc_codigo: o.id, tipo: 'cotar', pedido: pedidoRobo(o) }); o.aguardandoRobo = new Date().toISOString(); B.salvar(o); return true; }
@@ -1575,7 +1622,7 @@
       const o = { ...novoOrc(), nome: r.nome || 'Cliente (Jarvis)', cidade: r.cidade || '', distanciaKm: cid ? cid.km : 0, telhado: r.telhado || 'ceramico', consumos: Array(12).fill(r.kwh || ''), origem: 'Jarvis', cotarQuais: r.opcoes || 'ambos', modo: 'media', criadoPorVoz: r.texto };
       if (r.grupoA && window.GrupoA) { o.grupo = 'A'; o.segmento = 'grandes'; o.ligacao = 'tri'; o.grupoA = GrupoA.novo(); o.grupoA.consumoFP = Array(12).fill(r.kwh || ''); }
       B.salvar(o); novoLembrete({ texto: (r.lembrete || 'Completar o orçamento') + ` · ${o.nome}`, ref: o.id, quando: new Date().toISOString(), topo: true });
-      if (r.kwh) mandarParaRobo(o).then((ok) => { if (ok) toast(`Orçamento ${o.id} criado. O robô do escritório vai cotar na Belenergy e o preço real entra sozinho.`); });
+      if (r.kwh) usarPre(o).then((pk) => mandarParaRobo(o).then((ok) => { if (ok) toast(pk ? `Orçamento ${o.id} criado com o preço da pré-proposta de ${pk} kWp. O robô vai cotar o tamanho exato.` : `Orçamento ${o.id} criado. O robô do escritório vai cotar na Belenergy e o preço real entra sozinho.`); }));
       else toast(`Orçamento ${o.id} criado para ${o.nome}. Lembrete no topo do Meu dia.`);
       return '#dia';
     }

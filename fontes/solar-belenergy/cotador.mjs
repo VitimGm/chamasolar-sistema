@@ -32,7 +32,7 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
-const VERSAO = '2026-11-05e'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+const VERSAO = '2026-11-05f'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
 /* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
    Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
 const voando = new Map(); let ultimoFim = Date.now();
@@ -477,8 +477,9 @@ async function orquestrador() {
 async function filaVez(chave) {
   if (filaOcupada) return; filaOcupada = true;
   try {
+    try { const n = await filaRpc('sol_robo_pre_agendar', { p_segredo: chave }); if (n) console.log(`Fila: ${n} pré-proposta(s) do dia agendada(s)`); } catch (e) { /* sem pré-propostas */ }
     const j = await filaRpc('sol_robo_proximo', { p_segredo: chave }); if (!j) return;
-    console.log(`Fila: pedido ${j.orc_codigo || j.id} (${(j.pedido.opcoes || []).map((x) => x.nivel).join(' + ')})`);
+    console.log(`Fila: ${j.tipo === 'pre' ? 'pré-proposta ' + (j.pedido.rotulo || '') : 'pedido ' + (j.orc_codigo || j.id)} (${(j.pedido.opcoes || []).map((x) => x.nivel).join(' + ')})`);
     const C = await orquestrador(), kits = [], erros = [];
     for (const op of j.pedido.opcoes || []) {
       try { const s = await C.cotarAuto('conectado', { ...j.pedido.base, tipoInversor: op.tipoInversor, nome: op.nome }, (et) => console.log(`  ${op.nivel}: ${et}`)); const k = C.paraKit(s, op.nivel); if (k.valorKit > 0) kits.push(k); else erros.push(op.nivel + ': valor R$ 0'); }
