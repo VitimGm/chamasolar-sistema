@@ -44,4 +44,5 @@ A Belenergy já integra o montador com softwares de proposta (ex.: SolarMarket).
 1. No sistema: Parâmetros → "Robô do escritório" → "Mostrar a chave do robô".
 2. Nesta pasta, crie o arquivo `robo-config.json` e cole o que apareceu, por exemplo `{ "chave": "..." }`.
 3. Abra o INICIAR-COTADOR.bat. Deve aparecer "Fila do Jarvis ligada".
+Pré-propostas: em Parâmetros, ligue "Pré-propostas todo dia de manhã", toque em "Sugerir pelas mais vendidas" e salve. O robô cota esses tamanhos no horário escolhido (ou assim que o computador ligar).
 O robô confere a fila a cada minuto, cota e salva na Belenergy (com Pix e a WEB). O preço volta sozinho para o orçamento, e você recebe um lembrete no Meu dia. Ele nunca clica em "Comprar Agora". Não mande a chave por mensagem.
