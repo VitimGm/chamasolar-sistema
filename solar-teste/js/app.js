@@ -654,6 +654,11 @@
   // nomes iguais aos do "Detalhes da Estrutura" da Belenergy
   const FIXACAO = { fibrocimento: [['madeira200', 'Madeira · haste 200 mm'], ['madeira250', 'Madeira · haste 250 mm'], ['madeira300', 'Madeira · haste 300 mm'], ['madeiraSext', 'Madeira · sextavado interno'], ['metal', 'Estrutura metálica']],
     metalico: [['minitrilho130', 'Mini trilho 130 mm'], ['minitrilho260', 'Mini trilho 260 mm'], ['minitrilho550', 'Mini trilho 550 mm'], ['minitrilhoAlto', 'Mini trilho alto'], ['suporteL', 'Suporte pé em L c/ perfil'], ['zipada', 'Mini trilho · telha zipada']] };
+  /* todas as estruturas que a Belenergy cota (para as pré-propostas) */
+  const ESTRUTURAS = [{ k: 'ceramico', telhado: 'ceramico', fixacao: null, r: 'Cerâmico' }]
+    .concat(FIXACAO.fibrocimento.map(([f, t]) => ({ k: 'fibrocimento:' + f, telhado: 'fibrocimento', fixacao: f, r: 'Fibrocimento · ' + t })))
+    .concat(FIXACAO.metalico.map(([f, t]) => ({ k: 'metalico:' + f, telhado: 'metalico', fixacao: f, r: 'Metálico · ' + t })))
+    .concat([{ k: 'laje', telhado: 'laje', fixacao: null, r: 'Laje' }, { k: 'solo', telhado: 'solo', fixacao: null, r: 'Solo' }]);
   function passo3(el) {
     const p = P(), op = C.opcoes({ ...orc, kitsFechados: null }, p)[1], d = op.dim;
     el.innerHTML = `<div class="kpis">
@@ -1046,7 +1051,7 @@
       <div class="lado"><div>${CAMPOS.map(([t, cs]) => `<div class="painel"><span class="rotulo">${t}</span><div class="grade g2" style="margin-top:12px">${cs.map(([k, r, m]) => `<label class="campo"><span>${r}</span><input type="number" step="any" data-par="${k}" data-m="${m}" value="${+(p[k] * m).toFixed(4)}"></label>`).join('')}</div></div>`).join('')}</div>
       <div><div class="painel"><span class="rotulo">Robô do escritório (fila do Jarvis)</span><p class="mini" style="margin:6px 0">O robô no computador do escritório pega na fila os pedidos do Jarvis, cota na Belenergy e devolve o preço real. Copie a chave para o arquivo <b>robo-config.json</b> da pasta do robô (uma vez).</p>
         <div class="acoes-r"><button class="btn vidro pequeno" id="rbChave">Mostrar a chave do robô</button><span class="mini" id="rbFila"></span></div><div id="rbOut"></div>
-        <div style="border-top:1px dashed var(--linha);margin-top:12px;padding-top:10px"><label class="entre mini"><span><b>Pré-propostas todo dia de manhã</b> (as mais vendidas, já cotadas na Belenergy)</span><span><input type="checkbox" id="ppAtivo" ${(p.prePropostas || {}).ativo ? 'checked' : ''}> ligado · às <input type="time" id="ppHora" value="${esc((p.prePropostas || {}).hora || '07:00')}" style="width:96px;padding:4px 6px"></span></label>
+        <div style="border-top:1px dashed var(--linha);margin-top:12px;padding-top:10px"><label class="entre mini"><span><b>Pré-propostas todo dia de manhã</b> (as mais vendidas, já cotadas na Belenergy)</span><span><input type="checkbox" id="ppAtivo" ${(p.prePropostas || {}).ativo ? 'checked' : ''}> ligado · às <input type="time" id="ppHora" value="${esc((p.prePropostas || {}).hora || '05:00')}" style="width:96px;padding:4px 6px"></span></label>
           <p class="mini" style="margin:6px 0">Se o computador estiver desligado nesse horário, o robô faz assim que ligar. Quando o Jarvis criar uma proposta de tamanho parecido (até 10%), o preço da pré-proposta entra na hora e o robô ainda cota o tamanho exato.</p>
           <div id="ppLista"></div>
           <div class="acoes-r" style="margin-top:6px"><button class="btn vidro pequeno" id="ppSugerir">Sugerir pelas mais vendidas</button><button class="btn vidro pequeno" id="ppMais">+ tamanho</button><button class="btn sol pequeno" id="ppSalvar">Salvar pré-propostas</button></div>
@@ -1080,17 +1085,30 @@
     if ($('#rbChave')) { $('#rbChave').onclick = async () => { try { const k = await B.roboChave(); $('#rbOut').innerHTML = `<pre class="mini" style="white-space:pre-wrap;user-select:all;background:var(--vidro);padding:8px;border-radius:8px;margin-top:6px">{ "chave": "${esc(k || '')}" }</pre><p class="mini">Cole isso num arquivo robo-config.json na pasta do robô. Não mande por mensagem.</p>`; } catch (e) { toast(e.message); } };
         B.filaRoboLer().then((f) => { const pend = (f || []).filter((x) => x.status === 'pendente' || x.status === 'rodando').length; $('#rbFila').textContent = pend ? `${pend} pedido(s) na fila` : 'fila vazia'; }).catch(() => {}); }
     if ($('#ppLista')) {
-      let itens = ((p.prePropostas || {}).itens || []).map((x) => ({ kwp: x.kwp, telhado: x.telhado || 'ceramico', ligacao: x.ligacao || 'bi' }));
-      const TL = { ceramico: 'Cerâmico', fibrocimento: 'Fibrocimento', metalico: 'Metálico', laje: 'Laje', solo: 'Solo' }, LG = { mono: 'Mono', bi: 'Bi', tri: 'Tri' };
-      const sel = (o, v, k, i) => `<select data-pp="${k}" data-i="${i}" style="padding:4px 6px">${Object.entries(o).map(([a, b]) => `<option value="${a}" ${a === v ? 'selected' : ''}>${b}</option>`).join('')}</select>`;
-      const desenhar = () => { $('#ppLista').innerHTML = itens.length ? itens.map((x, i) => `<div class="entre mini" style="padding:4px 0;gap:6px"><span><input type="number" step="0.1" data-pp="kwp" data-i="${i}" value="${x.kwp}" style="width:76px;padding:4px 6px"> kWp</span>${sel(TL, x.telhado, 'telhado', i)}${sel(LG, x.ligacao, 'ligacao', i)}<button class="link" data-ppx="${i}">tirar</button></div>`).join('') : '<p class="mini">Nenhum tamanho ainda. Toque em "Sugerir pelas mais vendidas".</p>';
-        app.querySelectorAll('[data-pp]').forEach((el) => { el.onchange = () => { const it = itens[+el.dataset.i]; it[el.dataset.pp] = el.dataset.pp === 'kwp' ? +el.value : el.value; }; });
-        app.querySelectorAll('[data-ppx]').forEach((el) => { el.onclick = () => { itens.splice(+el.dataset.ppx, 1); desenhar(); }; }); };
+      const cfg0 = p.prePropostas || {}, LG = { mono: 'Mono', bi: 'Bi', tri: 'Tri' };
+      let tam = cfg0.tamanhos || [...new Map((cfg0.itens || []).map((x) => [x.kwp + '|' + (x.ligacao || 'bi'), { kwp: x.kwp, ligacao: x.ligacao || 'bi' }])).values()];
+      let est = cfg0.estruturas || ESTRUTURAS.map((e) => e.k);
+      const desenhar = () => {
+        $('#ppLista').innerHTML = `<p class="mini" style="margin:4px 0"><b>Tamanhos</b></p>${tam.length ? tam.map((x, i) => `<div class="entre mini" style="padding:3px 0;gap:6px"><span><input type="number" step="0.1" data-pp="kwp" data-i="${i}" value="${x.kwp}" style="width:76px;padding:4px 6px"> kWp</span><select data-pp="ligacao" data-i="${i}" style="padding:4px 6px;width:auto">${Object.entries(LG).map(([a, b]) => `<option value="${a}" ${a === x.ligacao ? 'selected' : ''}>${b}</option>`).join('')}</select><button class="link" data-ppx="${i}">tirar</button></div>`).join('') : '<p class="mini">Nenhum tamanho ainda. Toque em "Sugerir pelas mais vendidas".</p>'}
+          <p class="mini" style="margin:10px 0 4px"><b>Estruturas</b> (cada tamanho é cotado em todas as marcadas, inversor e micro) <button class="link" id="ppTodas">${est.length === ESTRUTURAS.length ? 'desmarcar todas' : 'marcar todas'}</button></p>
+          <div class="chips">${ESTRUTURAS.map((e) => `<button class="chip ${est.includes(e.k) ? 'sel' : ''}" data-ppe="${e.k}">${e.r}</button>`).join('')}</div>
+          <p class="mini" id="ppConta" style="margin-top:6px"></p>`;
+        const conta = () => { const n = tam.filter((x) => x.kwp > 0).length * est.length; $('#ppConta').innerHTML = `<b>${n} cotação(ões) por manhã</b> (${n * 2} kits). Leva por volta de ${Math.max(1, Math.round(n * 2.5 / 60 * 10) / 10).toLocaleString("pt-BR")} h no robô: escolha um horário cedo e deixe o computador ligado.`; };
+        conta();
+        app.querySelectorAll('[data-pp]').forEach((el) => { el.onchange = () => { const it = tam[+el.dataset.i]; it[el.dataset.pp] = el.dataset.pp === 'kwp' ? +el.value : el.value; conta(); }; });
+        app.querySelectorAll('[data-ppx]').forEach((el) => { el.onclick = () => { tam.splice(+el.dataset.ppx, 1); desenhar(); }; });
+        app.querySelectorAll('[data-ppe]').forEach((el) => { el.onclick = () => { const k = el.dataset.ppe; est = est.includes(k) ? est.filter((x) => x !== k) : [...est, k]; desenhar(); }; });
+        $('#ppTodas').onclick = () => { est = est.length === ESTRUTURAS.length ? [] : ESTRUTURAS.map((e) => e.k); desenhar(); };
+      };
       desenhar();
-      $('#ppSugerir').onclick = () => { itens = maisVendidas(); desenhar(); toast('Sugestão pelas vendas. Revise e salve.'); };
-      $('#ppMais').onclick = () => { itens.push({ kwp: 5, telhado: 'ceramico', ligacao: 'bi' }); desenhar(); };
-      $('#ppSalvar').onclick = () => { const cfg = { ativo: $('#ppAtivo').checked, hora: $('#ppHora').value || '07:00', itens: itens.filter((x) => x.kwp > 0).map((x) => ({ ...x, rotulo: `${x.kwp} kWp ${TL[x.telhado]} ${LG[x.ligacao]}`, pedido: pedidoPre(x) })) }; B.salvarParametros({ prePropostas: cfg }); toast(cfg.ativo ? `Pré-propostas salvas: ${cfg.itens.length} tamanho(s), todo dia às ${cfg.hora}` : 'Pré-propostas salvas (desligadas)'); };
-      B.filaRoboLer().then((f) => { const pre = prePropostasProntas(f); $('#ppHoje').innerHTML = pre.length ? '<b>Últimas pré-propostas:</b> ' + pre.map((j) => `${esc(j.pedido.rotulo || j.pedido.base.kwp + ' kWp')}: ${(j.resultado.kits || []).map((k) => k.nivel + ' ' + brl(k.valorKit)).join(' · ')}`).join(' | ') : ''; }).catch(() => {});
+      $('#ppSugerir').onclick = () => { tam = maisVendidas(); desenhar(); toast('Tamanhos sugeridos pelas vendas. Revise e salve.'); };
+      $('#ppMais').onclick = () => { tam.push({ kwp: 5, ligacao: 'bi' }); desenhar(); };
+      $('#ppSalvar').onclick = () => {
+        const itens = []; tam.filter((x) => x.kwp > 0).forEach((x) => ESTRUTURAS.filter((e) => est.includes(e.k)).forEach((e) => itens.push({ kwp: x.kwp, ligacao: x.ligacao, telhado: e.telhado, fixacao: e.fixacao, rotulo: `${x.kwp} kWp ${LG[x.ligacao]} · ${e.r}`, pedido: pedidoPre({ ...x, telhado: e.telhado, fixacao: e.fixacao }) })));
+        const cfg = { ativo: $('#ppAtivo').checked, hora: $('#ppHora').value || '05:00', tamanhos: tam, estruturas: est, itens };
+        B.salvarParametros({ prePropostas: cfg }); toast(cfg.ativo ? `Pré-propostas salvas: ${itens.length} cotações, todo dia às ${cfg.hora}` : 'Pré-propostas salvas (desligadas)');
+      };
+      B.filaRoboLer().then((f) => { const pre = prePropostasProntas(f); $('#ppHoje').innerHTML = pre.length ? `<details><summary><b>Últimas pré-propostas: ${pre.length} pronta(s)</b></summary>${pre.map((j) => `<div class="entre" style="padding:2px 0"><span>${esc(j.pedido.rotulo || j.pedido.base.kwp + ' kWp')}</span><span>${(j.resultado.kits || []).map((k) => k.nivel + ' ' + brl(k.valorKit)).join(' · ')}</span></div>`).join('')}</details>` : ''; }).catch(() => {});
     }
     if ($('#crSalvar')) {
       const status = () => B.credenciaisStatus().then((l) => { $('#crStatus').textContent = l.length ? 'Guardados: ' + l.map((x) => x.marca + ' (' + new Date(x.atualizado_em).toLocaleDateString('pt-BR') + ')').join(', ') : 'Nenhum acesso guardado ainda.'; }).catch(() => { $('#crStatus').textContent = ''; });
@@ -1563,16 +1581,16 @@
   }
   /* pré-proposta: o mesmo pedido, com o tamanho fixo */
   function pedidoPre(x) {
-    const o = { id: 'PRE', nome: `${x.kwp} kWp`, telhado: x.telhado, ligacao: x.ligacao, cidade: 'Ribeirão Preto', cotarQuais: 'ambos' };
-    const ped = pedidoRobo(Object.assign(o, { _kwp: x.kwp })); ped.base.kwp = +x.kwp; ped.opcoes.forEach((op) => { op.nome = `PRE ${x.kwp} kWp ${op.nivel}`; }); return ped;
+    const o = { id: 'PRE', nome: `${x.kwp} kWp`, telhado: x.telhado, fixacao: x.fixacao || undefined, ligacao: x.ligacao, cidade: 'Ribeirão Preto', cotarQuais: 'ambos' };
+    const ped = pedidoRobo(Object.assign(o, { _kwp: x.kwp })); ped.base.kwp = +x.kwp; ped.opcoes.forEach((op) => { op.nome = `PRE ${x.kwp} kWp ${x.telhado}${x.fixacao ? ' ' + x.fixacao : ''} ${op.nivel}`; }); return ped;
   }
   /* tamanhos mais vendidos (orçamentos ganhos), arredondados de 0,5 em 0,5 kWp */
   function maisVendidas() {
     const cont = {};
     B.orcamentos().filter((o) => o.status === 'ganho').forEach((o) => { let kwp = 0; try { kwp = C.opcoes(o, P())[0].dim.kwpNecessario; } catch { /* sem consumo */ } if (!(kwp > 0)) return;
-      const k = `${Math.round(kwp * 2) / 2}|${o.telhado || 'ceramico'}|${o.ligacao || 'bi'}`; cont[k] = (cont[k] || 0) + 1; });
-    const top = Object.entries(cont).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k]) => { const [kwp, telhado, ligacao] = k.split('|'); return { kwp: +kwp, telhado, ligacao }; });
-    return top.length >= 3 ? top.sort((a, b) => a.kwp - b.kwp) : [3, 4.5, 6, 8, 10].map((kwp) => ({ kwp, telhado: 'ceramico', ligacao: 'bi' }));
+      const k = `${Math.round(kwp * 2) / 2}|${o.ligacao || 'bi'}`; cont[k] = (cont[k] || 0) + 1; });
+    const top = Object.entries(cont).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k]) => { const [kwp, ligacao] = k.split('|'); return { kwp: +kwp, ligacao }; });
+    return top.length >= 3 ? top.sort((a, b) => a.kwp - b.kwp) : [3, 4.5, 6, 8, 10].map((kwp) => ({ kwp, ligacao: 'bi' }));
   }
   /* a pré-proposta mais recente de cada tamanho (até 3 dias) */
   function prePropostasProntas(fila) {
@@ -1584,7 +1602,7 @@
   async function usarPre(o) {
     let fila = []; try { fila = (await B.filaRoboLer()) || []; } catch { return null; }
     const alvo = pedidoRobo(o).base; if (!(alvo.kwp > 0)) return null;
-    const cand = prePropostasProntas(fila).map((j) => ({ j, d: Math.abs(j.pedido.base.kwp - alvo.kwp) / alvo.kwp + (j.pedido.base.estruturaTipo === alvo.estruturaTipo ? 0 : 0.05) + (j.pedido.base.ligacao === alvo.ligacao ? 0 : 0.03) })).filter((x) => x.d <= 0.1).sort((a, b) => a.d - b.d)[0];
+    const cand = prePropostasProntas(fila).filter((j) => j.pedido.base.estruturaTipo === alvo.estruturaTipo && (j.pedido.base.fixacao || null) === (alvo.fixacao || null)).map((j) => ({ j, d: Math.abs(j.pedido.base.kwp - alvo.kwp) / alvo.kwp + (j.pedido.base.ligacao === alvo.ligacao ? 0 : 0.03) })).filter((x) => x.d <= 0.1).sort((a, b) => a.d - b.d)[0];
     if (!cand) return null;
     o.kitsFechados = o.kitsFechados || [null, null];
     (cand.j.resultado.kits || []).forEach((k) => { const i = NIVEIS_KIT.indexOf(k.nivel); if (i >= 0 && k.valorKit > 0 && !(o.kitsFechados[i] && !o.kitsFechados[i].pre)) o.kitsFechados[i] = { ...k, pre: true, preKwp: cand.j.pedido.base.kwp }; });
