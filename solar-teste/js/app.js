@@ -1104,7 +1104,7 @@
     const p = P();
     app.innerHTML = `${cabCelular()}<div class="cab"><div><h1>Parâmetros</h1><p class="sutil">${B.nuvem ? 'Valores usados em todos os orçamentos. Cada vez que salvar, a versão anterior fica guardada.' : 'Valores de teste. Troque pelos reais quando tiver custo fixo, alíquota e preço do terceiro.'}</p></div></div>
       <div class="lado"><div>${CAMPOS.map(([t, cs]) => `<div class="painel"><span class="rotulo">${t}</span><div class="grade g2" style="margin-top:12px">${cs.map(([k, r, m]) => `<label class="campo"><span>${r}</span><input type="number" step="any" data-par="${k}" data-m="${m}" value="${+(p[k] * m).toFixed(4)}"></label>`).join('')}</div></div>`).join('')}</div>
-      <div><div class="painel"><span class="rotulo">Robô do escritório (fila do Jarvis)</span><p class="mini" style="margin:6px 0">O robô no computador do escritório pega na fila os pedidos do Jarvis, cota na Belenergy e devolve o preço real. Copie a chave para o arquivo <b>robo-config.json</b> da pasta do robô (uma vez).</p>
+      <div><div class="painel" id="espBox"><span class="rotulo">💾 Espaço usado (Supabase)</span><p class="mini" style="margin:6px 0">carregando…</p></div><div class="painel"><span class="rotulo">Robô do escritório (fila do Jarvis)</span><p class="mini" style="margin:6px 0">O robô no computador do escritório pega na fila os pedidos do Jarvis, cota na Belenergy e devolve o preço real. Copie a chave para o arquivo <b>robo-config.json</b> da pasta do robô (uma vez).</p>
         <div id="rbSt" class="aviso" style="margin:6px 0">Conferindo o robô…</div><div class="acoes-r"><button class="btn sol pequeno" id="rbBaixar">⬇ Baixar robo-config.json</button><button class="btn vidro pequeno" id="rbChave">Mostrar a chave</button><span class="mini" id="rbFila"></span></div><div id="rbOut"></div>
         <div style="border-top:1px dashed var(--linha);margin-top:12px;padding-top:10px"><label class="entre mini"><span><b>Pré-propostas todo dia de manhã</b> (as mais vendidas, já cotadas na Belenergy)</span><span><input type="checkbox" id="ppAtivo" ${(p.prePropostas || {}).ativo ? 'checked' : ''}> ligado · às <input type="time" id="ppHora" value="${esc((p.prePropostas || {}).hora || '05:00')}" style="width:96px;padding:4px 6px"></span></label>
           <p class="mini" style="margin:6px 0">Se o computador estiver desligado nesse horário, o robô faz assim que ligar. Quando o Jarvis criar uma proposta de tamanho parecido (até 10%), o preço da pré-proposta entra na hora e o robô ainda cota o tamanho exato.</p>
@@ -1137,6 +1137,12 @@
       novoP.empresaDoc = { ...(p.empresaDoc || {}) }; app.querySelectorAll('[data-emp]').forEach((i) => { novoP.empresaDoc[i.dataset.emp] = i.dataset.num ? +i.value || 0 : i.value.trim(); });
       B.salvarParametros(novoP); toast('Parâmetros salvos');
     };
+    if ($('#espBox')) espaco().then((e) => { const box = $('#espBox'); if (!box) return; if (!e) { box.innerHTML = '<span class="rotulo">💾 Espaço usado</span><p class="mini">Só aparece com o sistema aberto pelo Chamae.</p>'; return; }
+      box.innerHTML = `<span class="rotulo">💾 Espaço usado (Supabase)</span>${barraEspaco('Arquivos (documentos e fotos)', e.arq, `${n(e.arq.solar / 1e6)} MB são da Chama Solar; o resto é do Chamae.`)}${barraEspaco('Banco de dados', e.banco, '')}
+        <div class="grade g2" style="margin-top:10px"><label class="campo"><span>Limite de arquivos do plano (GB)</span><input type="number" step="0.5" min="0.5" id="espLA" value="${+P().limiteArquivosGB || 1}"></label><label class="campo"><span>Limite do banco do plano (GB)</span><input type="number" step="0.5" min="0.5" id="espLB" value="${+P().limiteBancoGB || 0.5}"></label></div>
+        <p class="mini" style="margin:6px 0 0">Plano gratuito: 1 GB de arquivos e 0,5 GB de banco. Se mudar de plano, ajuste os limites. Acima de 80% aparece um aviso no Meu dia.</p>`;
+      $('#espLA').onchange = (ev) => { B.salvarParametros({ limiteArquivosGB: +ev.target.value || 1 }); toast('Limite salvo'); parametrosPag(); };
+      $('#espLB').onchange = (ev) => { B.salvarParametros({ limiteBancoGB: +ev.target.value || 0.5 }); toast('Limite salvo'); parametrosPag(); }; });
     if ($('#rbBaixar')) {
       $('#rbBaixar').onclick = async () => { try { const k = await B.roboChave(); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify({ chave: k || '' }, null, 2)], { type: 'application/json' })); a.download = 'robo-config.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); toast('Salve o arquivo dentro da pasta do robô (onde fica o INICIAR-COTADOR.bat)'); } catch (e) { toast(e.message); } };
       roboEstado().then((st) => { $('#rbSt').innerHTML = st.html; $('#rbSt').className = 'aviso' + (st.ok ? ' ok' : ''); });
@@ -1288,6 +1294,21 @@
      Cada item tem o botão de fazer (WhatsApp/ligar) e some quando feito. Vai também para o Google Agenda. */
   const gcal = (titulo, ini, fim, det) => 'https://calendar.google.com/calendar/render?action=TEMPLATE&ctz=America/Sao_Paulo&text=' + encodeURIComponent(titulo) + '&dates=' + ini + '/' + fim + '&details=' + encodeURIComponent(det || '');
   const hojeStr = (hh, mm) => { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}T${String(hh).padStart(2, '0')}${String(mm).padStart(2, '0')}00`; };
+  /* espaço no Supabase: arquivos (documentos e fotos) e banco de dados, contra o limite do plano */
+  async function espaco() {
+    let a = null; try { a = await B.armazenamento(); } catch { return null; } if (!a) return null;
+    const p = P(), limA = (+p.limiteArquivosGB || 1) * 1e9, limB = (+p.limiteBancoGB || 0.5) * 1e9;
+    return { arq: { usado: +a.arquivos, lim: limA, pct: +a.arquivos / limA, solar: +a.arquivosSolar }, banco: { usado: +a.banco, lim: limB, pct: +a.banco / limB } };
+  }
+  const barraEspaco = (rot, x, sub) => { const cor = x.pct >= 0.9 ? '#ff5c5c' : x.pct >= 0.75 ? 'var(--laranja)' : 'var(--verde-claro)';
+    return `<div style="margin-top:10px"><div class="entre mini"><b>${rot}</b><span><b style="color:${cor}">${n(x.pct * 100)}%</b> · ${n(x.usado / 1e6)} MB de ${n(x.lim / 1e9, 1)} GB</span></div><div style="height:10px;border-radius:99px;background:var(--linha);overflow:hidden;margin-top:4px"><div style="height:100%;width:${Math.min(100, x.pct * 100)}%;background:${cor}"></div></div>${sub ? `<p class="mini" style="margin:4px 0 0">${sub}</p>` : ''}</div>`; };
+  async function avisoEspaco() {
+    const e = await espaco(); if (!e || location.hash.replace('#', '') !== 'dia' || $('#avEsp')) return;
+    const pior = e.arq.pct >= e.banco.pct ? ['arquivos', e.arq] : ['banco de dados', e.banco]; if (pior[1].pct < 0.8) return;
+    const d = document.createElement('div'); d.id = 'avEsp'; d.className = 'aviso entra'; d.style.margin = '0 0 12px';
+    d.innerHTML = `💾 <b>O espaço de ${pior[0]} está em ${n(pior[1].pct * 100)}%</b> (${n(pior[1].usado / 1e6)} MB de ${n(pior[1].lim / 1e9, 1)} GB). Hora de apagar fotos repetidas ou subir o plano do Supabase. <a class="link" href="#parametros">ver detalhes</a>`;
+    const cab = app.querySelector('.cab'); if (cab) cab.after(d);
+  }
   async function diaPag() {
     const lista = B.orcamentos(), p = P(), evDe = (t) => B.eventos(t);
     const ag = Cadencia.agenda(lista, evDe, (id) => B.interacoes(id));
@@ -1962,7 +1983,7 @@
     document.querySelectorAll('[data-rota]').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === (rota === 'lead' ? 'painel' : rota === 'servico' ? 'servicos' : rota)));
     try { const at = document.querySelector('.nav a.ativo'); if (at && innerWidth < 900) at.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch { /* */ }
     if (rota !== 'novo') { document.body.classList.remove('com-barra'); $('#barra').hidden = true; }
-    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') diaPag(); else if (rota === 'servicos') servicosPag(); else if (rota === 'clientes') clientesPag(); else if (rota === 'parceiros') parceirosPag(); else if (rota === 'arquivo') arquivoPag(); else if (rota === 'servico') servicoEd(arg); else if (rota === 'parametros') parametrosPag(); else painel(); };
+    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') { diaPag(); setTimeout(avisoEspaco, 1200); } else if (rota === 'servicos') servicosPag(); else if (rota === 'clientes') clientesPag(); else if (rota === 'parceiros') parceirosPag(); else if (rota === 'arquivo') arquivoPag(); else if (rota === 'servico') servicoEd(arg); else if (rota === 'parametros') parametrosPag(); else painel(); };
     if (document.startViewTransition) {
       const t = document.startViewTransition(ir);
       [t.ready, t.finished, t.updateCallbackDone].forEach((pr) => pr && pr.catch(() => {})); // navegação rápida cancela a animação, sem problema

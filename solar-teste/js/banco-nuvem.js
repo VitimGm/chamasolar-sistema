@@ -160,6 +160,7 @@
       return api('sol_cliente_arquivos', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ orc_codigo: orc, pasta, nome: arq.name, caminho, tipo: arq.type, tamanho: arq.size, origem: 'sistema' }) });
     },
     async apagarArquivo(a) { const t = await token(); await fetch(SB + '/storage/v1/object/sol-arquivos/' + a.caminho, { method: 'DELETE', headers: { apikey: KEY, Authorization: 'Bearer ' + t } }); return api('sol_cliente_arquivos?id=eq.' + a.id, { method: 'DELETE' }); },
+    async armazenamento() { return api('rpc/sol_armazenamento', { method: 'POST', body: '{}' }); },
     async parceiros() { return api('sol_parceiros?select=id,criado,nome,whatsapp,email,pix,cidade,profissao,nivel,comissao,ativo,token,obs,ultimo_acesso&order=criado.desc'); },
     async salvarParceiro(id, campos) { return api('sol_parceiros?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(campos) }); },
     async indicacoes() { return api('sol_indicacoes?select=*&order=criado.desc&limit=1000'); },

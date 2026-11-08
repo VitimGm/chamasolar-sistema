@@ -38,6 +38,7 @@
     async linkArquivo() { throw new Error('Os arquivos ficam na nuvem: abra pelo Chamae.'); },
     async enviarArquivo() { throw new Error('Para guardar arquivos, abra pelo Chamae.'); },
     async apagarArquivo() { },
+    async armazenamento() { return null; },
     async parceiros() { return ler('parceiros', []); },
     async salvarParceiro(id, campos) { gravar('parceiros', ler('parceiros', []).map((x) => (x.id === id ? { ...x, ...campos } : x))); },
     async indicacoes() { return ler('indicacoes', []); },
