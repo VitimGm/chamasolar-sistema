@@ -102,6 +102,7 @@
       const { cabos, ...res3 } = p3.resultado || {}; void cabos;
       cliente.projeto3d = { ...p3, lat: Math.round((p3.lat || -21.2) * 10) / 10, fundo: semId(p3.fundo), drone: semId(p3.drone), pvgis: p3.pvgis ? { db: p3.pvgis.db, faces: p3.pvgis.faces } : null, resultado: p3.resultado ? res3 : p3.resultado, cabos: null, pistas: null };
     }
+    if (o.posVenda) cliente.obra = Object.fromEntries(Object.entries(o.posVenda).filter(([, v]) => v)); // só as datas das etapas, para o cliente acompanhar
     return { orc: json(cliente), parametros: paramsPublicos(p), geradoEm: agora() };
   }
 
@@ -148,6 +149,17 @@
     },
     async contarGroner() { const t = await token(); const r = await fetch(SB + '/rest/v1/sol_orcamentos?select=id&dados->>origem=eq.groner&dados->>arquivado=eq.true', { headers: { apikey: KEY, Authorization: 'Bearer ' + t, Prefer: 'count=exact', Range: '0-0' } }); return +((r.headers.get('content-range') || '').split('/')[1] || 0); },
     trazer(o) { if (!orcs.some((x) => x.id === o.id)) orcs.unshift(o); return o; },
+    /* documentos e fotos de cada cliente (Storage privado sol-arquivos) */
+    async arquivosCliente(orc) { return api('sol_cliente_arquivos?select=id,pasta,nome,caminho,tipo,tamanho,criado,origem&orc_codigo=eq.' + encodeURIComponent(orc) + '&order=pasta.asc,criado.asc'); },
+    async linkArquivo(caminho) { const t = await token(); const r = await fetch(SB + '/storage/v1/object/sign/sol-arquivos/' + caminho.split('/').map(encodeURIComponent).join('/'), { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ expiresIn: 3600 }) }); const j = await r.json(); if (!r.ok) throw new Error(j.message || 'sem link'); return SB + '/storage/v1' + j.signedURL; },
+    async enviarArquivo(orc, pasta, arq) {
+      const t = await token(), limpo = (x) => String(x).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9._ -]+/g, '').replace(/\s+/g, '_').slice(0, 90) || 'arquivo';
+      const caminho = `${orc}/${limpo(pasta)}/${Date.now().toString(36)}_${limpo(arq.name)}`;
+      const r = await fetch(SB + '/storage/v1/object/sol-arquivos/' + caminho, { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + t, 'Content-Type': arq.type || 'application/octet-stream' }, body: arq });
+      if (!r.ok) throw new Error((await r.text()).slice(0, 160));
+      return api('sol_cliente_arquivos', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ orc_codigo: orc, pasta, nome: arq.name, caminho, tipo: arq.type, tamanho: arq.size, origem: 'sistema' }) });
+    },
+    async apagarArquivo(a) { const t = await token(); await fetch(SB + '/storage/v1/object/sol-arquivos/' + a.caminho, { method: 'DELETE', headers: { apikey: KEY, Authorization: 'Bearer ' + t } }); return api('sol_cliente_arquivos?id=eq.' + a.id, { method: 'DELETE' }); },
     async parceiros() { return api('sol_parceiros?select=id,criado,nome,whatsapp,email,pix,cidade,profissao,nivel,comissao,ativo,token,obs,ultimo_acesso&order=criado.desc'); },
     async salvarParceiro(id, campos) { return api('sol_parceiros?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(campos) }); },
     async indicacoes() { return api('sol_indicacoes?select=*&order=criado.desc&limit=1000'); },

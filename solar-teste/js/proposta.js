@@ -281,11 +281,11 @@
 
   function decidir() {
     const op = a.op;
-    if ((o.status === 'ganho' && (o.aceite || o.obra)) || est.aceito) {
-      const OBRA = [['contrato', 'Contrato assinado'], ['documentos', 'Documentos recebidos'], ['projeto', 'Projeto enviado à distribuidora'], ['parecer', 'Projeto aprovado pela distribuidora'], ['instalacao', 'Instalação concluída'], ['vistoria', 'Vistoria pedida à distribuidora'], ['ligado', 'Sistema ligado e gerando']], ob = o.obra || {};
+    if ((o.status === 'ganho' && (o.aceite || o.obra || o.posVenda)) || est.aceito) {
+      const OBRA = [['contrato', 'Contrato assinado'], ['projeto', 'Projeto e ART prontos'], ['protocolo', 'Pedido protocolado na distribuidora'], ['parecer', 'Projeto aprovado pela distribuidora'], ['kit', 'Equipamentos entregues'], ['instalacao', 'Instalação concluída'], ['vistoria', 'Vistoria e troca do medidor'], ['ligada', 'Sistema ligado e gerando']], ob = o.obra || o.posVenda || {};
       const tem = OBRA.some(([k]) => ob[k]), ult = OBRA.reduce((m, [k], i) => (ob[k] ? i : m), -1);
       const linha = tem ? `<div class="bloco" style="margin-top:18px"><h2>Acompanhe a sua instalação</h2><ol style="list-style:none;padding:0;margin:12px 0 0">${OBRA.map(([k, t], i) => `<li style="display:flex;gap:10px;align-items:center;padding:8px 0;${i > ult + 1 ? 'opacity:.45' : ''}"><span style="width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:700;background:${ob[k] ? 'var(--laranja,#ff7a00)' : i === ult + 1 ? 'transparent' : 'rgba(127,127,127,.15)'};color:${ob[k] ? '#fff' : 'inherit'};border:2px solid ${ob[k] || i === ult + 1 ? 'var(--laranja,#ff7a00)' : 'transparent'}">${ob[k] ? '✓' : i + 1}</span><span><b>${t}</b>${ob[k] ? ` <small style="opacity:.7">· ${new Date(ob[k]).toLocaleDateString('pt-BR')}</small>` : i === ult + 1 ? ' <small style="opacity:.7">· próxima etapa</small>' : ''}</span></li>`).join('')}</ol></div>` : '';
-      $('#decidir').innerHTML = `<div class="sucesso"><div class="grande">☀️</div><h2>${ob.ligado ? 'Seu sistema está gerando!' : 'Recebemos o seu sim!'}</h2><p class="apoio">${tem ? `Aqui você acompanha cada etapa, do contrato até o sistema ligado. O ${esc(vend)} também te avisa no WhatsApp.` : `O ${esc(vend)} vai te ligar para combinar a visita técnica gratuita.`}</p></div>${linha}${tem ? '' : passos()}`;
+      $('#decidir').innerHTML = `<div class="sucesso"><div class="grande">☀️</div><h2>${ob.ligada ? 'Seu sistema está gerando!' : 'Recebemos o seu sim!'}</h2><p class="apoio">${tem ? `Aqui você acompanha cada etapa, do contrato até o sistema ligado. O ${esc(vend)} também te avisa no WhatsApp.` : `O ${esc(vend)} vai te ligar para combinar a visita técnica gratuita.`}</p></div>${linha}${tem ? '' : passos()}`;
       return;
     }
     const msgFam = `Olha a proposta de energia solar que recebi. A conta de luz cai de ${brl(op.eco.contaAtual)} para ${brl(op.eco.contaDepois)} por mês. Me ajuda a decidir? ${link}`;

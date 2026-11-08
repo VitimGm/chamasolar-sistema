@@ -189,6 +189,41 @@
   const linkIndicacao = (o) => new URL('captacao.html?ind=' + encodeURIComponent(o.nome), location.href).href;
   const msgIndicacao = (o) => `${String(o.nome).split(' ')[0]}, que bom ter você com a gente! ☀️ Se conhecer alguém que paga caro de luz, manda esse link pra pessoa: ${linkIndicacao(o)}\nSe ela fechar, você ganha um presente de agradecimento 🎁`;
 
+  /* o que o cliente comprou: fica gravado no fechamento (Groner traz as compras de lá) */
+  function compraDe(o) {
+    try { const ops = C.opcoes(o, P()), op = ops[o.opcaoEscolhida ?? 1] || ops.find((x) => x.destaque) || ops[0]; if (!op) return null;
+      const k = (o.kitsFechados || []).find((x) => x && x.nivel === op.nivel) || null;
+      const inv = k && k.inversor ? [k.inversor.qtd > 1 ? k.inversor.qtd + '×' : '', k.inversor.marca || '', k.inversor.nome || k.inversor.modelo || ''].join(' ').trim() : (op.inversor && op.inversor.nome) || '';
+      return { data: new Date().toISOString(), descricao: `${op.nivel} · ${n(op.dim.kwpReal, 2)} kWp`, kwp: op.dim.kwpReal, placas: (k && k.modulo && k.modulo.qtd) || op.dim.placas, placa: (k && k.modulo && [k.modulo.marca, k.modulo.nome].filter(Boolean).join(' ')) || op.modulo.nome, placaW: (k && k.modulo && k.modulo.potenciaW) || op.modulo.potenciaW, inversor: inv,
+        valorTotal: Math.round(op.preco.precoFinal * 100) / 100, formaPagamento: o.formaPagamento || '', numeroBelenergy: k && k.numeroBelenergy || '', itens: ((k && k.itens) || []).map((i) => ({ nome: i.nome || i.descricao || '', qtd: i.qtd || i.quantidade || '', grupo: i.grupo || '' })).slice(0, 40) };
+    } catch { return null; }
+  }
+  const resumoCompra = (o) => { const c = (o.compras || [])[0]; if (!c) return ''; const tot = (o.compras || []).reduce((t, x) => t + (+x.kwp || 0), 0); return `${n(tot || c.kwp, 2)} kWp${c.placas ? ` · ${c.placas}× ${c.placaW || ''}W` : ''}${c.inversor ? ` · ${String(c.inversor).replace(/INVERSOR( DE CORRENTE)?/i, '').trim().slice(0, 40)}` : ''}`; };
+  function painelCompra(o) {
+    const cs = o.compras || [];
+    return `<div class="painel entra" id="compraBox"><div class="entre"><span class="rotulo">🛒 O que ${esc(String(o.nome || '').split(' ')[0])} comprou</span>${o.valorFechado || cs.length ? `<b>${brl(cs.reduce((t, c) => t + (+c.valorTotal || 0), 0) || o.valorFechado)}</b>` : ''}</div>
+      ${cs.length ? cs.map((c) => `<div style="border-top:1px dashed var(--linha);padding-top:8px;margin-top:8px">
+          <div class="entre"><b>${esc(c.descricao || `${n(c.kwp, 2)} kWp`)}</b><span class="mini">${c.data ? new Date(c.data).toLocaleDateString('pt-BR') : ''}</span></div>
+          <div class="numeros4" style="margin-top:6px"><div><span>Potência</span><b>${n(c.kwp, 2)} kWp</b></div><div><span>Placas</span><b>${c.placas || '–'}${c.placaW ? ` × ${c.placaW} W` : ''}</b></div><div><span>Inversor</span><b style="font-size:14px">${esc(c.inversor || '–')}</b></div><div><span>Valor</span><b>${brl(c.valorTotal)}</b></div></div>
+          ${c.placa ? `<p class="mini" style="margin:6px 0 0">Placa: ${esc(c.placa)}</p>` : ''}
+          ${+c.valorProduto || +c.valorServico || +c.valorFinanciado || c.formaPagamento ? `<p class="mini" style="margin:4px 0 0">${+c.valorProduto ? `kit ${brl(c.valorProduto)} · ` : ''}${+c.valorServico ? `serviço ${brl(c.valorServico)} · ` : ''}${+c.valorFinanciado ? `financiado ${brl(c.valorFinanciado)} · ` : ''}${c.formaPagamento ? 'pagamento: ' + esc(c.formaPagamento) : ''}${c.numeroBelenergy ? ' · Belenergy ' + esc(c.numeroBelenergy) : ''}</p>` : ''}
+          ${(c.itens || []).length ? `<details style="margin-top:6px"><summary class="mini" style="cursor:pointer">Itens do kit (${c.itens.length})</summary>${c.itens.map((i) => `<div class="entre mini" style="padding:2px 0"><span>${esc(i.nome || i.cod || '')}${i.grupo ? ` <span style="opacity:.6">· ${esc(i.grupo)}</span>` : ''}</span><b>${esc(String(i.qtd || ''))}</b></div>`).join('')}</details>` : ''}</div>`).join('')
+        : `<p class="mini" style="margin:6px 0">Ainda sem os equipamentos registrados.${o.status === 'ganho' ? ' <button class="link" id="compraGerar">Puxar do orçamento</button>' : ''}</p>`}
+      <label class="campo" style="margin-top:8px"><span>Anotações da compra (garantias, número de série, observações)</span><textarea id="compraNota" rows="2">${esc(o.compraNota || '')}</textarea></label></div>`;
+  }
+  async function painelArquivos(o, el) {
+    let lista = []; try { lista = (await B.arquivosCliente(o.id)) || []; } catch { /* sem nuvem */ }
+    const PASTAS = ['Contratos e procurações', 'Documentos pessoais', 'Contas de luz', 'Visita técnica', 'Projeto', 'Financeiro', 'Outros'];
+    const grupos = {}; lista.forEach((a) => { (grupos[a.pasta] = grupos[a.pasta] || []).push(a); });
+    const ico = (a) => /pdf/.test(a.tipo) ? '📄' : /image/.test(a.tipo) ? '🖼️' : /zip/.test(a.tipo) ? '🗜️' : /video/.test(a.tipo) ? '🎬' : '📎';
+    el.innerHTML = `<div class="entre"><span class="rotulo">📁 Documentos e fotos (${lista.length})</span><label class="btn vidro pequeno" style="cursor:pointer">＋ Enviar arquivo<input type="file" id="arqEnv" multiple hidden></label></div>
+      <div class="grade g2" style="margin-top:6px"><label class="campo"><span>Pasta para os novos arquivos</span><select id="arqPasta">${PASTAS.map((x) => `<option>${x}</option>`).join('')}</select></label></div>
+      ${lista.length ? Object.keys(grupos).sort((a, b) => (PASTAS.indexOf(a) + 99) % 99 - (PASTAS.indexOf(b) + 99) % 99).map((g) => `<details ${/Contratos/.test(g) ? 'open' : ''} style="margin-top:6px"><summary style="cursor:pointer;font-weight:700">${esc(g)} <span class="mini">(${grupos[g].length})</span></summary>
+          ${grupos[g].map((a) => `<div class="entre mini" style="padding:4px 0;border-top:1px dashed var(--linha)"><button class="link" data-arqab="${a.id}" style="text-align:left">${ico(a)} ${esc(a.nome)}</button><span>${a.tamanho ? n(a.tamanho / 1e6, 1) + ' MB' : ''} <button class="link" data-arqdel="${a.id}" title="apagar">✕</button></span></div>`).join('')}</details>`).join('') : '<p class="mini" style="margin:6px 0">Nenhum arquivo ainda. Contrato, procuração, RG/CNH, conta de luz e fotos da visita ficam aqui.</p>'}`;
+    el.querySelectorAll('[data-arqab]').forEach((b) => b.onclick = async () => { const a = lista.find((x) => x.id === b.dataset.arqab); const w = window.open('', '_blank'); try { const u = await B.linkArquivo(a.caminho); if (w) w.location = u; else location.href = u; } catch (e) { if (w) w.close(); toast(e.message); } });
+    el.querySelectorAll('[data-arqdel]').forEach((b) => b.onclick = async () => { const a = lista.find((x) => x.id === b.dataset.arqdel); if (!confirm(`Apagar "${a.nome}"? Não dá para desfazer.`)) return; try { await B.apagarArquivo(a); toast('Arquivo apagado'); painelArquivos(o, el); } catch (e) { toast(e.message); } });
+    $('#arqEnv').onchange = async (e) => { const fs = [...e.target.files], pasta = $('#arqPasta').value; let k = 0; for (const f of fs) { try { await B.enviarArquivo(o.id, pasta, f); k++; } catch (er) { toast(`${f.name}: ${er.message}`); } } if (k) toast(`${k} arquivo(s) guardado(s) em ${pasta}`); painelArquivos(o, el); };
+  }
   function ficha(id) {
     const o = B.obter(id);
     if (!o) { app.innerHTML = '<p>Orçamento não encontrado.</p>'; return; }
@@ -349,25 +384,16 @@
     app.querySelectorAll('[data-prox]').forEach((bt) => bt.onclick = () => { const d = +bt.dataset.prox, q = new Date(Date.now() + d * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `Falar com ${o.nome}`, ref: o.id, quando: q.toISOString() }); toast('Próximo contato marcado no Meu dia'); ficha(id); });
     { const irmas = propostasDoCliente(o).filter((x) => x.id !== o.id);
       if (irmas.length) { const box = document.createElement('div'); box.className = 'painel entra'; box.innerHTML = `<span class="rotulo">Outras propostas de ${esc(String(o.nome || '').split(' ')[0])} (${irmas.length})</span>${irmas.map((x) => `<a class="entre mini" href="#lead-${x.id}" style="padding:6px 0;border-top:1px dashed var(--linha);text-decoration:none;color:inherit"><span><b>${esc(x.id)}</b> · ${esc(x.titulo || ((x.consumos || []).filter(Boolean).length ? 'conta de ' + Math.round(((x.consumos || []).map(Number).filter((v) => v > 0).reduce((a, b, _, l) => a + b / l.length, 0))) + ' kWh' : 'proposta'))}${x.arquivado ? ' · no arquivo' : ''}</span><span>${esc((STATUS.find(([v]) => v === x.status) || [, x.status])[1])} · ${tempoRel(x.criadoEm)}</span></a>`).join('')}`; const topo = app.querySelector('.painel'); if (topo) topo.after(box); } }
-    if (o.status === 'ganho' && window.Obra) {
-      const OB = window.Obra, ob = o.obra || {}, i = OB.atual(o), box = document.createElement('div'), pri = String(o.nome || '').split(' ')[0];
-      box.className = 'painel entra'; box.id = 'obraBox';
-      box.innerHTML = `<div class="entre"><span class="rotulo">🏗️ Instalação e homologação</span><span class="mini">${i >= OB.ETAPAS.length - 1 ? '✓ sistema gerando' : `próxima: <b>${esc(OB.ETAPAS[i + 1].t)}</b>`}</span></div>
-        <p class="mini" style="margin:4px 0 8px">Marque cada etapa quando acontecer. O sistema agenda o lembrete da próxima e prepara a mensagem para o cliente: ele acompanha tudo sem precisar perguntar.</p>
-        ${OB.ETAPAS.map((e, k) => `<div class="entre" style="padding:7px 0;border-top:1px dashed var(--linha);gap:8px;${k > i + 1 ? 'opacity:.55' : ''}"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-obra="${e.k}" ${ob[e.k] ? 'checked' : ''}><span>${esc(e.t)}${ob[e.k] ? ` <span class="mini">· ${new Date(ob[e.k]).toLocaleDateString('pt-BR')}</span>` : ''}</span></label>${ob[e.k] ? `<button class="btn vidro pequeno" data-obrazap="${e.k}">📲 Avisar ${esc(pri || 'o cliente')}</button>` : ''}</div>`).join('')}`;
-      const ref = app.querySelector('#obraAnc') || app.querySelector('.painel'); if (ref) ref.after(box);
-      box.querySelectorAll('[data-obra]').forEach((c) => c.onchange = () => { o.obra = o.obra || {}; const e = OB.ETAPAS.find((x) => x.k === c.dataset.obra);
-        if (c.checked) { o.obra[e.k] = new Date().toISOString(); (P().lembretes || []).filter((l) => l.ref === o.id && !l.feito && /\(etapa da obra\)/.test(l.texto)).forEach((l) => lembreteFeito(l.id)); const nx = OB.proxima(o); if (nx && e.prazo) { const q = new Date(Date.now() + e.prazo * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `${o.nome}: ${e.prox.toLowerCase()} (etapa da obra)`, ref: o.id, quando: q.toISOString() }); }
-          if (e.k === 'ligado' && !o.instaladoEm) o.instaladoEm = o.obra[e.k]; toast(`${e.t} ✓${nx ? ' · lembrete da próxima etapa criado' : ''}`); }
-        else delete o.obra[e.k];
-        B.salvar(o); ficha(id); });
-      box.querySelectorAll('[data-obrazap]').forEach((bt) => bt.onclick = () => { const e = OB.ETAPAS.find((x) => x.k === bt.dataset.obrazap), tel = String(o.whatsapp || '').replace(/\D/g, '').replace(/^55/, '');
-        window.open('https://wa.me/' + (tel ? '55' + tel : '') + '?text=' + encodeURIComponent(e.msg(pri || 'Olá') + `\n\nAcompanhe por aqui: ${linkProposta(o)}`), '_blank', 'noopener'); B.interacao && B.interacao(o.id, 'whatsapp', 'Obra: ' + e.t); });
+    if (o.status === 'ganho' || o.carteira) {
+      const cb = document.createElement('div'); cb.innerHTML = painelCompra(o); const ref0 = app.querySelector('.painel'); if (ref0) ref0.after(cb.firstElementChild);
+      const nota = $('#compraNota'); if (nota) nota.onchange = () => { o.compraNota = nota.value; B.salvar(o); toast('Anotação salva'); };
+      const ger = $('#compraGerar'); if (ger) ger.onclick = () => { const c = compraDe(o); if (!c) { toast('Este orçamento não tem kit para puxar'); return; } o.compras = [c]; B.salvar(o); ficha(id); };
     }
+    { const ab = document.createElement('div'); ab.className = 'painel entra'; ab.id = 'arqBox'; ab.innerHTML = '<span class="rotulo">📁 Documentos e fotos</span><p class="mini">carregando…</p>'; const ref1 = app.querySelector('#compraBox') || app.querySelector('.painel'); if (ref1) ref1.after(ab); painelArquivos(o, ab); }
     $('#fNova').onclick = () => { const n = novaPropostaDe(o); toast(`Nova proposta para ${o.nome}: os dados do cliente já vieram`); location.hash = '#novo'; void n; };
     $('#fExcluir').onclick = (ev) => { const b = ev.currentTarget; if (!b.dataset.c) { b.dataset.c = 1; b.textContent = 'Tocar de novo para excluir'; setTimeout(() => { if (b.isConnected) { b.textContent = '🗑 Excluir'; delete b.dataset.c; } }, 4000); return; }
       o.apagado = true; o.apagadoEm = new Date().toISOString(); B.salvar(o); toast(`${o.nome} foi para a lixeira (Arquivo → Lixeira). Dá para restaurar.`); location.hash = '#painel'; };
-    $('#status').onchange = (e) => { o.status = e.target.value; if (o.status === 'perdido') { const q = new Date(Date.now() + 90 * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `Retomar ${o.nome} (perdido há 90 dias: preço e momento mudam)`, ref: o.id, quando: q.toISOString() }); toast('Perdido: retomada agendada em 90 dias. Anote o motivo.'); } if (o.status !== 'novo' && !o.enviadoEm) o.enviadoEm = new Date().toISOString(); if (o.status === 'ganho' && !o.ganhoEm) o.ganhoEm = new Date().toISOString(); B.salvar(o); ficha(id); };
+    $('#status').onchange = (e) => { o.status = e.target.value; if (o.status === 'perdido') { const q = new Date(Date.now() + 90 * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `Retomar ${o.nome} (perdido há 90 dias: preço e momento mudam)`, ref: o.id, quando: q.toISOString() }); toast('Perdido: retomada agendada em 90 dias. Anote o motivo.'); } if (o.status !== 'novo' && !o.enviadoEm) o.enviadoEm = new Date().toISOString(); if (o.status === 'ganho' && !o.ganhoEm) o.ganhoEm = new Date().toISOString(); if (o.status === 'ganho' && !(o.compras || []).length) { const c = compraDe(o); if (c) { o.compras = [c]; o.valorFechado = c.valorTotal; } } B.salvar(o); ficha(id); };
     const mot = $('#motivo'); if (mot) mot.onchange = (e) => { o.motivoPerda = e.target.value; B.salvar(o); toast('Motivo salvo'); };
   }
 
@@ -1591,7 +1617,7 @@
     return t; };
   const diasDesde = (t) => Math.floor((Date.now() - t) / 864e5);
   const fone = (o) => String(o.whatsapp || o.telefone || '').replace(/\D/g, '').slice(-9);
-  const kwpDe = (o) => { try { const op = C.opcoes(o, P())[0]; return op ? op.dim.kwpReal : 0; } catch { return 0; } };
+  const kwpDe = (o) => { if (+o.kwpInstalado) return +o.kwpInstalado; try { const op = C.opcoes(o, P())[0]; return op ? op.dim.kwpReal : 0; } catch { return 0; } };
   /* uma vez por dia: proposta parada há X dias (padrão 45) e perdida há 7 dias saem do funil para o Arquivo */
   function arquivarParados() {
     const p = P(), dias = +p.diasArquivar || 45, hoje = new Date().toISOString().slice(0, 10);
@@ -1633,8 +1659,9 @@
       <div class="ops-v duas">${lista.slice(0, 200).map((o) => { const kwp = kwpDe(o), velha = manutAntiga(o);
         return `<div class="op-v"><div class="entre"><b style="font-size:17px">${esc(o.nome || 'Sem nome')}</b>${o.origem === 'groner' ? '<span class="mini" style="opacity:.75">Groner</span>' : ''}</div>
           <span class="mini">${esc(o.id)} · ${esc(o.cidade || '')}${kwp ? ` · ${n(kwp, 2)} kWp` : ''}${o.instaladoEm || o.criadoEm ? ` · desde ${new Date(o.instaladoEm || o.criadoEm).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })}` : ''}</span>
+          ${resumoCompra(o) ? `<span class="mini" style="color:var(--texto)">🛒 ${esc(resumoCompra(o))}${o.valorFechado ? ' · ' + brl(o.valorFechado) : ''}</span>` : ''}
           ${velha ? '<span class="mini" style="color:var(--laranja)">🧽 manutenção vencida: boa hora de oferecer</span>' : ''}
-          ${window.Obra && o.status === 'ganho' && Obra.proxima(o) ? `<span class="mini" style="color:var(--amarelo)">🏗️ obra: próxima etapa ${esc(Obra.proxima(o).t.toLowerCase())}</span>` : ''}
+          ${o.status === 'ganho' && posVendaEtapa(o) ? `<span class="mini" style="color:var(--amarelo)">🏗️ pós-venda: ${esc(posVendaEtapa(o).e[1].toLowerCase())}</span>` : ''}
           <div class="acoes-r" style="margin-top:8px;flex-wrap:wrap"><a class="btn vidro pequeno" href="#lead-${o.id}">Ficha</a><a class="btn vidro pequeno" href="#servico-novo-manutencao-de-${o.id}">🧽 Manutenção</a><a class="btn vidro pequeno" href="#servico-novo-ampliacao-de-${o.id}">⚡ Ampliação</a><button class="btn vidro pequeno" data-novap="${o.id}">＋ Proposta</button><button class="link" data-del="${o.id}" title="mandar para a lixeira">🗑</button></div></div>`; }).join('') || '<p class="sutil">Nenhum cliente ainda. Quem fechar (status Ganho) aparece aqui, e os clientes da Groner entram aqui na importação.</p>'}</div>
       ${lista.length > 200 ? `<p class="mini">Mostrando 200 de ${lista.length}. Use a busca.</p>` : ''}`;
     const bx = $('#cliBusca'); bx.oninput = () => { try { sessionStorage.setItem('cliBusca', bx.value); } catch { /* */ } clearTimeout(avDeb); avDeb = setTimeout(() => { clientesPag(); const b = $('#cliBusca'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }, 300); };
