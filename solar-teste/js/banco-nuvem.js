@@ -139,6 +139,10 @@
     async filaRobo(item) { return api('sol_robo_fila', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(item) }); },
     async filaRoboLer() { return api('sol_robo_fila?select=id,criado,atualizado,orc_codigo,tipo,status,resultado,erro,pedido&order=criado.desc&limit=60'); },
     async filaRoboMarcar(id, campos) { return api('sol_robo_fila?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ ...campos, atualizado: agora() }) }); },
+    async parceiros() { return api('sol_parceiros?select=id,criado,nome,whatsapp,email,pix,cidade,profissao,nivel,comissao,ativo,token,obs,ultimo_acesso&order=criado.desc'); },
+    async salvarParceiro(id, campos) { return api('sol_parceiros?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(campos) }); },
+    async indicacoes() { return api('sol_indicacoes?select=*&order=criado.desc&limit=1000'); },
+    async salvarIndicacao(id, campos) { return api('sol_indicacoes?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ ...campos, atualizado: agora() }) }); },
     async roboStatus() { const r = await api('sol_robo_status?select=visto,versao,logado,maquina&id=eq.1'); return (r || [])[0] || null; },
     async roboChave() { return api('rpc/sol_robo_chave', { method: 'POST', body: '{}' }); },
 

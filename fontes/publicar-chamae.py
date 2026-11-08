@@ -51,6 +51,8 @@ serv = (ORIGEM / 'proposta-servico.html').read_text(encoding='utf-8')
 
 # formulário público de captação de leads (só usa a função sol_novo_lead)
 shutil.copy2(ORIGEM / 'captacao.html', DEST / 'captacao.html')
+# área pública do parceiro (só usa as funções sol_parceiro_*: link + senha, sem login do Chamae)
+shutil.copy2(ORIGEM / 'parceiro.html', DEST / 'parceiro.html')
 
 # o botão "recomeçar dados" não existe mais; o app espera achá-lo
 app = (DEST / 'js' / 'app.js').read_text(encoding='utf-8')

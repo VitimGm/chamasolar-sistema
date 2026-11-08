@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1322">
+  <meta name="robots" content="noindex">
+  <title>Parceiro Chama Solar</title>
+  <link rel="icon" href="marca/logo-cor.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Albert+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg: #0d1322; --sup: #16203a; --sup2: #1c2847; --tx: #eef2fb; --tx2: #a3aec8; --linha: #2a3658; --sol: #ff6700; --sol2: #ffb000; --ok: #3fbf74; --alerta: #ff9a3d; color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(120% 70% at 80% -10%, #3a2410 0%, var(--bg) 55%); color: var(--tx); font: 16px/1.5 'Albert Sans', system-ui, sans-serif; padding: 20px max(16px, env(safe-area-inset-right)) 48px max(16px, env(safe-area-inset-left)); }
+    main { max-width: 640px; margin: 0 auto; display: grid; gap: 16px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    header img { height: 34px; }
+    h1 { font-size: clamp(26px, 6vw, 34px); line-height: 1.15; margin: 6px 0 4px; }
+    h1 em { font-style: normal; background: linear-gradient(90deg, var(--sol), var(--sol2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    h2 { font-size: 19px; margin: 0 0 6px; }
+    p { margin: 0; color: var(--tx2); }
+    .card { background: var(--sup); border: 1px solid var(--linha); border-radius: 18px; padding: 16px; display: grid; gap: 12px; }
+    label { display: grid; gap: 6px; font-weight: 600; font-size: 14px; }
+    input, select, textarea { font: 500 16px 'Albert Sans', sans-serif; padding: 12px; border-radius: 12px; border: 1px solid var(--linha); background: #0f1830; color: var(--tx); width: 100%; }
+    input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--sol2); outline-offset: 1px; }
+    .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 480px) { .g2 { grid-template-columns: 1fr; } }
+    button, .btn { font: 700 16px 'Albert Sans', sans-serif; border: 0; border-radius: 14px; padding: 14px; background: linear-gradient(90deg, var(--sol), var(--sol2)); color: #1a1205; cursor: pointer; text-align: center; text-decoration: none; display: inline-block; }
+    .vidro { background: var(--sup2); color: var(--tx); border: 1px solid var(--linha); }
+    .pequeno { padding: 9px 12px; font-size: 14px; border-radius: 10px; }
+    .abas { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+    .abas button { flex: none; background: var(--sup); color: var(--tx2); border: 1px solid var(--linha); padding: 10px 14px; font-size: 15px; }
+    .abas button[aria-pressed="true"] { background: #2a1a0c; color: var(--tx); border-color: var(--sol); }
+    .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .kpi { background: var(--sup); border: 1px solid var(--linha); border-radius: 14px; padding: 12px; min-width: 0; }
+    .kpi small { display: block; color: var(--tx2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .kpi b { font-size: 20px; overflow-wrap: anywhere; }
+    @media (max-width: 420px) { .kpis { grid-template-columns: 1fr 1fr; } .kpi b { font-size: 18px; } }
+    .ind { border-top: 1px dashed var(--linha); padding-top: 10px; display: grid; gap: 4px; }
+    .ind:first-child { border-top: 0; padding-top: 0; }
+    .linha { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+    .st { font-size: 13px; font-weight: 700; padding: 2px 10px; border-radius: 99px; background: var(--sup2); }
+    .st.ganho { background: #10301f; color: #7ee2a6; } .st.perdido { color: var(--tx2); } .st.proposta { color: var(--sol2); }
+    .ok { background: #10301f; border: 1px solid var(--ok); border-radius: 16px; padding: 16px; color: var(--tx); display: grid; gap: 10px; }
+    .erro { color: #ffb4a3; font-size: 14px; }
+    .mini { font-size: 13px; color: var(--tx2); }
+    .roteiro { background: #0f1830; border: 1px solid var(--linha); border-radius: 12px; padding: 12px; white-space: pre-line; color: var(--tx); font-size: 15px; }
+    details { background: var(--sup2); border-radius: 12px; padding: 10px 12px; }
+    summary { cursor: pointer; font-weight: 700; }
+    details p { margin-top: 8px; }
+    .grande { font-size: 30px; font-weight: 800; }
+    .oculto { display: none !important; }
+  </style>
+</head>
+<body>
+<main id="app">
+  <header><img src="marca/logo-branco.webp" alt="Chama Solar" width="80" height="34"><span class="mini">Programa de parceiros</span></header>
+  <p class="mini">Carregando…</p>
+</main>
+<script>
+(function () {
+  'use strict';
+  const SB = 'https://jmpvmyyokikpwphwylob.supabase.co', KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImptcHZteXlva2lrcHdwaHd5bG9iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIyMTc1MzEsImV4cCI6MjEwNzc5MzUzMX0.e5XT2R7eOj3x-ZYcRFkY4OFg0QEr3_guxT6-W0xpnfY';
+  const ZAP = '5516981366288';
+  const $ = (s) => document.querySelector(s), app = $('#app');
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const brl = (v) => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+  const nf = (v, d = 0) => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: d, minimumFractionDigits: d });
+  const rpc = async (fn, corpo) => { const r = await fetch(SB + '/rest/v1/rpc/' + fn, { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) }); const t = await r.text(); let j = null; try { j = t ? JSON.parse(t) : null; } catch { /* */ } if (!r.ok) throw new Error((j && (j.message || j.hint)) || 'Não consegui falar com a Chama Solar. Tente de novo.'); return j; };
+  const guarda = { ler(k) { try { return sessionStorage.getItem(k); } catch { return null; } }, gravar(k, v) { try { sessionStorage.setItem(k, v); } catch { /* */ } } };
+  const topo = '<header><img src="marca/logo-branco.webp" alt="Chama Solar" width="80" height="34"><span class="mini">Programa de parceiros</span></header>';
+  const token = new URLSearchParams(location.search).get('t') || '';
+  const ST = { nova: 'Nova', em_contato: 'Em contato', proposta: 'Proposta enviada', ganho: 'Fechou! ✓', perdido: 'Não fechou' };
+
+  /* ---------- cadastro ---------- */
+  function cadastro() {
+    app.innerHTML = `${topo}<div><h1>Indique energia solar e <em>ganhe por cada sistema fechado</em></h1><p>Você conhece gente que paga conta de luz alta. A Chama Solar faz o resto: visita, projeto, instalação e homologação. Quando o cliente fecha, você recebe uma porcentagem do valor do sistema.</p></div>
+      <form class="card" id="f"><h2>Quero ser parceiro</h2>
+        <label>Seu nome<input name="nome" required autocomplete="name"></label>
+        <div class="g2"><label>WhatsApp com DDD<input name="whatsapp" required inputmode="tel" autocomplete="tel" placeholder="(16) 99999-9999"></label><label>E-mail<input name="email" type="email" autocomplete="email"></label></div>
+        <div class="g2"><label>Cidade<input name="cidade" value="Ribeirão Preto"></label><label>O que você faz<input name="profissao" placeholder="ex.: corretor, eletricista, arquiteto"></label></div>
+        <label>Chave PIX para receber<input name="pix"></label>
+        <label>Crie uma senha de 4 a 6 números<input name="pin" required inputmode="numeric" pattern="\\d{4,6}" maxlength="6" autocomplete="new-password"></label>
+        <p class="erro oculto" id="err"></p><button type="submit">Quero ser parceiro</button>
+        <p class="mini">Seu cadastro passa pela aprovação da Chama Solar. Seus dados ficam só com a Chama Solar.</p></form>`;
+    $('#f').onsubmit = async (e) => { e.preventDefault(); const d = Object.fromEntries(new FormData(e.target)), b = e.target.querySelector('button'); b.disabled = true; $('#err').classList.add('oculto');
+      try { const r = await rpc('sol_parceiro_cadastrar', { p_nome: d.nome, p_whatsapp: d.whatsapp, p_email: d.email, p_cidade: d.cidade, p_profissao: d.profissao, p_pix: d.pix, p_pin: d.pin });
+        const link = location.origin + location.pathname + '?t=' + r.token;
+        app.innerHTML = `${topo}<div class="ok"><h2>Cadastro recebido, ${esc(d.nome.split(' ')[0])}!</h2><p style="color:var(--tx)">A Chama Solar vai aprovar e te chamar no WhatsApp. <b>Guarde o seu link de parceiro</b>: é por ele (com a sua senha) que você indica clientes e acompanha as comissões.</p>
+          <input readonly value="${esc(link)}" onclick="this.select()"><div class="g2"><button id="cp">Copiar meu link</button><a class="btn vidro" href="https://wa.me/?text=${encodeURIComponent('Meu link de parceiro Chama Solar: ' + link)}" target="_blank" rel="noopener">Mandar para mim no WhatsApp</a></div>
+          <a class="btn vidro" href="${esc(link)}">Abrir minha área</a></div>`;
+        $('#cp').onclick = async () => { try { await navigator.clipboard.writeText(link); $('#cp').textContent = 'Copiado ✓'; } catch { /* */ } };
+      } catch (er) { $('#err').textContent = er.message; $('#err').classList.remove('oculto'); b.disabled = false; } };
+  }
+
+  /* ---------- entrar ---------- */
+  function entrar(msg) {
+    app.innerHTML = `${topo}<form class="card" id="f"><h2>Área do parceiro</h2><p>Digite a sua senha de números.</p><label>Senha<input name="pin" required inputmode="numeric" maxlength="6" autocomplete="current-password" autofocus></label><p class="erro ${msg ? '' : 'oculto'}" id="err">${esc(msg || '')}</p><button>Entrar</button><p class="mini">Esqueceu a senha? Fale com a Chama Solar no <a href="https://wa.me/${ZAP}" style="color:var(--sol2)">WhatsApp</a>.</p></form>`;
+    $('#f').onsubmit = async (e) => { e.preventDefault(); const pin = new FormData(e.target).get('pin'); try { const d = await rpc('sol_parceiro_entrar', { p_token: token, p_pin: pin }); guarda.gravar('pin_' + token, pin); area(d, pin); } catch (er) { entrar(er.message); } };
+  }
+
+  /* ---------- área ---------- */
+  let aba = 'indicar';
+  function area(d, pin) {
+    const inds = d.indicacoes || [], ganhas = inds.filter((i) => i.status === 'ganho'), aReceber = ganhas.filter((i) => !i.paga_em).reduce((t, i) => t + (+i.comissao_valor || 0), 0), recebido = ganhas.filter((i) => i.paga_em).reduce((t, i) => t + (+i.comissao_valor || 0), 0);
+    const abas = [['indicar', 'Indicar cliente'], ['minhas', `Minhas indicações (${inds.length})`]].concat(d.nivel >= 2 ? [['simular', 'Simular'], ['abordar', 'Como abordar']] : []).concat([['duvidas', 'Dúvidas']]);
+    app.innerHTML = `${topo}<div><h1>Olá, <em>${esc(String(d.nome).split(' ')[0])}</em></h1><p>Comissão de <b style="color:var(--tx)">${nf(d.comissao * 100, 1)}%</b> do valor de cada sistema fechado.</p></div>
+      ${d.ativo ? '' : '<div class="card" style="border-color:var(--alerta)"><b>Cadastro em aprovação</b><p>Assim que a Chama Solar aprovar, você já pode indicar clientes por aqui.</p></div>'}
+      <div class="kpis"><div class="kpi"><small>Indicações</small><b>${inds.length}</b></div><div class="kpi"><small>A receber</small><b>${brl(aReceber)}</b></div><div class="kpi"><small>Recebido</small><b>${brl(recebido)}</b></div></div>
+      <div class="abas">${abas.map(([k, t]) => `<button data-aba="${k}" aria-pressed="${aba === k}">${t}</button>`).join('')}</div><div id="conteudo"></div>`;
+    document.querySelectorAll('[data-aba]').forEach((b) => b.onclick = () => { aba = b.dataset.aba; area(d, pin); });
+    const c = $('#conteudo');
+    if (aba === 'indicar') {
+      c.innerHTML = `<form class="card" id="fi"><h2>Indicar um cliente</h2><p>Avise o cliente que a Chama Solar vai chamar no WhatsApp. Quanto mais você contar sobre ele, mais fácil fechar.</p>
+        <div class="g2"><label>Nome do cliente<input name="nome" required></label><label>WhatsApp do cliente<input name="whatsapp" required inputmode="tel" placeholder="(16) 99999-9999"></label></div>
+        <div class="g2"><label>Cidade<input name="cidade" value="Ribeirão Preto"></label><label>Conta de luz (kWh/mês, se souber)<input name="consumo" inputmode="numeric" placeholder="ex.: 450"></label></div>
+        <label>O que você sabe dele<textarea name="obs" rows="3" placeholder="ex.: conta de R$ 600, casa térrea, vai colocar piscina, prefere à tarde"></textarea></label>
+        <p class="erro oculto" id="err"></p><button ${d.ativo ? '' : 'disabled'}>Enviar indicação</button></form>`;
+      $('#fi').onsubmit = async (e) => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)), b = e.target.querySelector('button'); b.disabled = true;
+        try { await rpc('sol_parceiro_indicar', { p_token: token, p_pin: pin, p_nome: f.nome, p_whatsapp: f.whatsapp, p_cidade: f.cidade, p_consumo: +String(f.consumo).replace(/\D/g, '') || 0, p_obs: f.obs });
+          const nd = await rpc('sol_parceiro_entrar', { p_token: token, p_pin: pin }); aba = 'minhas'; area(nd, pin); }
+        catch (er) { $('#err').textContent = er.message; $('#err').classList.remove('oculto'); b.disabled = false; } };
+    } else if (aba === 'minhas') {
+      c.innerHTML = `<div class="card">${inds.length ? inds.map((i) => `<div class="ind"><div class="linha"><b>${esc(i.nome)}</b><span class="st ${esc(i.status)}">${ST[i.status] || esc(i.status)}</span></div>
+          <span class="mini">${esc(i.cidade || '')} · indicado em ${new Date(i.criado).toLocaleDateString('pt-BR')}${i.consumo_kwh ? ` · ${nf(i.consumo_kwh)} kWh/mês` : ''}</span>
+          ${i.status === 'ganho' ? `<span class="mini" style="color:#7ee2a6">Sistema de ${brl(i.valor_sistema)} · sua comissão: <b>${brl(i.comissao_valor)}</b> ${i.paga_em ? `(paga em ${new Date(i.paga_em).toLocaleDateString('pt-BR')})` : '(a receber)'}</span>` : ''}
+          ${i.link ? `<div class="linha"><a class="btn vidro pequeno" href="${esc(i.link)}" target="_blank" rel="noopener">Ver a proposta</a><a class="btn pequeno" href="https://wa.me/?text=${encodeURIComponent('Olha a proposta de energia solar que a Chama Solar preparou para você: ' + i.link)}" target="_blank" rel="noopener">Mandar ao cliente</a></div>` : ''}</div>`).join('') : '<p>Nenhuma indicação ainda. A primeira costuma ser alguém da família ou um vizinho com conta alta.</p>'}</div>`;
+    } else if (aba === 'simular') {
+      const fx = d.faixa || {};
+      c.innerHTML = `<div class="card"><h2>Simular na hora</h2><p>Para conversar com o cliente com números na mão. É uma estimativa: o valor certo sai na proposta da Chama Solar.</p>
+        <label>Conta de luz do cliente (kWh por mês)<input id="kwh" inputmode="numeric" value="500"></label><div id="res"></div></div>`;
+      const calc = () => { const kwh = +String($('#kwh').value).replace(/\D/g, '') || 0, hsp = fx.hsp || 5.3, pr = fx.pr || 0.8, kwp = Math.max(kwh - 50, 0) / (hsp * 30 * pr), tar = fx.tarifaKwh || 0.98;
+        if (!kwh || !fx.porKwpMin) { $('#res').innerHTML = fx.porKwpMin ? '' : '<p class="mini">A Chama Solar ainda não liberou a faixa de preço para o simulador.</p>'; return; }
+        const min = Math.round((kwp * fx.porKwpMin) / 100) * 100, max = Math.round((kwp * fx.porKwpMax) / 100) * 100, contaHoje = kwh * tar, eco = Math.max(contaHoje - 50 * tar, 0) * 0.9;
+        $('#res').innerHTML = `<div class="kpis"><div class="kpi"><small>Sistema</small><b>${nf(kwp, 1)} kWp</b></div><div class="kpi"><small>Investimento</small><b>${brl(min)} a ${brl(max)}</b></div><div class="kpi"><small>Economia/mês</small><b>~${brl(eco)}</b></div></div>
+          <p class="mini">Conta de hoje perto de ${brl(contaHoje)}. Com a economia de ~${brl(eco)} por mês, o sistema costuma se pagar em ${nf(Math.max(1, (min + max) / 2 / Math.max(eco, 1) / 12), 1)} anos e dura mais de 25.</p>
+          <a class="btn vidro" href="https://wa.me/?text=${encodeURIComponent(`Fiz uma conta rápida para você: com a sua conta de ${nf(kwh)} kWh, um sistema solar de uns ${nf(kwp, 1)} kWp economiza perto de ${brl(eco)} por mês. A Chama Solar faz a proposta certinha sem compromisso. Posso passar o seu contato?`)}" target="_blank" rel="noopener">Mandar a conta ao cliente</a>`; };
+      $('#kwh').oninput = calc; calc();
+    } else if (aba === 'abordar') {
+      const R = [
+        ['Abrir a conversa', 'Vi a sua conta de luz e fiquei pensando: você sabia que dá para trocar quase toda essa conta por uma parcela que cabe no mesmo valor, e que um dia acaba? Conheço uma empresa séria aqui da região que faz isso há anos. Posso pedir para te mandarem uma simulação, sem compromisso nenhum?'],
+        ['Quando ele diz "é caro"', 'Entendo, à primeira vista assusta. Mas pensa assim: você já paga esse sistema todo mês, só que para a distribuidora, e esse dinheiro nunca volta. Com o solar, a parcela substitui a conta e, quando termina, a energia fica praticamente de graça por mais de 20 anos. O que custa caro é continuar pagando a conta cheia.'],
+        ['Quando ele diz "vou pensar"', 'Claro, é uma decisão importante. Só te peço uma coisa: deixa a Chama Solar fazer a proposta com a sua conta de verdade. Aí você pensa em cima de números reais, não de achismo. Se não fizer sentido, ficou de graça a análise. Posso passar o seu contato hoje?'],
+        ['Quando ele tem medo de empresa ruim', 'Esse cuidado é certo, tem muita empresa que some depois de instalar. A Chama Solar é daqui, faz a homologação com a distribuidora, acompanha a geração pelo monitoramento e cuida da manutenção. Eu só indico quem eu confiaria na minha casa.'],
+        ['Fechar a indicação', 'Então combinado: vou passar o seu nome e o seu WhatsApp para a Chama Solar, eles te chamam e mandam a proposta. Prefere que te chamem de manhã ou à tarde?'],
+      ];
+      c.innerHTML = `<div class="card"><h2>Como abordar</h2><p>Frases para usar do seu jeito. O segredo é falar da conta de luz que a pessoa já paga, não do painel.</p>${R.map(([t, x], k) => `<details ${k ? '' : 'open'}><summary>${t}</summary><div class="roteiro" style="margin-top:8px">${esc(x)}</div><a class="btn vidro pequeno" style="margin-top:8px" href="https://wa.me/?text=${encodeURIComponent(x)}" target="_blank" rel="noopener">Usar no WhatsApp</a></details>`).join('')}</div>`;
+    } else {
+      const F = [
+        ['Quanto eu ganho?', `${nf(d.comissao * 100, 1)}% do valor do sistema que o cliente indicado por você fechar. O valor aparece aqui em "Minhas indicações" assim que ele fecha.`],
+        ['Quando eu recebo?', 'Depois que o cliente fecha, conforme combinado com a Chama Solar, no PIX que você cadastrou. Quando a comissão é paga, ela aparece aqui como "paga".'],
+        ['Preciso vender?', 'Não. Você só indica e, se quiser, conversa um pouco com o cliente. Visita, proposta, projeto, instalação e homologação ficam com a Chama Solar.'],
+        ['E se o cliente já tiver sido indicado por outra pessoa?', 'Vale a primeira indicação registrada. Por isso, indique assim que souber do interesse.'],
+        ['O cliente precisa ter conta alta?', 'Quanto maior a conta, mais o solar compensa. A partir de uns R$ 250 por mês já costuma valer a pena.'],
+      ];
+      c.innerHTML = `<div class="card"><h2>Dúvidas</h2>${F.map(([q, r]) => `<details><summary>${q}</summary><p>${esc(r)}</p></details>`).join('')}<a class="btn vidro" href="https://wa.me/${ZAP}?text=${encodeURIComponent('Olá! Sou parceiro da Chama Solar e tenho uma dúvida.')}" target="_blank" rel="noopener">Falar com a Chama Solar</a></div>`;
+    }
+  }
+
+  if (!token) cadastro();
+  else { const pin = guarda.ler('pin_' + token); if (pin) rpc('sol_parceiro_entrar', { p_token: token, p_pin: pin }).then((d) => area(d, pin)).catch(() => entrar()); else entrar(); }
+})();
+</script>
+</body>
+</html>

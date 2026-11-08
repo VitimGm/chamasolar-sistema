@@ -349,6 +349,21 @@
     app.querySelectorAll('[data-prox]').forEach((bt) => bt.onclick = () => { const d = +bt.dataset.prox, q = new Date(Date.now() + d * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `Falar com ${o.nome}`, ref: o.id, quando: q.toISOString() }); toast('Próximo contato marcado no Meu dia'); ficha(id); });
     { const irmas = propostasDoCliente(o).filter((x) => x.id !== o.id);
       if (irmas.length) { const box = document.createElement('div'); box.className = 'painel entra'; box.innerHTML = `<span class="rotulo">Outras propostas de ${esc(String(o.nome || '').split(' ')[0])} (${irmas.length})</span>${irmas.map((x) => `<a class="entre mini" href="#lead-${x.id}" style="padding:6px 0;border-top:1px dashed var(--linha);text-decoration:none;color:inherit"><span><b>${esc(x.id)}</b> · ${esc(x.titulo || ((x.consumos || []).filter(Boolean).length ? 'conta de ' + Math.round(((x.consumos || []).map(Number).filter((v) => v > 0).reduce((a, b, _, l) => a + b / l.length, 0))) + ' kWh' : 'proposta'))}${x.arquivado ? ' · no arquivo' : ''}</span><span>${esc((STATUS.find(([v]) => v === x.status) || [, x.status])[1])} · ${tempoRel(x.criadoEm)}</span></a>`).join('')}`; const topo = app.querySelector('.painel'); if (topo) topo.after(box); } }
+    if (o.status === 'ganho' && window.Obra) {
+      const OB = window.Obra, ob = o.obra || {}, i = OB.atual(o), box = document.createElement('div'), pri = String(o.nome || '').split(' ')[0];
+      box.className = 'painel entra'; box.id = 'obraBox';
+      box.innerHTML = `<div class="entre"><span class="rotulo">🏗️ Instalação e homologação</span><span class="mini">${i >= OB.ETAPAS.length - 1 ? '✓ sistema gerando' : `próxima: <b>${esc(OB.ETAPAS[i + 1].t)}</b>`}</span></div>
+        <p class="mini" style="margin:4px 0 8px">Marque cada etapa quando acontecer. O sistema agenda o lembrete da próxima e prepara a mensagem para o cliente: ele acompanha tudo sem precisar perguntar.</p>
+        ${OB.ETAPAS.map((e, k) => `<div class="entre" style="padding:7px 0;border-top:1px dashed var(--linha);gap:8px;${k > i + 1 ? 'opacity:.55' : ''}"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-obra="${e.k}" ${ob[e.k] ? 'checked' : ''}><span>${esc(e.t)}${ob[e.k] ? ` <span class="mini">· ${new Date(ob[e.k]).toLocaleDateString('pt-BR')}</span>` : ''}</span></label>${ob[e.k] ? `<button class="btn vidro pequeno" data-obrazap="${e.k}">📲 Avisar ${esc(pri || 'o cliente')}</button>` : ''}</div>`).join('')}`;
+      const ref = app.querySelector('#obraAnc') || app.querySelector('.painel'); if (ref) ref.after(box);
+      box.querySelectorAll('[data-obra]').forEach((c) => c.onchange = () => { o.obra = o.obra || {}; const e = OB.ETAPAS.find((x) => x.k === c.dataset.obra);
+        if (c.checked) { o.obra[e.k] = new Date().toISOString(); (P().lembretes || []).filter((l) => l.ref === o.id && !l.feito && /\(etapa da obra\)/.test(l.texto)).forEach((l) => lembreteFeito(l.id)); const nx = OB.proxima(o); if (nx && e.prazo) { const q = new Date(Date.now() + e.prazo * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `${o.nome}: ${e.prox.toLowerCase()} (etapa da obra)`, ref: o.id, quando: q.toISOString() }); }
+          if (e.k === 'ligado' && !o.instaladoEm) o.instaladoEm = o.obra[e.k]; toast(`${e.t} ✓${nx ? ' · lembrete da próxima etapa criado' : ''}`); }
+        else delete o.obra[e.k];
+        B.salvar(o); ficha(id); });
+      box.querySelectorAll('[data-obrazap]').forEach((bt) => bt.onclick = () => { const e = OB.ETAPAS.find((x) => x.k === bt.dataset.obrazap), tel = String(o.whatsapp || '').replace(/\D/g, '').replace(/^55/, '');
+        window.open('https://wa.me/' + (tel ? '55' + tel : '') + '?text=' + encodeURIComponent(e.msg(pri || 'Olá') + `\n\nAcompanhe por aqui: ${linkProposta(o)}`), '_blank', 'noopener'); B.interacao && B.interacao(o.id, 'whatsapp', 'Obra: ' + e.t); });
+    }
     $('#fNova').onclick = () => { const n = novaPropostaDe(o); toast(`Nova proposta para ${o.nome}: os dados do cliente já vieram`); location.hash = '#novo'; void n; };
     $('#fExcluir').onclick = (ev) => { const b = ev.currentTarget; if (!b.dataset.c) { b.dataset.c = 1; b.textContent = 'Tocar de novo para excluir'; setTimeout(() => { if (b.isConnected) { b.textContent = '🗑 Excluir'; delete b.dataset.c; } }, 4000); return; }
       o.apagado = true; o.apagadoEm = new Date().toISOString(); B.salvar(o); toast(`${o.nome} foi para a lixeira (Arquivo → Lixeira). Dá para restaurar.`); location.hash = '#painel'; };
@@ -1482,6 +1497,71 @@
   }
   let avDeb = null;
   /* =====================================================================
+     PARCEIROS: quem indica cliente. Eles entram por link + senha
+     (parceiro.html), sem login do Chamae. Nível 1 indica; 2 também simula e
+     tem os roteiros; 3 também vê e manda o link da proposta. Comissão
+     sobre o valor do sistema (3% padrão, editável por parceiro).
+     ===================================================================== */
+  const ST_IND = { nova: ['Nova', 'var(--sol)'], em_contato: ['Em contato', 'var(--amarelo)'], proposta: ['Proposta enviada', '#7a9dff'], ganho: ['Fechou', 'var(--verde-claro)'], perdido: ['Não fechou', 'var(--texto-3)'] };
+  function faixaParceiro() {
+    const a = estimativaRapida({ kwh: 350, cidade: 'Ribeirão Preto', ligacao: 'bi' }), b = estimativaRapida({ kwh: 1200, cidade: 'Ribeirão Preto', ligacao: 'bi' }), p = P();
+    const pk = [a.min / a.kwp, a.max / a.kwp, b.min / b.kwp, b.max / b.kwp];
+    return { porKwpMin: Math.round(Math.min(...pk)), porKwpMax: Math.round(Math.max(...pk)), hsp: (C.entrada({ cidade: 'Ribeirão Preto', consumos: [500], ligacao: 'bi' }).hsp) || 5.3, pr: p.pr || 0.8, tarifaKwh: p.tarifaKwh || 0.98, em: new Date().toISOString() };
+  }
+  const statusDeOrc = (o) => (!o ? null : o.status === 'ganho' ? 'ganho' : o.status === 'perdido' ? 'perdido' : o.status === 'novo' ? 'em_contato' : 'proposta');
+  async function sincIndicacoes(inds) {
+    for (const i of inds) { if (!i.orc_codigo) continue; const o = B.obter(i.orc_codigo); if (!o) continue;
+      const st = statusDeOrc(o), mud = {};
+      if (st && st !== i.status) mud.status = st;
+      if (o.status !== 'novo' && o.token) { const l = linkProposta(o); if (l !== i.link_proposta) mud.link_proposta = l; }
+      if (st === 'ganho') { let v = 0; try { const ops = C.opcoes(o, P()); const op = ops[o.opcaoEscolhida ?? 1] || ops[0]; v = Math.round(op.preco.precoFinal); } catch { v = Math.round(+((o.aceite || {}).valor) || 0); } const pct = +i.comissao_pct || 0.03;
+        if (v && v !== +i.valor_sistema) { mud.valor_sistema = v; mud.comissao_valor = Math.round(v * pct * 100) / 100; } }
+      if (Object.keys(mud).length) { Object.assign(i, mud); try { await B.salvarIndicacao(i.id, mud); } catch { /* segue */ } } }
+  }
+  async function parceirosPag() {
+    app.innerHTML = `${cabCelular()}<p class="sutil">Carregando parceiros…</p>`;
+    let ps = [], inds = []; try { [ps, inds] = await Promise.all([B.parceiros(), B.indicacoes()]); } catch (e) { app.innerHTML = `${cabCelular()}<p class="sutil">Não consegui abrir os parceiros: ${esc(e.message)}</p>`; return; }
+    await sincIndicacoes(inds);
+    if (!P().parceiroFaixa) { try { B.salvarParametros({ parceiroFaixa: faixaParceiro() }); } catch { /* */ } }
+    const nomeP = Object.fromEntries(ps.map((x) => [x.id, x.nome])), linkP = (x) => new URL('parceiro.html?t=' + x.token, location.href).href, cad = new URL('parceiro.html', location.href).href;
+    const aPagar = inds.filter((i) => i.status === 'ganho' && !i.paga_em).reduce((t, i) => t + (+i.comissao_valor || 0), 0);
+    app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Parceiros</h1><p class="sutil">Quem indica cliente para a Chama Solar. Eles entram por um link com senha, sem acesso ao Chamae.</p></div>
+        <div class="linha-h"><button class="btn vidro" id="pcCad">🔗 Link de cadastro</button><button class="btn vidro" id="pcFaixa">↻ Faixa do simulador</button></div></div>
+      <div class="kpis entra"><div class="kpi destaque"><span class="rotulo">Parceiros ativos</span><b>${ps.filter((x) => x.ativo).length}</b><span class="sutil">${ps.filter((x) => !x.ativo).length} aguardando aprovação</span></div>
+        <div class="kpi"><span class="rotulo">Indicações novas</span><b>${inds.filter((i) => i.status === 'nova').length}</b><span class="sutil">${inds.length} no total</span></div>
+        <div class="kpi"><span class="rotulo">Fechadas</span><b>${inds.filter((i) => i.status === 'ganho').length}</b><span class="sutil">${brl(inds.filter((i) => i.status === 'ganho').reduce((t, i) => t + (+i.valor_sistema || 0), 0))} em sistemas</span></div>
+        <div class="kpi"><span class="rotulo">Comissão a pagar</span><b>${brl(aPagar)}</b><span class="sutil">já descontada do preço</span></div></div>
+      <div class="secao-t"><h2>Indicações</h2><span class="sutil">crie o orçamento e o status volta sozinho para o parceiro</span></div>
+      <div class="ops-v duas">${inds.map((i) => { const [t, cor] = ST_IND[i.status] || ST_IND.nova; return `<div class="op-v"><div class="entre"><b>${esc(i.nome)}</b><span class="mini" style="color:${cor};font-weight:700">${t}</span></div>
+          <span class="mini">por <b>${esc(nomeP[i.parceiro_id] || '?')}</b> · ${esc(i.cidade || '')} · ${new Date(i.criado).toLocaleDateString('pt-BR')}${i.consumo_kwh ? ` · ${n(i.consumo_kwh)} kWh` : ''}</span>
+          ${i.obs ? `<span class="mini">“${esc(i.obs)}”</span>` : ''}${i.status === 'ganho' ? `<span class="mini">sistema ${brl(i.valor_sistema)} · comissão ${n((+i.comissao_pct || 0) * 100, 1)}% = <b>${brl(i.comissao_valor)}</b>${i.paga_em ? ` · paga em ${new Date(i.paga_em).toLocaleDateString('pt-BR')}` : ''}</span>` : ''}
+          <div class="acoes-r" style="margin-top:8px;flex-wrap:wrap">${i.orc_codigo ? `<a class="btn vidro pequeno" href="#lead-${esc(i.orc_codigo)}">Abrir ${esc(i.orc_codigo)}</a>` : `<button class="btn sol pequeno" data-indorc="${i.id}">Criar orçamento</button>`}
+            ${i.status === 'ganho' && !+i.valor_sistema ? `<input type="number" min="0" step="100" placeholder="valor do sistema R$" data-indval="${i.id}" style="width:170px;padding:6px 8px">` : ''}${i.status === 'ganho' && !i.paga_em ? `<button class="btn vidro pequeno" data-indpaga="${i.id}">Marcar comissão paga</button>` : ''}${!i.orc_codigo && i.status !== 'perdido' ? `<button class="link" data-indperd="${i.id}">não fechou</button>` : ''}</div></div>`; }).join('') || '<p class="sutil">Nenhuma indicação ainda. Mande o link de cadastro para corretores, eletricistas, arquitetos e clientes satisfeitos.</p>'}</div>
+      <div class="secao-t"><h2>Parceiros</h2><span class="sutil">nível 1 indica · 2 também simula e tem roteiros · 3 também vê e manda o link da proposta</span></div>
+      <div class="ops-v duas">${ps.map((x) => `<div class="op-v" style="cursor:default"><div class="entre"><b>${esc(x.nome)}</b><span class="mini" style="font-weight:700;color:${x.ativo ? 'var(--verde-claro)' : 'var(--laranja)'}">${x.ativo ? 'ativo' : 'aguardando aprovação'}</span></div>
+          <span class="mini">${esc(x.profissao || '')}${x.profissao ? ' · ' : ''}${esc(x.cidade || '')} · ${esc(x.whatsapp || '')}${x.pix ? ' · PIX ' + esc(x.pix) : ''}</span>
+          <span class="mini">${inds.filter((i) => i.parceiro_id === x.id).length} indicação(ões)${x.ultimo_acesso ? ' · entrou ' + tempoRel(x.ultimo_acesso) : ''}</span>
+          <div class="grade g2" style="margin-top:8px"><label class="campo"><span>Nível</span><select data-pnivel="${x.id}">${[1, 2, 3].map((v) => `<option value="${v}" ${+x.nivel === v ? 'selected' : ''}>${v}: ${['indica', 'indica + simula', 'indica + simula + proposta'][v - 1]}</option>`).join('')}</select></label>
+            <label class="campo"><span>Comissão (%)</span><input type="number" step="0.5" min="0" max="20" data-pcom="${x.id}" value="${n((+x.comissao || 0) * 100, 1).replace(',', '.')}"></label></div>
+          <div class="acoes-r" style="margin-top:8px;flex-wrap:wrap">${x.ativo ? `<button class="btn vidro pequeno" data-pativo="${x.id}" data-v="0">Desativar</button>` : `<button class="btn sol pequeno" data-pativo="${x.id}" data-v="1">✓ Aprovar</button>`}
+            <button class="btn vidro pequeno" data-plink="${x.id}">Copiar link</button><button class="btn vidro pequeno" data-pzap="${x.id}">📲 Mandar o link</button></div></div>`).join('') || '<p class="sutil">Nenhum parceiro ainda.</p>'}</div>`;
+    const recarregar = () => parceirosPag();
+    $('#pcCad').onclick = async () => { try { await navigator.clipboard.writeText(cad); toast('Link de cadastro copiado: ' + cad); } catch { toast(cad); } };
+    $('#pcFaixa').onclick = () => { const f = faixaParceiro(); B.salvarParametros({ parceiroFaixa: f }); toast(`Faixa do simulador: ${brl(f.porKwpMin)} a ${brl(f.porKwpMax)} por kWp`); };
+    app.querySelectorAll('[data-pativo]').forEach((b) => b.onclick = async () => { await B.salvarParceiro(b.dataset.pativo, { ativo: b.dataset.v === '1' }); toast(b.dataset.v === '1' ? 'Parceiro aprovado: mande o link para ele' : 'Parceiro desativado'); recarregar(); });
+    app.querySelectorAll('[data-pnivel]').forEach((sl) => sl.onchange = async () => { await B.salvarParceiro(sl.dataset.pnivel, { nivel: +sl.value }); toast('Nível ' + sl.value + ' salvo'); });
+    app.querySelectorAll('[data-pcom]').forEach((ip) => ip.onchange = async () => { const v = Math.min(20, Math.max(0, +ip.value || 0)) / 100; await B.salvarParceiro(ip.dataset.pcom, { comissao: v }); toast(`Comissão de ${n(v * 100, 1)}% salva (vale para as próximas indicações)`); });
+    app.querySelectorAll('[data-plink]').forEach((b) => b.onclick = async () => { const x = ps.find((y) => y.id === b.dataset.plink); try { await navigator.clipboard.writeText(linkP(x)); toast('Link do parceiro copiado'); } catch { toast(linkP(x)); } });
+    app.querySelectorAll('[data-pzap]').forEach((b) => b.onclick = () => { const x = ps.find((y) => y.id === b.dataset.pzap), tel = String(x.whatsapp || '').replace(/\D/g, '').replace(/^55/, '');
+      window.open('https://wa.me/' + (tel ? '55' + tel : '') + '?text=' + encodeURIComponent(`Olá, ${String(x.nome).split(' ')[0]}! Seu cadastro de parceiro da Chama Solar está aprovado. Por este link (com a senha que você criou) você indica clientes e acompanha as suas comissões: ${linkP(x)}`), '_blank', 'noopener'); });
+    app.querySelectorAll('[data-indorc]').forEach((b) => b.onclick = async () => { const i = inds.find((y) => y.id === b.dataset.indorc), x = ps.find((y) => y.id === i.parceiro_id) || {};
+      const o = { ...novoOrc(), nome: i.nome, whatsapp: i.whatsapp || '', cidade: i.cidade || 'Ribeirão Preto', distanciaKm: ((D.cidades || {})[i.cidade] || {}).km || 0, consumos: i.consumo_kwh ? Array(12).fill(+i.consumo_kwh) : Array(12).fill(''), origem: 'Indicação', indicadoPor: x.nome || '', parceiro: { id: x.id, nome: x.nome, indicacao: i.id }, comissaoParceria: Math.round((+i.comissao_pct || 0.03) * 1000) / 10, nota: i.obs || '' };
+      B.salvar(o); await B.salvarIndicacao(i.id, { orc_codigo: o.id, status: 'em_contato' }); toast(`Orçamento ${o.id} criado com ${n(o.comissaoParceria, 1)}% de comissão embutida no preço`); location.hash = '#lead-' + o.id; });
+    app.querySelectorAll('[data-indpaga]').forEach((b) => b.onclick = async () => { if (!confirm('Marcar a comissão como paga?')) return; await B.salvarIndicacao(b.dataset.indpaga, { paga_em: new Date().toISOString() }); toast('Comissão marcada como paga'); recarregar(); });
+    app.querySelectorAll('[data-indval]').forEach((ip) => ip.onchange = async () => { const i = inds.find((y) => y.id === ip.dataset.indval), v = +ip.value || 0; if (!v) return; await B.salvarIndicacao(i.id, { valor_sistema: v, comissao_valor: Math.round(v * (+i.comissao_pct || 0.03) * 100) / 100 }); toast('Valor salvo'); recarregar(); });
+    app.querySelectorAll('[data-indperd]').forEach((b) => b.onclick = async () => { await B.salvarIndicacao(b.dataset.indperd, { status: 'perdido' }); recarregar(); });
+  }
+  /* =====================================================================
      CLIENTES (quem já comprou) e ARQUIVO (o que não está em negociação).
      O funil fica só com quem está negociando agora.
      ===================================================================== */
@@ -1533,6 +1613,7 @@
         return `<div class="op-v"><div class="entre"><b style="font-size:17px">${esc(o.nome || 'Sem nome')}</b>${o.origem === 'groner' ? '<span class="mini" style="opacity:.75">Groner</span>' : ''}</div>
           <span class="mini">${esc(o.id)} · ${esc(o.cidade || '')}${kwp ? ` · ${n(kwp, 2)} kWp` : ''}${o.instaladoEm || o.criadoEm ? ` · desde ${new Date(o.instaladoEm || o.criadoEm).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })}` : ''}</span>
           ${velha ? '<span class="mini" style="color:var(--laranja)">🧽 manutenção vencida: boa hora de oferecer</span>' : ''}
+          ${window.Obra && o.status === 'ganho' && Obra.proxima(o) ? `<span class="mini" style="color:var(--amarelo)">🏗️ obra: próxima etapa ${esc(Obra.proxima(o).t.toLowerCase())}</span>` : ''}
           <div class="acoes-r" style="margin-top:8px;flex-wrap:wrap"><a class="btn vidro pequeno" href="#lead-${o.id}">Ficha</a><a class="btn vidro pequeno" href="#servico-novo-manutencao-de-${o.id}">🧽 Manutenção</a><a class="btn vidro pequeno" href="#servico-novo-ampliacao-de-${o.id}">⚡ Ampliação</a><button class="btn vidro pequeno" data-novap="${o.id}">＋ Proposta</button><button class="link" data-del="${o.id}" title="mandar para a lixeira">🗑</button></div></div>`; }).join('') || '<p class="sutil">Nenhum cliente ainda. Quem fechar (status Ganho) aparece aqui, e os clientes da Groner entram aqui na importação.</p>'}</div>
       ${lista.length > 200 ? `<p class="mini">Mostrando 200 de ${lista.length}. Use a busca.</p>` : ''}`;
     const bx = $('#cliBusca'); bx.oninput = () => { try { sessionStorage.setItem('cliBusca', bx.value); } catch { /* */ } clearTimeout(avDeb); avDeb = setTimeout(() => { clientesPag(); const b = $('#cliBusca'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }, 300); };
@@ -1820,7 +1901,7 @@
     const [rota, arg] = h.startsWith('lead-') ? ['lead', h.slice(5)] : h.startsWith('servico-') ? ['servico', h.slice(8)] : [h, null];
     document.querySelectorAll('[data-rota]').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === (rota === 'lead' ? 'painel' : rota === 'servico' ? 'servicos' : rota)));
     if (rota !== 'novo') { document.body.classList.remove('com-barra'); $('#barra').hidden = true; }
-    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') diaPag(); else if (rota === 'servicos') servicosPag(); else if (rota === 'clientes') clientesPag(); else if (rota === 'arquivo') arquivoPag(); else if (rota === 'servico') servicoEd(arg); else if (rota === 'parametros') parametrosPag(); else painel(); };
+    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') diaPag(); else if (rota === 'servicos') servicosPag(); else if (rota === 'clientes') clientesPag(); else if (rota === 'parceiros') parceirosPag(); else if (rota === 'arquivo') arquivoPag(); else if (rota === 'servico') servicoEd(arg); else if (rota === 'parametros') parametrosPag(); else painel(); };
     if (document.startViewTransition) {
       const t = document.startViewTransition(ir);
       [t.ready, t.finished, t.updateCallbackDone].forEach((pr) => pr && pr.catch(() => {})); // navegação rápida cancela a animação, sem problema
