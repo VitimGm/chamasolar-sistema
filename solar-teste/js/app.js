@@ -189,6 +189,49 @@
   const linkIndicacao = (o) => new URL('captacao.html?ind=' + encodeURIComponent(o.nome), location.href).href;
   const msgIndicacao = (o) => `${String(o.nome).split(' ')[0]}, que bom ter você com a gente! ☀️ Se conhecer alguém que paga caro de luz, manda esse link pra pessoa: ${linkIndicacao(o)}\nSe ela fechar, você ganha um presente de agradecimento 🎁`;
 
+  /* ---------- botões Fechou / Perdeu ---------- */
+  function modal(html) {
+    const ov = document.createElement('div'); ov.className = 'modal-rapida'; ov.style.cssText = 'position:fixed;inset:0;z-index:80;background:#0009;display:grid;place-items:center;padding:16px';
+    ov.innerHTML = `<div class="painel" style="max-width:520px;width:100%;max-height:92vh;overflow:auto">${html}</div>`; ov.onclick = (e) => { if (e.target === ov || e.target.closest('[data-fechar]')) ov.remove(); }; document.body.appendChild(ov); return ov;
+  }
+  function fecharGanho(o, depois) {
+    let ops = []; try { ops = C.opcoes(o, P()); } catch { /* sem consumo */ }
+    const esc0 = o.opcaoEscolhida ?? Math.max(ops.findIndex((x) => x.destaque), 0);
+    const FP = [['avista', 'À vista (PIX/transferência)'], ['financiamento', 'Financiamento'], ['cartao', 'Cartão'], ['entrada', 'Entrada + parcelas']];
+    const ov = modal(`<div class="entre"><span class="rotulo" style="color:var(--verde-claro)">✅ Fechou com ${esc(String(o.nome || '').split(' ')[0])}</span><button class="link" data-fechar>cancelar</button></div>
+      ${ops.length ? `<p class="mini" style="margin:8px 0 4px">Qual opção ele comprou?</p><div style="display:grid;gap:6px">${ops.map((op, i) => `<label class="entre" style="border:1px solid var(--linha);border-radius:12px;padding:10px;cursor:pointer;gap:8px"><span><input type="radio" name="gOp" value="${i}" ${i === esc0 ? 'checked' : ''}> <b>${esc(op.nivel)}</b> · ${n(op.dim.kwpReal, 2)} kWp · ${op.dim.placas}× ${op.modulo.potenciaW} W</span><b>${brl(op.preco.precoFinal)}</b></label>`).join('')}</div>` : '<p class="mini" style="margin:8px 0">Este orçamento não tem opções calculadas. Informe o valor fechado:</p>'}
+      <div class="grade g2" style="margin-top:10px"><label class="campo"><span>Valor fechado (R$)</span><input type="number" step="any" id="gValor" placeholder="${ops[esc0] ? Math.round(ops[esc0].preco.precoFinal) : ''}"></label>
+        <label class="campo"><span>Forma de pagamento</span><select id="gPag">${FP.map(([v, t]) => `<option value="${v}" ${o.formaPagamento === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label></div>
+      <label class="campo" style="margin-top:6px"><span>Observação (opcional)</span><input type="text" id="gObs" placeholder="ex.: desconto de 3% à vista, instala em dezembro"></label>
+      <button class="btn sol" id="gOk" style="width:100%;margin-top:12px">Confirmar: cliente fechou</button>`);
+    ov.querySelectorAll('[name=gOp]').forEach((r) => r.onchange = () => { const op = ops[+r.value]; if (op) ov.querySelector('#gValor').placeholder = Math.round(op.preco.precoFinal); });
+    ov.querySelector('#gOk').onclick = () => {
+      const i = +((ov.querySelector('[name=gOp]:checked') || {}).value ?? esc0); o.opcaoEscolhida = i; o.formaPagamento = ov.querySelector('#gPag').value;
+      o.status = 'ganho'; o.ganhoEm = o.ganhoEm || new Date().toISOString(); if (!o.enviadoEm) o.enviadoEm = o.ganhoEm;
+      const c = compraDe(o) || { data: new Date().toISOString(), descricao: 'Venda', valorTotal: 0, formaPagamento: o.formaPagamento };
+      const vm = +ov.querySelector('#gValor').value; if (vm > 0) c.valorTotal = vm; c.formaPagamento = o.formaPagamento; if (ov.querySelector('#gObs').value.trim()) c.obs = ov.querySelector('#gObs').value.trim();
+      o.compras = [c, ...(o.compras || []).slice(1)]; o.valorFechado = c.valorTotal;
+      o.posVenda = { ...(o.posVenda || {}), contrato: (o.posVenda || {}).contrato || new Date().toISOString().slice(0, 10) };
+      o.arquivado = false; B.salvar(o); B.interacao && B.interacao(o.id, 'nota', `Fechou: ${c.descricao || ''} · ${brl(c.valorTotal)} · ${o.formaPagamento}`);
+      ov.remove(); toast(`🎉 Venda registrada: ${brl(c.valorTotal)}. ${o.nome} já está em Clientes, com o pós-venda começando.`); depois && depois();
+    };
+  }
+  function marcarPerda(o, depois) {
+    const MOT = ['Preço / achou caro', 'Fechou com concorrente', 'Financiamento negado', 'Sem condição agora', 'Parou de responder', 'Desistiu do projeto', 'Inviável tecnicamente', 'Outro'];
+    const ov = modal(`<div class="entre"><span class="rotulo">❌ Perdeu ${esc(String(o.nome || '').split(' ')[0])}</span><button class="link" data-fechar>cancelar</button></div>
+      <p class="mini" style="margin:8px 0">Qual foi o motivo?</p><div class="chips">${MOT.map((m) => `<button class="chip" data-mot="${esc(m)}">${esc(m)}</button>`).join('')}</div>
+      <label class="campo" style="margin-top:10px"><span>Detalhe (opcional)</span><input type="text" id="pDet" placeholder="ex.: fechou com a X por R$ 2 mil a menos"></label>
+      <label class="campo" style="margin-top:6px"><span>Retomar o contato em</span><select id="pRet"><option value="30">30 dias</option><option value="90" selected>90 dias</option><option value="180">6 meses</option><option value="0">não retomar</option></select></label>
+      <button class="btn vidro" id="pOk" style="width:100%;margin-top:12px" disabled>Confirmar perda</button>`);
+    let mot = ''; ov.querySelectorAll('[data-mot]').forEach((b) => b.onclick = () => { mot = b.dataset.mot; ov.querySelectorAll('[data-mot]').forEach((x) => x.classList.toggle('sel', x === b)); ov.querySelector('#pOk').disabled = false; });
+    ov.querySelector('#pOk').onclick = () => {
+      const det = ov.querySelector('#pDet').value.trim(), dias = +ov.querySelector('#pRet').value;
+      o.status = 'perdido'; o.motivoPerda = det ? `${mot}: ${det}` : mot; o.perdidoEm = new Date().toISOString(); if (!o.enviadoEm) o.enviadoEm = o.perdidoEm;
+      if (dias) { const q = new Date(Date.now() + dias * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `Retomar ${o.nome} (perdido: ${mot.toLowerCase()})`, ref: o.id, quando: q.toISOString() }); }
+      B.salvar(o); B.interacao && B.interacao(o.id, 'nota', 'Perdido: ' + o.motivoPerda); ov.remove();
+      toast(`Perda registrada (${mot}).${dias ? ` Retomada em ${dias} dias.` : ''} Em 7 dias vai para o Arquivo.`); depois && depois();
+    };
+  }
   /* o que o cliente comprou: fica gravado no fechamento (Groner traz as compras de lá) */
   function compraDe(o) {
     try { const ops = C.opcoes(o, P()), op = ops[o.opcaoEscolhida ?? 1] || ops.find((x) => x.destaque) || ops[0]; if (!op) return null;
@@ -238,7 +281,7 @@
           <div class="anel" style="--p:${t.pontos};--cor:${cor}"><span>${t.pontos}<small>${t.rotulo.toUpperCase()}</small></span></div>
           <div><h1 style="font-size:clamp(22px,4vw,30px);margin:0">${esc(o.nome)}</h1>
             <div class="sutil">${esc(o.id)} · ${esc(o.cidade)} · origem ${esc(o.origem || '—')} · criado ${tempoRel(o.criadoEm)}</div>
-            <div class="linha-h" style="margin-top:8px"><select id="status" style="width:auto;padding:7px 10px;font-size:14px">${STATUS.map(([s, r]) => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${r}</option>`).join('')}</select><button class="btn vidro pequeno" id="fNova" title="Outra proposta para o mesmo cliente (ex.: outro tamanho, bateria, outro endereço)">＋ Nova proposta</button><button class="btn vidro pequeno" id="fExcluir">🗑 Excluir</button>
+            <div class="linha-h" style="margin-top:8px"><select id="status" style="width:auto;padding:7px 10px;font-size:14px">${STATUS.map(([s, r]) => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${r}</option>`).join('')}</select>${o.status !== 'ganho' ? '<button class="btn sol pequeno" id="fGanho">✅ Fechou</button>' : ''}${o.status !== 'perdido' && o.status !== 'ganho' ? '<button class="btn vidro pequeno" id="fPerda">❌ Perdeu</button>' : ''}<button class="btn vidro pequeno" id="fNova" title="Outra proposta para o mesmo cliente (ex.: outro tamanho, bateria, outro endereço)">＋ Nova proposta</button><button class="btn vidro pequeno" id="fExcluir">🗑 Excluir</button>
             ${o.status === 'perdido' ? `<input type="text" id="motivo" placeholder="Motivo da perda" value="${esc(o.motivoPerda)}" style="flex:1;min-width:180px;padding:7px 10px;font-size:14px">` : ''}</div></div>
         </div>
         <div class="proxima" style="margin-top:14px"><div class="ic">${acao.icone}</div><div><span class="rotulo" style="color:var(--sol)">Próxima melhor ação</span><div style="font-weight:600;margin-top:4px">${esc(acao.texto)}</div></div></div>
@@ -390,6 +433,8 @@
       const ger = $('#compraGerar'); if (ger) ger.onclick = () => { const c = compraDe(o); if (!c) { toast('Este orçamento não tem kit para puxar'); return; } o.compras = [c]; B.salvar(o); ficha(id); };
     }
     { const ab = document.createElement('div'); ab.className = 'painel entra'; ab.id = 'arqBox'; ab.innerHTML = '<span class="rotulo">📁 Documentos e fotos</span><p class="mini">carregando…</p>'; const ref1 = app.querySelector('#compraBox') || app.querySelector('.painel'); if (ref1) ref1.after(ab); painelArquivos(o, ab); }
+    if ($('#fGanho')) $('#fGanho').onclick = () => fecharGanho(o, () => ficha(id));
+    if ($('#fPerda')) $('#fPerda').onclick = () => marcarPerda(o, () => ficha(id));
     $('#fNova').onclick = () => { const n = novaPropostaDe(o); toast(`Nova proposta para ${o.nome}: os dados do cliente já vieram`); location.hash = '#novo'; void n; };
     $('#fExcluir').onclick = (ev) => { const b = ev.currentTarget; if (!b.dataset.c) { b.dataset.c = 1; b.textContent = 'Tocar de novo para excluir'; setTimeout(() => { if (b.isConnected) { b.textContent = '🗑 Excluir'; delete b.dataset.c; } }, 4000); return; }
       o.apagado = true; o.apagadoEm = new Date().toISOString(); B.salvar(o); toast(`${o.nome} foi para a lixeira (Arquivo → Lixeira). Dá para restaurar.`); location.hash = '#painel'; };
