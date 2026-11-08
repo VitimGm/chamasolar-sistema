@@ -1181,38 +1181,54 @@
   /* ======================= CATÁLOGO ======================= */
   let filtroCat = 'modulo';
   /* ======================= USINAS (monitoramento) ======================= */
+  const usF = { filtro: 'todas', busca: '', ordem: 'atencao', ver: 30, aberta: null };
   function usinasPag() {
     const U = window.Usinas, lista = B.usinas().filter((u) => u.ativo !== false);
-    const info = lista.map((u) => ({ u, g: B.geracao(u.id), s: U.situacao(u, B.geracao(u.id)) }));
-    const alertas = info.filter((x) => x.s.alerta);
-    const totalMes = info.reduce((t, x) => t + x.s.total, 0), lei = (u) => (B.leitura ? B.leitura(u.id) : null), semCom = lista.filter((u) => { const l = lei(u); return l && String(l.status) === '4'; }).length;
-    app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Usinas</h1><p class="sutil">Geração lida das plataformas dos fabricantes, comparada com o que a proposta prometeu.</p></div>
-        <div class="linha-h"><button class="btn vidro" id="usAtu">↻ Atualizar agora</button><button class="btn vidro" id="usImp">Importar planilha</button><button class="btn sol" id="usNova">＋ Cadastrar usina</button></div></div>
-      <div class="kpis entra"><div class="kpi destaque"><span class="rotulo">Usinas</span><b>${lista.length}</b><span class="sutil">${n(lista.reduce((t, u) => t + Number(u.kwp), 0), 1)} kWp instalados</span></div>
-        <div class="kpi"><span class="rotulo">Geração no mês</span><b>${n(totalMes)} kWh</b><span class="sutil">todas as usinas</span></div>
-        <div class="kpi"><span class="rotulo">Precisam de atenção</span><b style="color:${alertas.length ? 'var(--laranja)' : 'inherit'}">${alertas.length}</b><span class="sutil">ligar antes do cliente perceber</span></div>
-        <div class="kpi"><span class="rotulo">Sem comunicação</span><b style="color:${semCom ? 'var(--laranja)' : 'inherit'}">${semCom}</b><span class="sutil">inversor sem internet na plataforma</span></div></div>
-      ${alertas.length ? `<div class="secao-t"><h2>Atenção</h2><span class="sutil">ligue para o cliente ou abra a plataforma do fabricante</span></div><div class="agora">${alertas.map(({ u, s }) => `<div class="acao p5"><div class="ic">⚠️</div><div><b>${esc(u.cliente_nome)}</b> <span class="sutil">${esc(u.marca)} · ${n(u.kwp, 2)} kWp</span><p>${esc(s.alerta)}</p></div></div>`).join('')}</div>` : ''}
-      <div class="painel" id="usStatus"><span class="rotulo">Leitura das plataformas</span><p class="sutil" style="margin:6px 0 0">carregando…</p></div>
-      <div class="secao-t"><h2>Todas as usinas</h2><span class="sutil">este mês, proporcional aos dias com leitura</span></div>
-      <div class="ops-v duas">${info.map(({ u, s }) => `<div class="op-v" style="cursor:default">
-          <div class="entre"><b style="font-size:17px">${esc(u.cliente_nome)}</b><span class="mini">${esc(u.marca)}${u.plataforma_id ? ' · ' + esc(u.plataforma_id) : ''}</span></div>
-          <span class="mini">${esc(u.cidade || '')} · ${n(u.kwp, 2)} kWp · espera ${n(u.esperado_mes)} kWh/mês</span>
-          ${(() => { const l = lei(u); if (!l) return ''; const off = String(l.status) === '4'; return `<span class="mini" style="color:${off ? 'var(--laranja)' : 'var(--verde-claro)'}">${off ? '📡 sem comunicação com a plataforma' : `● comunicando${+l.potencia_w > 0 ? ` · ${n(l.potencia_w)} W na leitura` : ''}`} · ${n(l.total_kwh)} kWh gerados desde a instalação</span>`; })()}
-          <div style="height:10px;border-radius:99px;background:var(--vidro);margin:10px 0 4px;overflow:hidden"><div style="height:100%;width:${Math.min((s.pct || 0) * 100, 100)}%;background:${s.pct === null ? 'transparent' : s.pct < 0.75 ? 'var(--laranja)' : 'var(--verde-claro)'}"></div></div>
-          <span class="mini">${s.pct === null ? 'sem leitura este mês' : `${n(s.total)} kWh · ${n(s.pct * 100)}% do esperado · ${brl(s.economiaMes)} de economia`}${s.ultimo ? ' · última leitura ' + s.ultimo.split('-').reverse().join('/') : ''}</span>
-          <div class="acoes-r" style="margin-top:10px"><button class="btn sol pequeno" data-us="conta" data-id="${u.id}">💡 Relatório da conta</button><button class="btn vidro pequeno" data-us="rel" data-id="${u.id}">Relatório do mês</button><button class="btn zap pequeno" data-us="zap" data-id="${u.id}">WhatsApp</button><button class="btn vidro pequeno" data-us="imp" data-id="${u.id}">Importar</button><button class="link" data-us="edit" data-id="${u.id}">editar</button></div>
-        </div>`).join('') || '<p class="sutil">Nenhuma usina cadastrada. Comece pelas mais recentes.</p>'}</div>
+    const lei = (u) => (B.leitura ? B.leitura(u.id) : null);
+    const info = lista.map((u) => { const g = B.geracao(u.id), s = U.situacao(u, g), l = lei(u), off = !!(l && String(l.status) === '4');
+      const est = s.alerta ? 'atencao' : off ? 'semcom' : s.pct === null ? 'semleitura' : 'bem'; return { u, g, s, l, off, est }; });
+    const conta = (k) => info.filter((x) => (k === 'todas' ? true : k === 'semcom' ? x.off : x.est === k)).length;
+    const totalMes = info.reduce((t, x) => t + x.s.total, 0);
+    const COR = { atencao: 'var(--laranja)', semcom: '#ff5c5c', semleitura: 'var(--texto-3)', bem: 'var(--verde-claro)' };
+    const ROT = { atencao: 'atenção', semcom: 'sem comunicação', semleitura: 'sem leitura no mês', bem: 'gerando bem' };
+    const q = usF.busca.toLowerCase();
+    let vis = info.filter((x) => (usF.filtro === 'todas' || (usF.filtro === 'semcom' ? x.off : x.est === usF.filtro)) && (!q || [x.u.cliente_nome, x.u.cidade, x.u.plataforma_id, x.u.marca].join(' ').toLowerCase().includes(q)));
+    const peso = { atencao: 0, semcom: 1, semleitura: 2, bem: 3 };
+    vis.sort(usF.ordem === 'nome' ? (a, b2) => String(a.u.cliente_nome).localeCompare(String(b2.u.cliente_nome)) : usF.ordem === 'kwp' ? (a, b2) => b2.u.kwp - a.u.kwp : usF.ordem === 'pct' ? (a, b2) => (a.s.pct ?? 9) - (b2.s.pct ?? 9) : (a, b2) => peso[a.est] - peso[b2.est] || String(a.u.cliente_nome).localeCompare(String(b2.u.cliente_nome)));
+    const total = vis.length; vis = vis.slice(0, usF.ver);
+    const kpi = (k, rot, val, sub, cor) => `<button class="kpi ${usF.filtro === k ? 'destaque' : ''}" data-usf="${k}" style="text-align:left;cursor:pointer;font:inherit;color:inherit"><span class="rotulo">${rot}</span><b style="${cor ? `color:${cor}` : ''}">${val}</b><span class="sutil">${sub}</span></button>`;
+    const linha = ({ u, s, l, off, est }) => { const ab = usF.aberta === String(u.id);
+      return `<div class="us-l ${ab ? 'aberta' : ''}"><button class="us-cab" data-usab="${u.id}"><i style="background:${COR[est]}" title="${ROT[est]}"></i>
+          <span class="us-n"><b>${esc(u.cliente_nome)}</b><small>${esc(u.cidade || u.marca || '')} · ${n(u.kwp, 2)} kWp</small></span>
+          <span class="us-b"><span><em style="width:${Math.min((s.pct || 0) * 100, 100)}%;background:${s.pct !== null && s.pct < 0.75 ? 'var(--laranja)' : 'var(--verde-claro)'}"></em></span><small>${s.pct === null ? (off ? 'sem comunicação' : 'sem leitura') : `${n(s.pct * 100)}% · ${n(s.total)} kWh`}</small></span><span class="us-s">›</span></button>
+        ${ab ? `<div class="us-d">${s.alerta ? `<p class="aviso" style="margin:0 0 8px">⚠️ ${esc(s.alerta)}</p>` : ''}
+          <div class="numeros4"><div><span>Este mês</span><b>${s.pct === null ? '–' : n(s.total) + ' kWh'}</b></div><div><span>Esperado</span><b>${n(u.esperado_mes)} kWh/mês</b></div><div><span>Economia no mês</span><b>${s.pct === null ? '–' : brl(s.economiaMes)}</b></div><div><span>Desde a instalação</span><b>${l ? n(l.total_kwh) + ' kWh' : '–'}</b></div></div>
+          <p class="mini" style="margin:8px 0">${esc(u.marca)}${u.plataforma_id ? ' · id ' + esc(u.plataforma_id) : ''}${l ? ` · ${off ? '<b style="color:#ff5c5c">inversor sem comunicação</b>' : `comunicando${+l.potencia_w > 0 ? ' (' + n(l.potencia_w) + ' W na leitura)' : ''}`}` : ''}${s.ultimo ? ' · última leitura ' + s.ultimo.split('-').reverse().join('/') : ''}${u.whatsapp ? '' : ' · <b>sem WhatsApp cadastrado</b>'}</p>
+          <div class="acoes-r" style="flex-wrap:wrap"><button class="btn sol pequeno" data-us="conta" data-id="${u.id}">💡 Relatório da conta</button><button class="btn vidro pequeno" data-us="rel" data-id="${u.id}">Relatório do mês</button>${u.whatsapp ? `<button class="btn zap pequeno" data-us="zap" data-id="${u.id}">WhatsApp</button>` : ''}<button class="btn vidro pequeno" data-us="imp" data-id="${u.id}">Importar planilha</button><button class="btn vidro pequeno" data-us="ed" data-id="${u.id}">Editar</button></div></div>` : ''}</div>`; };
+    app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Usinas</h1><p class="sutil">${lista.length} usinas · ${n(lista.reduce((t, u) => t + Number(u.kwp), 0), 1)} kWp · ${n(totalMes)} kWh no mês</p></div>
+        <div class="linha-h"><button class="btn vidro" id="usAtu">↻ Atualizar</button><button class="btn sol" id="usNova">＋ Usina</button></div></div>
+      <div class="kpis entra us-kpis">${kpi('atencao', 'Precisam de atenção', conta('atencao'), 'gerando abaixo do esperado', conta('atencao') ? 'var(--laranja)' : '')}${kpi('semcom', 'Sem comunicação', conta('semcom'), 'inversor sem internet', conta('semcom') ? '#ff5c5c' : '')}${kpi('bem', 'Gerando bem', conta('bem'), 'dentro do esperado', '')}${kpi('todas', 'Todas', lista.length, 'ver a lista inteira', '')}</div>
+      <div class="painel entra us-barra"><input type="search" id="usBusca" placeholder="Buscar cliente, cidade ou id da plataforma" value="${esc(usF.busca)}">
+        <select id="usOrdem"><option value="atencao" ${usF.ordem === 'atencao' ? 'selected' : ''}>Problemas primeiro</option><option value="pct" ${usF.ordem === 'pct' ? 'selected' : ''}>Pior desempenho</option><option value="kwp" ${usF.ordem === 'kwp' ? 'selected' : ''}>Maiores</option><option value="nome" ${usF.ordem === 'nome' ? 'selected' : ''}>Nome (A-Z)</option></select></div>
+      <p class="mini" style="margin:4px 2px 8px">${usF.filtro === 'todas' ? 'Todas as usinas' : ROT[usF.filtro][0].toUpperCase() + ROT[usF.filtro].slice(1)}: ${total}${usF.busca ? ` com “${esc(usF.busca)}”` : ''} · toque numa usina para ver os detalhes e os relatórios</p>
+      <div class="us-lista">${vis.map(linha).join('') || '<p class="sutil" style="padding:14px">Nada por aqui.</p>'}</div>
+      ${total > vis.length ? `<button class="btn vidro" id="usMais" style="width:100%;margin-top:10px">Mostrar mais ${Math.min(30, total - vis.length)} de ${total - vis.length}</button>` : ''}
+      <details class="painel" id="usStatus" style="margin-top:14px"><summary class="rotulo" style="cursor:pointer">Leitura das plataformas e importação</summary><div id="usStatusC"><p class="sutil" style="margin:6px 0 0">carregando…</p></div><div class="acoes-r" style="margin-top:8px"><button class="btn vidro pequeno" id="usImp">Importar planilha de uma usina</button><a class="btn vidro pequeno" href="#parametros">Editar acessos</a></div></details>
       <input type="file" id="usArq" accept=".csv,.txt,.tsv" hidden>`;
+    app.querySelectorAll('[data-usf]').forEach((b2) => b2.onclick = () => { usF.filtro = usF.filtro === b2.dataset.usf && b2.dataset.usf !== 'todas' ? 'todas' : b2.dataset.usf; usF.ver = 30; usinasPag(); });
+    app.querySelectorAll('[data-usab]').forEach((b2) => b2.onclick = () => { usF.aberta = usF.aberta === b2.dataset.usab ? null : b2.dataset.usab; const y = scrollY; usinasPag(); scrollTo(0, y); });
+    const bx = $('#usBusca'); bx.oninput = () => { usF.busca = bx.value; usF.ver = 30; clearTimeout(avDeb); avDeb = setTimeout(() => { usinasPag(); const c = $('#usBusca'); c.focus(); c.setSelectionRange(c.value.length, c.value.length); }, 250); };
+    $('#usOrdem').onchange = (e) => { usF.ordem = e.target.value; usinasPag(); };
+    if ($('#usMais')) $('#usMais').onclick = () => { const y = scrollY; usF.ver += 30; usinasPag(); scrollTo(0, y); };
     let alvo = null;
     const arq = $('#usArq');
     arq.onchange = async () => { const f = arq.files[0]; arq.value = ''; if (!f || !alvo) return; const linhas = U.lerPlanilha(await f.text()); if (!linhas.length) { toast('Não achei datas e kWh nesse arquivo. Exporte em CSV com data e energia.'); return; } await B.gravarGeracao(alvo, linhas); toast(linhas.length + ' dia(s) importados'); usinasPag(); };
     B.execucoes().then((ex) => {
-      const el = $('#usStatus'); if (!el) return;
+      const el = $('#usStatusC'); if (!el) return;
       const ult = {}; ex.forEach((x) => { if (!ult[x.marca]) ult[x.marca] = x; });
       const linhas = Object.values(ult).map((x) => `<tr><td><b>${esc(x.marca)}</b></td><td>${x.ok ? (x.resumo && x.resumo.usinas ? '✅ ' + x.resumo.usinas + ' usina(s), ' + x.resumo.dias + ' dia(s) lidos' : '⚠️ conectou, mas a plataforma não devolveu usinas') : '❌ ' + esc(x.erro || 'erro')}</td><td class="mini">${new Date(x.em).toLocaleString('pt-BR')}</td></tr>`).join('');
-      el.innerHTML = `<div class="entre"><span class="rotulo">Leitura das plataformas</span><a class="link" href="#parametros">editar acessos ›</a></div>${linhas ? `<table style="margin-top:8px">${linhas}</table>` : '<p class="sutil" style="margin:6px 0 0">Nenhuma leitura ainda. Guarde o acesso em Parâmetros e toque em Atualizar agora.</p>'}<p class="mini" style="margin:6px 0 0">Lê sozinho todo dia às 6h30.</p>`;
-    }).catch(() => { const el = $('#usStatus'); if (el) el.remove(); });
+      el.innerHTML = `${linhas ? `<table style="margin-top:8px">${linhas}</table>` : '<p class="sutil" style="margin:6px 0 0">Nenhuma leitura ainda. Guarde o acesso em Parâmetros e toque em Atualizar agora.</p>'}<p class="mini" style="margin:6px 0 0">Lê sozinho todo dia às 6h30.</p>`;
+    }).catch(() => { const el = $('#usStatusC'); if (el) el.innerHTML = ''; });
     $('#usNova').onclick = () => formUsina({});
     $('#usAtu').onclick = async (ev) => {
       const b = ev.target; b.disabled = true; b.textContent = 'Lendo as plataformas… (até 2 min)';
@@ -1900,6 +1916,7 @@
     const h = location.hash.slice(1) || 'dia';
     const [rota, arg] = h.startsWith('lead-') ? ['lead', h.slice(5)] : h.startsWith('servico-') ? ['servico', h.slice(8)] : [h, null];
     document.querySelectorAll('[data-rota]').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === (rota === 'lead' ? 'painel' : rota === 'servico' ? 'servicos' : rota)));
+    try { const at = document.querySelector('.nav a.ativo'); if (at && innerWidth < 900) at.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch { /* */ }
     if (rota !== 'novo') { document.body.classList.remove('com-barra'); $('#barra').hidden = true; }
     const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') diaPag(); else if (rota === 'servicos') servicosPag(); else if (rota === 'clientes') clientesPag(); else if (rota === 'parceiros') parceirosPag(); else if (rota === 'arquivo') arquivoPag(); else if (rota === 'servico') servicoEd(arg); else if (rota === 'parametros') parametrosPag(); else painel(); };
     if (document.startViewTransition) {
