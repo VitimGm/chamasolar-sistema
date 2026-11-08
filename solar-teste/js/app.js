@@ -203,7 +203,7 @@
           <div class="anel" style="--p:${t.pontos};--cor:${cor}"><span>${t.pontos}<small>${t.rotulo.toUpperCase()}</small></span></div>
           <div><h1 style="font-size:clamp(22px,4vw,30px);margin:0">${esc(o.nome)}</h1>
             <div class="sutil">${esc(o.id)} · ${esc(o.cidade)} · origem ${esc(o.origem || '—')} · criado ${tempoRel(o.criadoEm)}</div>
-            <div class="linha-h" style="margin-top:8px"><select id="status" style="width:auto;padding:7px 10px;font-size:14px">${STATUS.map(([s, r]) => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${r}</option>`).join('')}</select>
+            <div class="linha-h" style="margin-top:8px"><select id="status" style="width:auto;padding:7px 10px;font-size:14px">${STATUS.map(([s, r]) => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${r}</option>`).join('')}</select><button class="btn vidro pequeno" id="fNova" title="Outra proposta para o mesmo cliente (ex.: outro tamanho, bateria, outro endereço)">＋ Nova proposta</button><button class="btn vidro pequeno" id="fExcluir">🗑 Excluir</button>
             ${o.status === 'perdido' ? `<input type="text" id="motivo" placeholder="Motivo da perda" value="${esc(o.motivoPerda)}" style="flex:1;min-width:180px;padding:7px 10px;font-size:14px">` : ''}</div></div>
         </div>
         <div class="proxima" style="margin-top:14px"><div class="ic">${acao.icone}</div><div><span class="rotulo" style="color:var(--sol)">Próxima melhor ação</span><div style="font-weight:600;margin-top:4px">${esc(acao.texto)}</div></div></div>
@@ -347,6 +347,11 @@
     };
     $('#rsVoz').onclick = () => { const R = window.SpeechRecognition || window.webkitSpeechRecognition; if (!R) { toast('Ditado funciona no Chrome e no Edge'); return; } const rec = new R(); rec.lang = 'pt-BR'; rec.interimResults = false; rec.onresult = (e) => { $('#rsTxt').value = ($('#rsTxt').value + ' ' + e.results[0][0].transcript).trim(); }; rec.onend = () => { $('#rsVoz').textContent = '🎙 Ditar'; }; rec.start(); $('#rsVoz').textContent = '● ouvindo…'; };
     app.querySelectorAll('[data-prox]').forEach((bt) => bt.onclick = () => { const d = +bt.dataset.prox, q = new Date(Date.now() + d * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `Falar com ${o.nome}`, ref: o.id, quando: q.toISOString() }); toast('Próximo contato marcado no Meu dia'); ficha(id); });
+    { const irmas = propostasDoCliente(o).filter((x) => x.id !== o.id);
+      if (irmas.length) { const box = document.createElement('div'); box.className = 'painel entra'; box.innerHTML = `<span class="rotulo">Outras propostas de ${esc(String(o.nome || '').split(' ')[0])} (${irmas.length})</span>${irmas.map((x) => `<a class="entre mini" href="#lead-${x.id}" style="padding:6px 0;border-top:1px dashed var(--linha);text-decoration:none;color:inherit"><span><b>${esc(x.id)}</b> · ${esc(x.titulo || ((x.consumos || []).filter(Boolean).length ? 'conta de ' + Math.round(((x.consumos || []).map(Number).filter((v) => v > 0).reduce((a, b, _, l) => a + b / l.length, 0))) + ' kWh' : 'proposta'))}${x.arquivado ? ' · no arquivo' : ''}</span><span>${esc((STATUS.find(([v]) => v === x.status) || [, x.status])[1])} · ${tempoRel(x.criadoEm)}</span></a>`).join('')}`; const topo = app.querySelector('.painel'); if (topo) topo.after(box); } }
+    $('#fNova').onclick = () => { const n = novaPropostaDe(o); toast(`Nova proposta para ${o.nome}: os dados do cliente já vieram`); location.hash = '#novo'; void n; };
+    $('#fExcluir').onclick = (ev) => { const b = ev.currentTarget; if (!b.dataset.c) { b.dataset.c = 1; b.textContent = 'Tocar de novo para excluir'; setTimeout(() => { if (b.isConnected) { b.textContent = '🗑 Excluir'; delete b.dataset.c; } }, 4000); return; }
+      o.apagado = true; o.apagadoEm = new Date().toISOString(); B.salvar(o); toast(`${o.nome} foi para a lixeira (Arquivo → Lixeira). Dá para restaurar.`); location.hash = '#painel'; };
     $('#status').onchange = (e) => { o.status = e.target.value; if (o.status === 'perdido') { const q = new Date(Date.now() + 90 * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `Retomar ${o.nome} (perdido há 90 dias: preço e momento mudam)`, ref: o.id, quando: q.toISOString() }); toast('Perdido: retomada agendada em 90 dias. Anote o motivo.'); } if (o.status !== 'novo' && !o.enviadoEm) o.enviadoEm = new Date().toISOString(); if (o.status === 'ganho' && !o.ganhoEm) o.ganhoEm = new Date().toISOString(); B.salvar(o); ficha(id); };
     const mot = $('#motivo'); if (mot) mot.onchange = (e) => { o.motivoPerda = e.target.value; B.salvar(o); toast('Motivo salvo'); };
   }
@@ -407,6 +412,15 @@
   /* ======================= NOVO ORÇAMENTO (6 passos) ======================= */
   const SEGMENTOS = [['residencial', '🏠 Residencial'], ['comercial', '🏪 Comercial'], ['grandes', '🏭 Grandes contas / indústria'], ['rural', '🌾 Rural']];
   const novoOrc = () => ({ segmento: 'residencial', nome: '', whatsapp: '', cep: '', cidade: '', distanciaKm: 0, ligacao: 'bi', consumos: Array(12).fill(''), tarifaKwh: P().tarifaKwh, lidoPorIA: false, modo: 'pdf', telhado: 'ceramico', orientacao: '?', areaDisponivel: '', trocaPadrao: false, opcaoEscolhida: 1, formaPagamento: 'financiamento', comissaoParceria: 0, kitFaturadoDireto: false, descontoPct: 0, origem: 'WhatsApp', status: 'novo' });
+  /* várias propostas no mesmo cliente: todas ligadas pelo clienteId (o código da primeira) */
+  const CAMPOS_CLIENTE = ['segmento', 'nome', 'whatsapp', 'email', 'cpf', 'documento', 'cep', 'endereco', 'numero', 'bairro', 'cidade', 'distanciaKm', 'ligacao', 'consumos', 'tarifaKwh', 'grupo', 'grupoA', 'telhado', 'orientacao', 'areaDisponivel', 'lat', 'lng', 'origem', 'indicadoPor', 'parceiro'];
+  function propostasDoCliente(o) { const cid = o.clienteId || o.id; return B.todos().filter((x) => !x.apagado && !['servico', 'manutencao', 'ampliacao'].includes(x.tipo) && (x.id === cid || x.clienteId === cid)).sort((a, b) => String(a.criadoEm).localeCompare(String(b.criadoEm))); }
+  function novaPropostaDe(o) {
+    if (!o.clienteId) { o.clienteId = o.id; B.salvar(o); }
+    const n = novoOrc(); CAMPOS_CLIENTE.forEach((k) => { if (o[k] !== undefined) n[k] = JSON.parse(JSON.stringify(o[k])); });
+    n.clienteId = o.clienteId; n.status = 'novo'; n.nota = `Nova proposta para o cliente de ${o.id}`;
+    orc = n; etapa = 0; B.rascunho.gravar(n); B.rascunho.gravarEtapa(0); return n;
+  }
   let orc = B.rascunho.ler() || novoOrc();
   let etapa = B.rascunho.etapa();
   const PDFS_PENDENTES = {}; // PDF da Belenergy de cada opção, anexado quando o orçamento ganha número
@@ -1050,7 +1064,7 @@
     app.innerHTML = `${cabCelular()}<div class="cab"><div><h1>Parâmetros</h1><p class="sutil">${B.nuvem ? 'Valores usados em todos os orçamentos. Cada vez que salvar, a versão anterior fica guardada.' : 'Valores de teste. Troque pelos reais quando tiver custo fixo, alíquota e preço do terceiro.'}</p></div></div>
       <div class="lado"><div>${CAMPOS.map(([t, cs]) => `<div class="painel"><span class="rotulo">${t}</span><div class="grade g2" style="margin-top:12px">${cs.map(([k, r, m]) => `<label class="campo"><span>${r}</span><input type="number" step="any" data-par="${k}" data-m="${m}" value="${+(p[k] * m).toFixed(4)}"></label>`).join('')}</div></div>`).join('')}</div>
       <div><div class="painel"><span class="rotulo">Robô do escritório (fila do Jarvis)</span><p class="mini" style="margin:6px 0">O robô no computador do escritório pega na fila os pedidos do Jarvis, cota na Belenergy e devolve o preço real. Copie a chave para o arquivo <b>robo-config.json</b> da pasta do robô (uma vez).</p>
-        <div class="acoes-r"><button class="btn vidro pequeno" id="rbChave">Mostrar a chave do robô</button><span class="mini" id="rbFila"></span></div><div id="rbOut"></div>
+        <div id="rbSt" class="aviso" style="margin:6px 0">Conferindo o robô…</div><div class="acoes-r"><button class="btn sol pequeno" id="rbBaixar">⬇ Baixar robo-config.json</button><button class="btn vidro pequeno" id="rbChave">Mostrar a chave</button><span class="mini" id="rbFila"></span></div><div id="rbOut"></div>
         <div style="border-top:1px dashed var(--linha);margin-top:12px;padding-top:10px"><label class="entre mini"><span><b>Pré-propostas todo dia de manhã</b> (as mais vendidas, já cotadas na Belenergy)</span><span><input type="checkbox" id="ppAtivo" ${(p.prePropostas || {}).ativo ? 'checked' : ''}> ligado · às <input type="time" id="ppHora" value="${esc((p.prePropostas || {}).hora || '05:00')}" style="width:96px;padding:4px 6px"></span></label>
           <p class="mini" style="margin:6px 0">Se o computador estiver desligado nesse horário, o robô faz assim que ligar. Quando o Jarvis criar uma proposta de tamanho parecido (até 10%), o preço da pré-proposta entra na hora e o robô ainda cota o tamanho exato.</p>
           <div id="ppLista"></div>
@@ -1082,6 +1096,10 @@
       novoP.empresaDoc = { ...(p.empresaDoc || {}) }; app.querySelectorAll('[data-emp]').forEach((i) => { novoP.empresaDoc[i.dataset.emp] = i.dataset.num ? +i.value || 0 : i.value.trim(); });
       B.salvarParametros(novoP); toast('Parâmetros salvos');
     };
+    if ($('#rbBaixar')) {
+      $('#rbBaixar').onclick = async () => { try { const k = await B.roboChave(); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify({ chave: k || '' }, null, 2)], { type: 'application/json' })); a.download = 'robo-config.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); toast('Salve o arquivo dentro da pasta do robô (onde fica o INICIAR-COTADOR.bat)'); } catch (e) { toast(e.message); } };
+      roboEstado().then((st) => { $('#rbSt').innerHTML = st.html; $('#rbSt').className = 'aviso' + (st.ok ? ' ok' : ''); });
+    }
     if ($('#rbChave')) { $('#rbChave').onclick = async () => { try { const k = await B.roboChave(); $('#rbOut').innerHTML = `<pre class="mini" style="white-space:pre-wrap;user-select:all;background:var(--vidro);padding:8px;border-radius:8px;margin-top:6px">{ "chave": "${esc(k || '')}" }</pre><p class="mini">Cole isso num arquivo robo-config.json na pasta do robô. Não mande por mensagem.</p>`; } catch (e) { toast(e.message); } };
         B.filaRoboLer().then((f) => { const pend = (f || []).filter((x) => x.status === 'pendente' || x.status === 'rodando').length; $('#rbFila').textContent = pend ? `${pend} pedido(s) na fila` : 'fila vazia'; }).catch(() => {}); }
     if ($('#ppLista')) {
@@ -1152,19 +1170,20 @@
     const U = window.Usinas, lista = B.usinas().filter((u) => u.ativo !== false);
     const info = lista.map((u) => ({ u, g: B.geracao(u.id), s: U.situacao(u, B.geracao(u.id)) }));
     const alertas = info.filter((x) => x.s.alerta);
-    const totalMes = info.reduce((t, x) => t + x.s.total, 0);
+    const totalMes = info.reduce((t, x) => t + x.s.total, 0), lei = (u) => (B.leitura ? B.leitura(u.id) : null), semCom = lista.filter((u) => { const l = lei(u); return l && String(l.status) === '4'; }).length;
     app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Usinas</h1><p class="sutil">Geração lida das plataformas dos fabricantes, comparada com o que a proposta prometeu.</p></div>
         <div class="linha-h"><button class="btn vidro" id="usAtu">↻ Atualizar agora</button><button class="btn vidro" id="usImp">Importar planilha</button><button class="btn sol" id="usNova">＋ Cadastrar usina</button></div></div>
       <div class="kpis entra"><div class="kpi destaque"><span class="rotulo">Usinas</span><b>${lista.length}</b><span class="sutil">${n(lista.reduce((t, u) => t + Number(u.kwp), 0), 1)} kWp instalados</span></div>
         <div class="kpi"><span class="rotulo">Geração no mês</span><b>${n(totalMes)} kWh</b><span class="sutil">todas as usinas</span></div>
         <div class="kpi"><span class="rotulo">Precisam de atenção</span><b style="color:${alertas.length ? 'var(--laranja)' : 'inherit'}">${alertas.length}</b><span class="sutil">ligar antes do cliente perceber</span></div>
-        <div class="kpi"><span class="rotulo">Relatórios do mês</span><b>${info.filter((x) => x.s.total).length}</b><span class="sutil">prontos para mandar</span></div></div>
+        <div class="kpi"><span class="rotulo">Sem comunicação</span><b style="color:${semCom ? 'var(--laranja)' : 'inherit'}">${semCom}</b><span class="sutil">inversor sem internet na plataforma</span></div></div>
       ${alertas.length ? `<div class="secao-t"><h2>Atenção</h2><span class="sutil">ligue para o cliente ou abra a plataforma do fabricante</span></div><div class="agora">${alertas.map(({ u, s }) => `<div class="acao p5"><div class="ic">⚠️</div><div><b>${esc(u.cliente_nome)}</b> <span class="sutil">${esc(u.marca)} · ${n(u.kwp, 2)} kWp</span><p>${esc(s.alerta)}</p></div></div>`).join('')}</div>` : ''}
       <div class="painel" id="usStatus"><span class="rotulo">Leitura das plataformas</span><p class="sutil" style="margin:6px 0 0">carregando…</p></div>
       <div class="secao-t"><h2>Todas as usinas</h2><span class="sutil">este mês, proporcional aos dias com leitura</span></div>
       <div class="ops-v duas">${info.map(({ u, s }) => `<div class="op-v" style="cursor:default">
           <div class="entre"><b style="font-size:17px">${esc(u.cliente_nome)}</b><span class="mini">${esc(u.marca)}${u.plataforma_id ? ' · ' + esc(u.plataforma_id) : ''}</span></div>
           <span class="mini">${esc(u.cidade || '')} · ${n(u.kwp, 2)} kWp · espera ${n(u.esperado_mes)} kWh/mês</span>
+          ${(() => { const l = lei(u); if (!l) return ''; const off = String(l.status) === '4'; return `<span class="mini" style="color:${off ? 'var(--laranja)' : 'var(--verde-claro)'}">${off ? '📡 sem comunicação com a plataforma' : `● comunicando${+l.potencia_w > 0 ? ` · ${n(l.potencia_w)} W na leitura` : ''}`} · ${n(l.total_kwh)} kWh gerados desde a instalação</span>`; })()}
           <div style="height:10px;border-radius:99px;background:var(--vidro);margin:10px 0 4px;overflow:hidden"><div style="height:100%;width:${Math.min((s.pct || 0) * 100, 100)}%;background:${s.pct === null ? 'transparent' : s.pct < 0.75 ? 'var(--laranja)' : 'var(--verde-claro)'}"></div></div>
           <span class="mini">${s.pct === null ? 'sem leitura este mês' : `${n(s.total)} kWh · ${n(s.pct * 100)}% do esperado · ${brl(s.economiaMes)} de economia`}${s.ultimo ? ' · última leitura ' + s.ultimo.split('-').reverse().join('/') : ''}</span>
           <div class="acoes-r" style="margin-top:10px"><button class="btn sol pequeno" data-us="conta" data-id="${u.id}">💡 Relatório da conta</button><button class="btn vidro pequeno" data-us="rel" data-id="${u.id}">Relatório do mês</button><button class="btn zap pequeno" data-us="zap" data-id="${u.id}">WhatsApp</button><button class="btn vidro pequeno" data-us="imp" data-id="${u.id}">Importar</button><button class="link" data-us="edit" data-id="${u.id}">editar</button></div>
@@ -1494,6 +1513,11 @@
       o.juntadoEm = fica.id; o.arquivado = true; o.arquivadoMotivo = 'repetido de ' + fica.id; B.salvar(o); });
     B.salvar(fica); return fica;
   }
+  /* 🗑 em qualquer lista: primeiro toque pede confirmação, o segundo manda para a lixeira */
+  function ligarLixo(redesenhar) {
+    app.querySelectorAll('[data-del]').forEach((b) => b.onclick = () => { if (!b.dataset.c) { b.dataset.c = 1; b.textContent = 'excluir?'; setTimeout(() => { if (b.isConnected) { b.textContent = '🗑'; delete b.dataset.c; } }, 4000); return; }
+      const o = B.obter(b.dataset.del); if (!o) return; o.apagado = true; o.apagadoEm = new Date().toISOString(); B.salvar(o); toast(`${o.nome || o.id} foi para a lixeira (no Arquivo)`); redesenhar(); });
+  }
   function clientesPag() {
     const todos = B.clientes(), busca = (sessionStorage.getItem('cliBusca') || '').toLowerCase();
     const lista = todos.filter((o) => !busca || [o.nome, o.cidade, o.whatsapp, o.id].join(' ').toLowerCase().includes(busca)).sort((a, b) => ultimoMov(b) - ultimoMov(a));
@@ -1509,10 +1533,12 @@
         return `<div class="op-v"><div class="entre"><b style="font-size:17px">${esc(o.nome || 'Sem nome')}</b>${o.origem === 'groner' ? '<span class="mini" style="opacity:.75">Groner</span>' : ''}</div>
           <span class="mini">${esc(o.id)} · ${esc(o.cidade || '')}${kwp ? ` · ${n(kwp, 2)} kWp` : ''}${o.instaladoEm || o.criadoEm ? ` · desde ${new Date(o.instaladoEm || o.criadoEm).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })}` : ''}</span>
           ${velha ? '<span class="mini" style="color:var(--laranja)">🧽 manutenção vencida: boa hora de oferecer</span>' : ''}
-          <div class="acoes-r" style="margin-top:8px;flex-wrap:wrap"><a class="btn vidro pequeno" href="#lead-${o.id}">Ficha</a><a class="btn vidro pequeno" href="#servico-novo-manutencao-de-${o.id}">🧽 Manutenção</a><a class="btn vidro pequeno" href="#servico-novo-ampliacao-de-${o.id}">⚡ Ampliação</a></div></div>`; }).join('') || '<p class="sutil">Nenhum cliente ainda. Quem fechar (status Ganho) aparece aqui, e os clientes da Groner entram aqui na importação.</p>'}</div>
+          <div class="acoes-r" style="margin-top:8px;flex-wrap:wrap"><a class="btn vidro pequeno" href="#lead-${o.id}">Ficha</a><a class="btn vidro pequeno" href="#servico-novo-manutencao-de-${o.id}">🧽 Manutenção</a><a class="btn vidro pequeno" href="#servico-novo-ampliacao-de-${o.id}">⚡ Ampliação</a><button class="btn vidro pequeno" data-novap="${o.id}">＋ Proposta</button><button class="link" data-del="${o.id}" title="mandar para a lixeira">🗑</button></div></div>`; }).join('') || '<p class="sutil">Nenhum cliente ainda. Quem fechar (status Ganho) aparece aqui, e os clientes da Groner entram aqui na importação.</p>'}</div>
       ${lista.length > 200 ? `<p class="mini">Mostrando 200 de ${lista.length}. Use a busca.</p>` : ''}`;
     const bx = $('#cliBusca'); bx.oninput = () => { try { sessionStorage.setItem('cliBusca', bx.value); } catch { /* */ } clearTimeout(avDeb); avDeb = setTimeout(() => { clientesPag(); const b = $('#cliBusca'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }, 300); };
     app.querySelectorAll('[data-junta]').forEach((b) => b.onclick = () => { const f = juntar(rep[+b.dataset.junta]); toast('Juntado em ' + f.id); clientesPag(); });
+    app.querySelectorAll('[data-novap]').forEach((b) => b.onclick = () => { const o = B.obter(b.dataset.novap); if (!o) return; novaPropostaDe(o); toast(`Nova proposta para ${o.nome}`); location.hash = '#novo'; });
+    ligarLixo(clientesPag);
     if ($('#cliJuntarTodos')) $('#cliJuntarTodos').onclick = () => { if (!confirm(`Juntar ${rep.length} grupo(s) de repetidos?`)) return; rep.forEach(juntar); toast('Repetidos juntados'); clientesPag(); };
   }
   /* sugestão da semana: as que mais valem retomar (recentes, maiores, com WhatsApp e que já abriram a proposta) */
@@ -1527,16 +1553,22 @@
     const semana = todos.map((o) => ({ o, s: notaRetomada(o) })).filter((x) => x.s >= 2).sort((a, b) => b.s - a.s).slice(0, 10).map((x) => x.o);
     const cartao = (o) => `<div class="op-v"><div class="entre"><b>${esc(o.nome || 'Sem nome')}</b>${o.origem === 'groner' ? '<span class="mini" style="opacity:.75">Groner</span>' : ''}</div>
       <span class="mini">${esc(o.id)} · ${esc(o.cidade || '')}${kwpDe(o) ? ` · ${n(kwpDe(o), 2)} kWp` : ''} · ${esc(o.arquivadoMotivo || 'arquivado')}</span>
-      <div class="acoes-r" style="margin-top:8px"><a class="btn vidro pequeno" href="#lead-${o.id}">Ver</a><button class="btn sol pequeno" data-reativar="${o.id}">↩ Reativar no funil</button></div></div>`;
+      <div class="acoes-r" style="margin-top:8px"><a class="btn vidro pequeno" href="#lead-${o.id}">Ver</a><button class="btn sol pequeno" data-reativar="${o.id}">↩ Reativar no funil</button><button class="link" data-del="${o.id}" title="mandar para a lixeira">🗑</button></div></div>`;
     app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Arquivo</h1><p class="sutil">Propostas que não estão em negociação: paradas, perdidas e as antigas da Groner. Ficam guardadas e pesquisáveis, fora do funil.</p></div>
         <div class="linha-h"><label class="mini">sai do funil depois de <input type="number" id="arqDias" min="15" value="${+P().diasArquivar || 45}" style="width:64px;padding:4px 6px"> dias sem resposta</label></div></div>
       ${semana.length ? `<div class="painel entra"><span class="rotulo">Para retomar esta semana (${semana.length})</span><p class="mini" style="margin:4px 0 8px">As que mais valem uma nova conversa: recentes, maiores, com WhatsApp e que abriram a proposta. Reativar leva para o funil com um lembrete para hoje.</p><div class="ops-v duas">${semana.map(cartao).join('')}</div></div>` : ''}
       <div class="painel entra"><div class="grade g2"><input type="search" id="arqBusca" placeholder="Buscar por nome, cidade, telefone, código ou motivo" value="${esc(busca)}"><div class="chips">${[['', 'Todos'], ['groner', 'Groner'], ['sistema', 'Deste sistema']].map(([v, t]) => `<button class="chip ${orig === v ? 'sel' : ''}" data-arqo="${v}">${t}</button>`).join('')}</div></div></div>
       <p class="mini">${lista.length} no arquivo${lista.length > 100 ? ' · mostrando 100, use a busca' : ''}</p>
-      <div class="ops-v duas">${lista.slice(0, 100).map(cartao).join('') || '<p class="sutil">Arquivo vazio.</p>'}</div>`;
+      <div class="ops-v duas">${lista.slice(0, 100).map(cartao).join('') || '<p class="sutil">Arquivo vazio.</p>'}</div>
+      ${(() => { const lx = B.lixeira().filter((o) => !['servico', 'manutencao', 'ampliacao'].includes(o.tipo)); return lx.length ? `<div class="painel entra" style="margin-top:14px"><div class="entre"><span class="rotulo">🗑 Lixeira (${lx.length})</span><button class="btn vidro pequeno" id="lxTudo">Excluir tudo de vez</button></div><p class="mini" style="margin:4px 0 8px">Fora de todas as listas. Restaure se excluiu sem querer, ou exclua de vez (some do banco, junto com o histórico de visitas da proposta, e não dá para desfazer).</p>
+        ${lx.map((o) => `<div class="entre mini" style="padding:6px 0;border-top:1px dashed var(--linha)"><span><b>${esc(o.nome || 'Sem nome')}</b> · ${esc(o.id)} · ${esc(o.cidade || '')}</span><span><button class="link" data-rest="${o.id}">restaurar</button> · <button class="link" data-devez="${o.id}">excluir de vez</button></span></div>`).join('')}</div>` : ''; })()}`;
     const bx = $('#arqBusca'); bx.oninput = () => { try { sessionStorage.setItem('arqBusca', bx.value); } catch { /* */ } clearTimeout(avDeb); avDeb = setTimeout(() => { arquivoPag(); const b = $('#arqBusca'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }, 300); };
     app.querySelectorAll('[data-arqo]').forEach((b) => b.onclick = () => { try { sessionStorage.setItem('arqOrig', b.dataset.arqo); } catch { /* */ } arquivoPag(); });
     $('#arqDias').onchange = (e) => { B.salvarParametros({ diasArquivar: Math.max(15, +e.target.value || 45) }); toast('Prazo salvo'); };
+    ligarLixo(arquivoPag);
+    app.querySelectorAll('[data-rest]').forEach((b) => b.onclick = () => { const o = B.obter(b.dataset.rest); if (!o) return; delete o.apagado; delete o.apagadoEm; B.salvar(o); toast(`${o.nome} restaurado`); arquivoPag(); });
+    app.querySelectorAll('[data-devez]').forEach((b) => b.onclick = async () => { const o = B.obter(b.dataset.devez); if (!o || !confirm(`Excluir de vez ${o.nome} (${o.id})? Não dá para desfazer.`)) return; try { await B.excluirDeVez(o.id); toast('Excluído de vez'); } catch (e) { toast('Não consegui excluir: ' + e.message); } arquivoPag(); });
+    if ($('#lxTudo')) $('#lxTudo').onclick = async () => { const lx = B.lixeira().filter((o) => !['servico', 'manutencao', 'ampliacao'].includes(o.tipo)); if (!confirm(`Excluir de vez ${lx.length} proposta(s) da lixeira? Não dá para desfazer.`)) return; for (const o of lx) { try { await B.excluirDeVez(o.id); } catch { /* segue */ } } toast('Lixeira esvaziada'); arquivoPag(); };
     app.querySelectorAll('[data-reativar]').forEach((b) => b.onclick = () => { const o = B.obter(b.dataset.reativar); if (!o) return;
       o.arquivado = false; o.retomadoEm = new Date().toISOString(); o.atualizadoEm = o.retomadoEm; if (o.status === 'perdido' || o.status === 'novo') o.status = 'negociando'; B.salvar(o);
       novoLembrete({ texto: `Retomar ${o.nome}: atualizar o preço e chamar no WhatsApp`, ref: o.id, quando: new Date().toISOString(), topo: true }); toast(`${o.nome} voltou para o funil`); arquivoPag(); });
@@ -1718,15 +1750,26 @@
     (cand.j.resultado.kits || []).forEach((k) => { const i = NIVEIS_KIT.indexOf(k.nivel); if (i >= 0 && k.valorKit > 0 && !(o.kitsFechados[i] && !o.kitsFechados[i].pre)) o.kitsFechados[i] = { ...k, pre: true, preKwp: cand.j.pedido.base.kwp }; });
     B.salvar(o); return cand.j.pedido.base.kwp;
   }
+  /* o robô do escritório avisa o sistema a cada minuto; daqui sai o "ligado / desligado" */
+  async function roboEstado() {
+    let st = null, fila = []; try { st = await B.roboStatus(); } catch { /* sem acesso */ } try { fila = (await B.filaRoboLer()) || []; } catch { /* */ }
+    const pend = fila.filter((x) => x.status === 'pendente'), velho = pend.length ? Math.round((Date.now() - new Date(pend[pend.length - 1].criado)) / 60000) : 0;
+    if (!st || !st.visto) return { ok: false, html: `⚠️ <b>O robô nunca se conectou à fila.</b> Na pasta do robô precisa ter o arquivo robo-config.json (botão abaixo) e a versão ${esc((window.Cotador && Cotador.ROBO_ESPERADO) || 'nova')} aberta pelo INICIAR-COTADOR.bat.${pend.length ? ` ${pend.length} pedido(s) esperando.` : ''}` };
+    const min = Math.round((Date.now() - new Date(st.visto)) / 60000), atual = !(window.Cotador && Cotador.ROBO_ESPERADO) || st.versao === Cotador.ROBO_ESPERADO;
+    if (min > 5) return { ok: false, pend: pend.length, html: `⚠️ <b>Robô desligado</b>: visto pela última vez ${min < 120 ? `há ${min} min` : new Date(st.visto).toLocaleString('pt-BR')} em ${esc(st.maquina || 'computador')}.${pend.length ? ` ${pend.length} pedido(s) esperando há ${velho} min.` : ''} Abra o INICIAR-COTADOR.bat.` };
+    return { ok: atual && st.logado !== false, pend: pend.length, html: `${atual && st.logado !== false ? '✓' : '⚠️'} <b>Robô ligado</b> em ${esc(st.maquina || 'computador')} · versão ${esc(st.versao || '?')}${atual ? '' : ` (a atual é ${esc(Cotador.ROBO_ESPERADO)}: baixe a nova)`} · ${st.logado ? 'Belenergy conectada' : st.logado === false ? '<b>faça login na Belenergy na janela do robô</b>' : 'navegador ainda abrindo'}${pend.length ? ` · ${pend.length} na fila` : ''}` };
+  }
   async function mandarParaRobo(o) {
     try { await B.filaRobo({ orc_codigo: o.id, tipo: 'cotar', pedido: pedidoRobo(o) }); o.aguardandoRobo = new Date().toISOString(); B.salvar(o); return true; }
     catch (e) { toast('Não consegui mandar para o robô: ' + e.message); return false; }
   }
   /* o que o robô devolveu entra no orçamento sozinho (preço real, WEB) e vira lembrete para revisar e enviar */
   let filaLida = 0;
+  let avisouRobo = false;
   async function aplicarFila(forcar) {
     if (!forcar && Date.now() - filaLida < 60000) return; filaLida = Date.now();
     let fila = []; try { fila = (await B.filaRoboLer()) || []; } catch { return; }
+    if (!avisouRobo && fila.some((x) => x.status === 'pendente' && x.tipo !== 'pre' && Date.now() - new Date(x.criado) > 15 * 60000)) roboEstado().then((st) => { if (!st.ok && /desligado|nunca/.test(st.html)) { avisouRobo = true; toast('O robô do escritório está desligado: tem pedido do Jarvis esperando. Veja em Parâmetros → Robô do escritório.'); } });
     let mudou = 0;
     for (const j of fila.filter((x) => x.status === 'feito' && x.resultado && !x.resultado.aplicado && x.orc_codigo)) {
       const o = B.obter(j.orc_codigo); if (!o) continue;

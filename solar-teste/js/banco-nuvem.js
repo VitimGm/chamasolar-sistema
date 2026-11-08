@@ -59,7 +59,7 @@
   }
 
   /* ---------- cache ---------- */
-  let orcs = [], eventos = [], interacoes = [], paramVigente = {}, publico = null, usinas = [], geracaoPor = {}, modelos = {};
+  let orcs = [], eventos = [], interacoes = [], paramVigente = {}, publico = null, usinas = [], geracaoPor = {}, modelos = {}; let leituraPor = {};
   const dbid = {}; // ORC-0001 -> id no banco
 
   function linhaParaOrc(r) {
@@ -139,12 +139,16 @@
     async filaRobo(item) { return api('sol_robo_fila', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(item) }); },
     async filaRoboLer() { return api('sol_robo_fila?select=id,criado,atualizado,orc_codigo,tipo,status,resultado,erro,pedido&order=criado.desc&limit=60'); },
     async filaRoboMarcar(id, campos) { return api('sol_robo_fila?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ ...campos, atualizado: agora() }) }); },
+    async roboStatus() { const r = await api('sol_robo_status?select=visto,versao,logado,maquina&id=eq.1'); return (r || [])[0] || null; },
     async roboChave() { return api('rpc/sol_robo_chave', { method: 'POST', body: '{}' }); },
 
     todos() { return publico ? [publico.orc] : orcs; },
-    orcamentos() { return this.todos().filter((o) => !AVULSO(o) && !o.arquivado && !o.carteira); }, // serviços, manutenções e o arquivo ficam fora das listas do funil
-    arquivados() { return this.todos().filter((o) => !AVULSO(o) && o.arquivado); },
-    clientes() { return this.todos().filter((o) => !AVULSO(o) && !o.juntadoEm && (o.status === 'ganho' || o.carteira)); },
+    orcamentos() { return this.todos().filter((o) => !AVULSO(o) && !o.arquivado && !o.carteira && !o.apagado); }, // serviços, manutenções e o arquivo ficam fora das listas do funil
+    arquivados() { return this.todos().filter((o) => !AVULSO(o) && o.arquivado && !o.apagado); },
+    lixeira() { return this.todos().filter((o) => o.apagado); },
+    async excluirDeVez(id) { const i = orcs.findIndex((o) => o.id === id); if (i >= 0) orcs.splice(i, 1); await enfileirar(() => api('sol_orcamentos?codigo=eq.' + encodeURIComponent(id), { method: 'DELETE' })); },
+
+    clientes() { return this.todos().filter((o) => !AVULSO(o) && !o.juntadoEm && !o.apagado && (o.status === 'ganho' || o.carteira)); },
     avulsos() { return this.todos().filter(AVULSO); },
     obter(id) { return this.todos().find((o) => o.id === id) || null; },
     porToken(t) { return this.todos().find((o) => o.token === t) || null; },
@@ -182,6 +186,7 @@
     /* ---------- usinas instaladas e geração diária ---------- */
     usinas() { return usinas; },
     geracao(id) { return (geracaoPor[id] || []).slice(); },
+    leitura(id) { return leituraPor[id] || null; },
     async salvarUsina(u) {
       const campos = ['orcamento_id', 'cliente_nome', 'whatsapp', 'cidade', 'kwp', 'marca', 'plataforma_id', 'ligada_em', 'esperado_mes', 'tarifa_kwh', 'ativo', 'obs'];
       const corpo = Object.fromEntries(campos.filter((c) => u[c] !== undefined).map((c) => [c, u[c] === '' ? null : u[c]]));
@@ -269,6 +274,7 @@
       const desde = new Date(Date.now() - 400 * 864e5).toISOString().slice(0, 10);
       const [us, ge] = await Promise.all([api('sol_usinas?select=*&order=cliente_nome.asc'), api('sol_geracao?select=usina_id,dia,kwh&dia=gte.' + desde + '&order=dia.asc&limit=100000')]);
       try { (await api('sol_modelos?select=chave,titulo,corpo,versao')).forEach((m) => { modelos[m.chave] = m; }); } catch { /* sem modelos: usa os genéricos */ }
+      try { leituraPor = {}; (await api('sol_usina_leituras?select=usina_id,dia,total_kwh,potencia_w,status,em&order=dia.desc&limit=3000')).forEach((l) => { if (!leituraPor[l.usina_id]) leituraPor[l.usina_id] = l; }); } catch { /* sem leituras */ }
       usinas = us; geracaoPor = {}; ge.forEach((g) => { (geracaoPor[g.usina_id] = geracaoPor[g.usina_id] || []).push({ dia: g.dia, kwh: +g.kwh }); });
     },
     /* proposta aberta pelo cliente: só a vitrine, pelo token */

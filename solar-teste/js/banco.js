@@ -30,13 +30,18 @@
     async filaRobo(item) { const f = ler('fila_robo', []); const x = { id: 'F' + Date.now(), criado: agora(), atualizado: agora(), status: 'pendente', tipo: 'cotar', ...item }; f.unshift(x); gravar('fila_robo', f); return [x]; },
     async filaRoboLer() { return ler('fila_robo', []); },
     async filaRoboMarcar(id, campos) { gravar('fila_robo', ler('fila_robo', []).map((x) => (x.id === id ? { ...x, ...campos } : x))); },
+    leitura() { return null; },
+    async roboStatus() { return null; },
     async roboChave() { return 'teste-sem-chave'; },
     zerarParametros() { gravar('parametros', {}); },
 
     todos() { return ler('orcamentos', []); },
-    orcamentos() { return this.todos().filter((o) => !AVULSO(o) && !o.arquivado && !o.carteira); }, // serviços, manutenções e o arquivo ficam fora das listas do funil
-    arquivados() { return this.todos().filter((o) => !AVULSO(o) && o.arquivado); },
-    clientes() { return this.todos().filter((o) => !AVULSO(o) && !o.juntadoEm && (o.status === 'ganho' || o.carteira)); },
+    orcamentos() { return this.todos().filter((o) => !AVULSO(o) && !o.arquivado && !o.carteira && !o.apagado); }, // serviços, manutenções e o arquivo ficam fora das listas do funil
+    arquivados() { return this.todos().filter((o) => !AVULSO(o) && o.arquivado && !o.apagado); },
+    lixeira() { return this.todos().filter((o) => o.apagado); },
+    excluirDeVez(id) { gravar('orcamentos', this.todos().filter((o) => o.id !== id)); },
+
+    clientes() { return this.todos().filter((o) => !AVULSO(o) && !o.juntadoEm && !o.apagado && (o.status === 'ganho' || o.carteira)); },
     avulsos() { return this.todos().filter(AVULSO); },
     obter(id) { return this.todos().find((o) => o.id === id) || null; },
     porToken(token) { return this.todos().find((o) => o.token === token) || null; },

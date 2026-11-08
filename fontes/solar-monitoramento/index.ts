@@ -98,12 +98,12 @@ async function growattV1(cred: Record<string, string>, amostra: Record<string, u
     if (j.error_code !== 0) throw new Error(`Growatt ${pagina}: ${j.error_msg || j.error_code}`);
     return j.data;
   };
-  const plantas: { id: string; nome: string; kwp: number; dias: { dia: string; kwh: number }[] }[] = [];
+  const plantas: { id: string; nome: string; kwp: number; total?: number; pot?: number; status?: string; dias: { dia: string; kwh: number }[] }[] = [];
   for (let pag = 1; pag <= 30; pag++) {
     const d = await v1("plant/list", { page: String(pag), perpage: "100" });
     const lista = (d && (d.plants || d.plant_list || d.list)) || [];
     if (pag === 1) amostra.lista = { chaves: Object.keys(d || {}), exemplo: lista[0] ? Object.keys(lista[0]) : null, total: d && d.count };
-    lista.forEach((p: any) => plantas.push({ id: String(p.plant_id ?? p.id), nome: p.name || p.plant_name || "", kwp: Number(p.peak_power ?? p.nominal_power ?? 0), dias: [] }));
+    lista.forEach((p: any) => plantas.push({ id: String(p.plant_id ?? p.id), nome: p.name || p.plant_name || "", kwp: Number(p.peak_power ?? p.nominal_power ?? 0), total: Number(p.total_energy), pot: Number(p.current_power), status: String(p.status ?? ""), dias: [] }));
     if (lista.length < 100) break;
   }
   const hoje = new Date(Date.now() - 3 * 3600e3), iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -122,6 +122,7 @@ async function growattV1(cred: Record<string, string>, amostra: Record<string, u
       }
       await new Promise((r) => setTimeout(r, 250));
     }
+    if (Object.keys(amostra).filter((k) => k.startsWith("erro_")).length >= 3 && !p.dias.length) break;
   }
   return plantas;
 }
@@ -129,7 +130,7 @@ async function growattAuto(cred: Record<string, string>, amostra: Record<string,
   return (cred.chave || "").trim() ? growattV1(cred, amostra) : growatt(cred, amostra);
 }
 
-const LEITORES: Record<string, (c: Record<string, string>, a: Record<string, unknown>) => Promise<{ id: string; nome: string; kwp: number; dias: { dia: string; kwh: number }[] }[]>> = { Growatt: growattAuto };
+const LEITORES: Record<string, (c: Record<string, string>, a: Record<string, unknown>) => Promise<{ id: string; nome: string; kwp: number; total?: number; pot?: number; status?: string; dias: { dia: string; kwh: number }[] }[]>> = { Growatt: growattAuto };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -161,6 +162,22 @@ Deno.serve(async (req) => {
         const us = await rest(`sol_usinas?select=id,plataforma_id&marca=eq.${encodeURIComponent(marca)}`);
         const idDe = Object.fromEntries(us.map((u: any) => [u.plataforma_id, u.id]));
         const linhas = plantas.flatMap((p) => p.dias.map((d) => ({ usina_id: idDe[p.id], dia: d.dia, kwh: d.kwh, origem: "api" }))).filter((l) => l.usina_id);
+        // sem permissão de geração por dia: a lista traz o total acumulado; a diferença entre um dia e o anterior é a geração do dia
+        const hojeSP = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+        const leit = plantas.filter((p) => idDe[p.id] && Number.isFinite(p.total as number) && (p.total as number) > 0).map((p) => ({ usina_id: idDe[p.id], dia: hojeSP, total_kwh: p.total, potencia_w: Number.isFinite(p.pot as number) ? p.pot : null, status: p.status || null, em: new Date().toISOString() }));
+        if (leit.length) {
+          const antes = await rest(`sol_usina_leituras?select=usina_id,dia,total_kwh&dia=lt.${hojeSP}&dia=gte.${new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10)}&order=dia.desc`);
+          const ult: Record<string, { dia: string; total_kwh: number }> = {}; for (const a of antes) if (!ult[a.usina_id]) ult[a.usina_id] = a;
+          for (const l of leit) {
+            if (linhas.some((x) => x.usina_id === l.usina_id && x.dia === hojeSP)) continue; // já veio por dia
+            const a = ult[l.usina_id]; if (!a) continue;
+            const n = Math.round((Date.parse(hojeSP) - Date.parse(a.dia)) / 864e5), delta = Number(l.total_kwh) - Number(a.total_kwh);
+            if (n < 1 || n > 31 || !(delta >= 0) || delta > Number(l.total_kwh)) continue;
+            for (let k = 0; k < n; k++) linhas.push({ usina_id: l.usina_id, dia: new Date(Date.parse(hojeSP) - k * 864e5).toISOString().slice(0, 10), kwh: Math.round((delta / n) * 100) / 100, origem: "api" });
+          }
+          await rest("sol_usina_leituras?on_conflict=usina_id,dia", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(leit) });
+          amostra.leituras = leit.length;
+        }
         for (let i = 0; i < linhas.length; i += 500) await rest("sol_geracao?on_conflict=usina_id,dia", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(linhas.slice(i, i + 500)) });
         resultado[marca] = { usinas: plantas.length, dias: linhas.length };
         await rest("sol_monitoramento_execucoes", { method: "POST", body: JSON.stringify({ marca, ok: true, resumo: { usinas: plantas.length, dias: linhas.length, ms: Date.now() - inicio, amostra } }) });

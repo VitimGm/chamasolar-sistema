@@ -17,6 +17,17 @@
 import { chromium } from 'playwright';
 import http from 'node:http';
 import path from 'node:path';
+import fsLog from 'node:fs';
+import os from 'node:os';
+
+// tudo o que o robô escreve também vai para robo.log (nesta pasta), para dar para investigar depois
+const ARQ_LOG = path.resolve('robo.log');
+for (const nivel of ['log', 'error', 'warn']) {
+  const orig = console[nivel].bind(console);
+  console[nivel] = (...a) => { orig(...a); try { if (fsLog.existsSync(ARQ_LOG) && fsLog.statSync(ARQ_LOG).size > 2e6) fsLog.renameSync(ARQ_LOG, ARQ_LOG + '.antigo'); fsLog.appendFileSync(ARQ_LOG, new Date().toLocaleString('pt-BR') + ' ' + a.map((x) => (x instanceof Error ? x.stack : typeof x === 'string' ? x : JSON.stringify(x))).join(' ') + '\n'); } catch { /* sem log */ } };
+}
+process.on('uncaughtException', (e) => console.error('ERRO inesperado:', e));
+process.on('unhandledRejection', (e) => console.error('ERRO inesperado (promessa):', e));
 
 const BASE = 'https://belenus.com.br';
 const PORTA = 8787;
@@ -32,7 +43,7 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
-const VERSAO = '2026-11-05f'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+const VERSAO = '2026-11-08a'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
 /* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
    Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
 const voando = new Map(); let ultimoFim = Date.now();
@@ -477,6 +488,7 @@ async function orquestrador() {
 async function filaVez(chave) {
   if (filaOcupada) return; filaOcupada = true;
   try {
+    try { let lg = null; try { lg = await logado(); } catch { /* navegador fechado */ } await filaRpc('sol_robo_ping', { p_segredo: chave, p_versao: VERSAO, p_logado: lg, p_maquina: os.hostname(), p_info: { pasta: process.cwd(), node: process.version } }); } catch (e) { console.log('Fila: não consegui avisar o sistema que estou ligado: ' + String(e.message || e).slice(0, 120)); }
     try { const n = await filaRpc('sol_robo_pre_agendar', { p_segredo: chave }); if (n) console.log(`Fila: ${n} pré-proposta(s) do dia agendada(s)`); } catch (e) { /* sem pré-propostas */ }
     const j = await filaRpc('sol_robo_proximo', { p_segredo: chave }); if (!j) return;
     console.log(`Fila: ${j.tipo === 'pre' ? 'pré-proposta ' + (j.pedido.rotulo || '') : 'pedido ' + (j.orc_codigo || j.id)} (${(j.pedido.opcoes || []).map((x) => x.nivel).join(' + ')})`);
