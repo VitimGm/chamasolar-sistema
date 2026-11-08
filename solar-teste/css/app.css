@@ -265,7 +265,7 @@ body.com-barra .jarvis-bt { bottom: 96px; }
 .dia-bloco.lembretes { border-color: #ffb23d66; }
 
 /* Usinas: lista compacta, detalhes ao tocar */
-.us-barra { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 10px; }
+.us-barra { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; padding: 10px; }
 .us-barra select { width: auto; }
 .us-lista { background: var(--vidro); border: 1px solid var(--linha); border-radius: 16px; overflow: hidden; }
 .us-l + .us-l { border-top: 1px solid var(--linha); }
@@ -283,7 +283,7 @@ body.com-barra .jarvis-bt { bottom: 96px; }
 .us-l.aberta .us-s { transform: rotate(90deg); }
 .us-l.aberta { background: color-mix(in srgb, var(--vidro) 70%, #fff 3%); }
 .us-d { padding: 0 14px 14px 38px; }
-@media (max-width: 560px) { .us-cab { grid-template-columns: 10px minmax(0, 1fr) 92px 10px; gap: 10px; padding: 11px 12px; } .us-d { padding: 0 12px 12px; } .us-barra { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .us-cab { grid-template-columns: 10px minmax(0, 1fr) 92px 10px; gap: 10px; padding: 11px 12px; } .us-d { padding: 0 12px 12px; } .us-barra { grid-template-columns: 1fr 1fr; } .us-barra input { grid-column: 1 / -1; } .us-barra select { width: 100%; } }
 
 /* celular: menu de baixo numa linha só, rolando para o lado (são muitas abas) */
 @media (max-width: 899px) {

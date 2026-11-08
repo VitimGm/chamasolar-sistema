@@ -1181,18 +1181,21 @@
   /* ======================= CATÁLOGO ======================= */
   let filtroCat = 'modulo';
   /* ======================= USINAS (monitoramento) ======================= */
-  const usF = { filtro: 'todas', busca: '', ordem: 'atencao', ver: 30, aberta: null };
+  const usF = { filtro: 'todas', busca: '', ordem: 'atencao', ver: 30, aberta: null, marca: '' };
   function usinasPag() {
     const U = window.Usinas, lista = B.usinas().filter((u) => u.ativo !== false);
     const lei = (u) => (B.leitura ? B.leitura(u.id) : null);
     const info = lista.map((u) => { const g = B.geracao(u.id), s = U.situacao(u, g), l = lei(u), off = !!(l && String(l.status) === '4');
       const est = s.alerta ? 'atencao' : off ? 'semcom' : s.pct === null ? 'semleitura' : 'bem'; return { u, g, s, l, off, est }; });
-    const conta = (k) => info.filter((x) => (k === 'todas' ? true : k === 'semcom' ? x.off : x.est === k)).length;
+    const marcas = Object.entries(info.reduce((m, x) => { const k = String(x.u.marca || 'Sem marca'); m[k] = (m[k] || 0) + 1; return m; }, {})).sort((a, b2) => b2[1] - a[1]);
+    if (usF.marca && !marcas.some(([m]) => m === usF.marca)) usF.marca = '';
+    const daMarca = (x) => !usF.marca || String(x.u.marca || 'Sem marca') === usF.marca;
+    const conta = (k) => info.filter((x) => daMarca(x) && (k === 'todas' ? true : k === 'semcom' ? x.off : x.est === k)).length;
     const totalMes = info.reduce((t, x) => t + x.s.total, 0);
     const COR = { atencao: 'var(--laranja)', semcom: '#ff5c5c', semleitura: 'var(--texto-3)', bem: 'var(--verde-claro)' };
     const ROT = { atencao: 'atenção', semcom: 'sem comunicação', semleitura: 'sem leitura no mês', bem: 'gerando bem' };
     const q = usF.busca.toLowerCase();
-    let vis = info.filter((x) => (usF.filtro === 'todas' || (usF.filtro === 'semcom' ? x.off : x.est === usF.filtro)) && (!q || [x.u.cliente_nome, x.u.cidade, x.u.plataforma_id, x.u.marca].join(' ').toLowerCase().includes(q)));
+    let vis = info.filter((x) => daMarca(x) && (usF.filtro === 'todas' || (usF.filtro === 'semcom' ? x.off : x.est === usF.filtro)) && (!q || [x.u.cliente_nome, x.u.cidade, x.u.plataforma_id, x.u.marca].join(' ').toLowerCase().includes(q)));
     const peso = { atencao: 0, semcom: 1, semleitura: 2, bem: 3 };
     vis.sort(usF.ordem === 'nome' ? (a, b2) => String(a.u.cliente_nome).localeCompare(String(b2.u.cliente_nome)) : usF.ordem === 'kwp' ? (a, b2) => b2.u.kwp - a.u.kwp : usF.ordem === 'pct' ? (a, b2) => (a.s.pct ?? 9) - (b2.s.pct ?? 9) : (a, b2) => peso[a.est] - peso[b2.est] || String(a.u.cliente_nome).localeCompare(String(b2.u.cliente_nome)));
     const total = vis.length; vis = vis.slice(0, usF.ver);
@@ -1207,10 +1210,11 @@
           <div class="acoes-r" style="flex-wrap:wrap"><button class="btn sol pequeno" data-us="conta" data-id="${u.id}">💡 Relatório da conta</button><button class="btn vidro pequeno" data-us="rel" data-id="${u.id}">Relatório do mês</button>${u.whatsapp ? `<button class="btn zap pequeno" data-us="zap" data-id="${u.id}">WhatsApp</button>` : ''}<button class="btn vidro pequeno" data-us="imp" data-id="${u.id}">Importar planilha</button><button class="btn vidro pequeno" data-us="ed" data-id="${u.id}">Editar</button></div></div>` : ''}</div>`; };
     app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Usinas</h1><p class="sutil">${lista.length} usinas · ${n(lista.reduce((t, u) => t + Number(u.kwp), 0), 1)} kWp · ${n(totalMes)} kWh no mês</p></div>
         <div class="linha-h"><button class="btn vidro" id="usAtu">↻ Atualizar</button><button class="btn sol" id="usNova">＋ Usina</button></div></div>
-      <div class="kpis entra us-kpis">${kpi('atencao', 'Precisam de atenção', conta('atencao'), 'gerando abaixo do esperado', conta('atencao') ? 'var(--laranja)' : '')}${kpi('semcom', 'Sem comunicação', conta('semcom'), 'inversor sem internet', conta('semcom') ? '#ff5c5c' : '')}${kpi('bem', 'Gerando bem', conta('bem'), 'dentro do esperado', '')}${kpi('todas', 'Todas', lista.length, 'ver a lista inteira', '')}</div>
+      <div class="kpis entra us-kpis">${kpi('atencao', 'Precisam de atenção', conta('atencao'), 'gerando abaixo do esperado', conta('atencao') ? 'var(--laranja)' : '')}${kpi('semcom', 'Sem comunicação', conta('semcom'), 'inversor sem internet', conta('semcom') ? '#ff5c5c' : '')}${kpi('bem', 'Gerando bem', conta('bem'), 'dentro do esperado', '')}${kpi('todas', 'Todas', conta('todas'), usF.marca ? 'da marca ' + esc(usF.marca) : 'ver a lista inteira', '')}</div>
       <div class="painel entra us-barra"><input type="search" id="usBusca" placeholder="Buscar cliente, cidade ou id da plataforma" value="${esc(usF.busca)}">
+        <select id="usMarca" aria-label="Marca"><option value="">Todas as marcas (${info.length})</option>${marcas.map(([m, q2]) => `<option value="${esc(m)}" ${usF.marca === m ? 'selected' : ''}>${esc(m)} (${q2})</option>`).join('')}</select>
         <select id="usOrdem"><option value="atencao" ${usF.ordem === 'atencao' ? 'selected' : ''}>Problemas primeiro</option><option value="pct" ${usF.ordem === 'pct' ? 'selected' : ''}>Pior desempenho</option><option value="kwp" ${usF.ordem === 'kwp' ? 'selected' : ''}>Maiores</option><option value="nome" ${usF.ordem === 'nome' ? 'selected' : ''}>Nome (A-Z)</option></select></div>
-      <p class="mini" style="margin:4px 2px 8px">${usF.filtro === 'todas' ? 'Todas as usinas' : ROT[usF.filtro][0].toUpperCase() + ROT[usF.filtro].slice(1)}: ${total}${usF.busca ? ` com “${esc(usF.busca)}”` : ''} · toque numa usina para ver os detalhes e os relatórios</p>
+      <p class="mini" style="margin:4px 2px 8px">${usF.filtro === 'todas' ? 'Todas as usinas' : ROT[usF.filtro][0].toUpperCase() + ROT[usF.filtro].slice(1)}: ${total}${usF.marca ? ` · marca ${esc(usF.marca)}` : ''}${usF.busca ? ` com “${esc(usF.busca)}”` : ''} · toque numa usina para ver os detalhes e os relatórios</p>
       <div class="us-lista">${vis.map(linha).join('') || '<p class="sutil" style="padding:14px">Nada por aqui.</p>'}</div>
       ${total > vis.length ? `<button class="btn vidro" id="usMais" style="width:100%;margin-top:10px">Mostrar mais ${Math.min(30, total - vis.length)} de ${total - vis.length}</button>` : ''}
       <details class="painel" id="usStatus" style="margin-top:14px"><summary class="rotulo" style="cursor:pointer">Leitura das plataformas e importação</summary><div id="usStatusC"><p class="sutil" style="margin:6px 0 0">carregando…</p></div><div class="acoes-r" style="margin-top:8px"><button class="btn vidro pequeno" id="usImp">Importar planilha de uma usina</button><a class="btn vidro pequeno" href="#parametros">Editar acessos</a></div></details>
@@ -1219,6 +1223,7 @@
     app.querySelectorAll('[data-usab]').forEach((b2) => b2.onclick = () => { usF.aberta = usF.aberta === b2.dataset.usab ? null : b2.dataset.usab; const y = scrollY; usinasPag(); scrollTo(0, y); });
     const bx = $('#usBusca'); bx.oninput = () => { usF.busca = bx.value; usF.ver = 30; clearTimeout(avDeb); avDeb = setTimeout(() => { usinasPag(); const c = $('#usBusca'); c.focus(); c.setSelectionRange(c.value.length, c.value.length); }, 250); };
     $('#usOrdem').onchange = (e) => { usF.ordem = e.target.value; usinasPag(); };
+    $('#usMarca').onchange = (e) => { usF.marca = e.target.value; usF.ver = 30; usinasPag(); };
     if ($('#usMais')) $('#usMais').onclick = () => { const y = scrollY; usF.ver += 30; usinasPag(); scrollTo(0, y); };
     let alvo = null;
     const arq = $('#usArq');
