@@ -1660,7 +1660,8 @@
         <div class="linha-h"><label class="mini">sai do funil depois de <input type="number" id="arqDias" min="15" value="${+P().diasArquivar || 45}" style="width:64px;padding:4px 6px"> dias sem resposta</label></div></div>
       ${semana.length ? `<div class="painel entra"><span class="rotulo">Para retomar esta semana (${semana.length})</span><p class="mini" style="margin:4px 0 8px">As que mais valem uma nova conversa: recentes, maiores, com WhatsApp e que abriram a proposta. Reativar leva para o funil com um lembrete para hoje.</p><div class="ops-v duas">${semana.map(cartao).join('')}</div></div>` : ''}
       <div class="painel entra"><div class="grade g2"><input type="search" id="arqBusca" placeholder="Buscar por nome, cidade, telefone, código ou motivo" value="${esc(busca)}"><div class="chips">${[['', 'Todos'], ['groner', 'Groner'], ['sistema', 'Deste sistema']].map(([v, t]) => `<button class="chip ${orig === v ? 'sel' : ''}" data-arqo="${v}">${t}</button>`).join('')}</div></div></div>
-      <p class="mini">${lista.length} no arquivo${lista.length > 100 ? ' · mostrando 100, use a busca' : ''}</p>
+      ${orig !== 'sistema' ? '<div id="arqGroner"></div>' : ''}
+      <p class="mini">${lista.length} no arquivo${orig === 'groner' ? ' já abertos aqui' : ''}${lista.length > 100 ? ' · mostrando 100, use a busca' : ''}</p>
       <div class="ops-v duas">${lista.slice(0, 100).map(cartao).join('') || '<p class="sutil">Arquivo vazio.</p>'}</div>
       ${(() => { const lx = B.lixeira().filter((o) => !['servico', 'manutencao', 'ampliacao'].includes(o.tipo)); return lx.length ? `<div class="painel entra" style="margin-top:14px"><div class="entre"><span class="rotulo">🗑 Lixeira (${lx.length})</span><button class="btn vidro pequeno" id="lxTudo">Excluir tudo de vez</button></div><p class="mini" style="margin:4px 0 8px">Fora de todas as listas. Restaure se excluiu sem querer, ou exclua de vez (some do banco, junto com o histórico de visitas da proposta, e não dá para desfazer).</p>
         ${lx.map((o) => `<div class="entre mini" style="padding:6px 0;border-top:1px dashed var(--linha)"><span><b>${esc(o.nome || 'Sem nome')}</b> · ${esc(o.id)} · ${esc(o.cidade || '')}</span><span><button class="link" data-rest="${o.id}">restaurar</button> · <button class="link" data-devez="${o.id}">excluir de vez</button></span></div>`).join('')}</div>` : ''; })()}`;
@@ -1668,6 +1669,17 @@
     app.querySelectorAll('[data-arqo]').forEach((b) => b.onclick = () => { try { sessionStorage.setItem('arqOrig', b.dataset.arqo); } catch { /* */ } arquivoPag(); });
     $('#arqDias').onchange = (e) => { B.salvarParametros({ diasArquivar: Math.max(15, +e.target.value || 45) }); toast('Prazo salvo'); };
     ligarLixo(arquivoPag);
+    if ($('#arqGroner') && B.arquivoGroner) {
+      const caixa = $('#arqGroner');
+      Promise.all([B.contarGroner(), B.arquivoGroner(busca)]).then(([tot, gr]) => {
+        if (!tot) { caixa.remove(); return; }
+        caixa.innerHTML = `<div class="painel entra"><div class="entre"><span class="rotulo">Propostas antigas da Groner (${tot})</span><span class="mini">ficam no banco e aparecem quando você busca</span></div>
+          <div class="ops-v duas" style="margin-top:8px">${gr.map(cartao).join('') || '<p class="sutil">Nenhuma com essa busca.</p>'}</div></div>`;
+        caixa.querySelectorAll('[data-reativar]').forEach((b) => { const o = gr.find((x) => x.id === b.dataset.reativar); b.onclick = () => { B.trazer(o); o.arquivado = false; o.retomadoEm = new Date().toISOString(); o.atualizadoEm = o.retomadoEm; if (o.status === 'perdido' || o.status === 'novo') o.status = 'negociando'; B.salvar(o); novoLembrete({ texto: `Retomar ${o.nome} (cliente antigo da Groner): atualizar a proposta e chamar no WhatsApp`, ref: o.id, quando: new Date().toISOString(), topo: true }); toast(`${o.nome} voltou para o funil`); arquivoPag(); }; });
+        caixa.querySelectorAll('a[href^="#lead-"]').forEach((a) => { const o = gr.find((x) => a.getAttribute('href') === '#lead-' + x.id); if (o) a.onclick = () => { B.trazer(o); }; });
+        caixa.querySelectorAll('[data-del]').forEach((b) => b.remove());
+      }).catch(() => caixa.remove());
+    }
     app.querySelectorAll('[data-rest]').forEach((b) => b.onclick = () => { const o = B.obter(b.dataset.rest); if (!o) return; delete o.apagado; delete o.apagadoEm; B.salvar(o); toast(`${o.nome} restaurado`); arquivoPag(); });
     app.querySelectorAll('[data-devez]').forEach((b) => b.onclick = async () => { const o = B.obter(b.dataset.devez); if (!o || !confirm(`Excluir de vez ${o.nome} (${o.id})? Não dá para desfazer.`)) return; try { await B.excluirDeVez(o.id); toast('Excluído de vez'); } catch (e) { toast('Não consegui excluir: ' + e.message); } arquivoPag(); });
     if ($('#lxTudo')) $('#lxTudo').onclick = async () => { const lx = B.lixeira().filter((o) => !['servico', 'manutencao', 'ampliacao'].includes(o.tipo)); if (!confirm(`Excluir de vez ${lx.length} proposta(s) da lixeira? Não dá para desfazer.`)) return; for (const o of lx) { try { await B.excluirDeVez(o.id); } catch { /* segue */ } } toast('Lixeira esvaziada'); arquivoPag(); };

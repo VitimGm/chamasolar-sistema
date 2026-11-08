@@ -139,6 +139,15 @@
     async filaRobo(item) { return api('sol_robo_fila', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(item) }); },
     async filaRoboLer() { return api('sol_robo_fila?select=id,criado,atualizado,orc_codigo,tipo,status,resultado,erro,pedido&order=criado.desc&limit=60'); },
     async filaRoboMarcar(id, campos) { return api('sol_robo_fila?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ ...campos, atualizado: agora() }) }); },
+    /* arquivo da Groner: fica no banco e só vem quando procura (são centenas) */
+    async arquivoGroner(busca, pagina = 0) {
+      const q = String(busca || '').replace(/[*,()]/g, ' ').trim();
+      const f = q ? `&or=(dados->>nome.ilike.*${encodeURIComponent(q)}*,dados->>whatsapp.ilike.*${encodeURIComponent(q.replace(/\D/g, '') || q)}*,dados->>arquivadoMotivo.ilike.*${encodeURIComponent(q)}*)` : '';
+      const r = await api(`sol_orcamentos?select=id,codigo,token_publico,status,dados,enviado_em&dados->>origem=eq.groner&dados->>arquivado=eq.true${f}&order=atualizado_em.desc&limit=40&offset=${pagina * 40}`);
+      return r.map(linhaParaOrc).filter((o) => !orcs.some((x) => x.id === o.id));
+    },
+    async contarGroner() { const t = await token(); const r = await fetch(SB + '/rest/v1/sol_orcamentos?select=id&dados->>origem=eq.groner&dados->>arquivado=eq.true', { headers: { apikey: KEY, Authorization: 'Bearer ' + t, Prefer: 'count=exact', Range: '0-0' } }); return +((r.headers.get('content-range') || '').split('/')[1] || 0); },
+    trazer(o) { if (!orcs.some((x) => x.id === o.id)) orcs.unshift(o); return o; },
     async parceiros() { return api('sol_parceiros?select=id,criado,nome,whatsapp,email,pix,cidade,profissao,nivel,comissao,ativo,token,obs,ultimo_acesso&order=criado.desc'); },
     async salvarParceiro(id, campos) { return api('sol_parceiros?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(campos) }); },
     async indicacoes() { return api('sol_indicacoes?select=*&order=criado.desc&limit=1000'); },
@@ -265,7 +274,7 @@
     /* carrega tudo do banco (vendedor logado) */
     async carregar() {
       const [o, ev, it, pr] = await Promise.all([
-        api('sol_orcamentos?select=id,codigo,token_publico,status,dados,enviado_em&order=atualizado_em.desc&limit=2000'),
+        api('sol_orcamentos?select=id,codigo,token_publico,status,dados,enviado_em&or=(dados->>origem.is.null,dados->>origem.neq.groner,dados->>carteira.eq.true,dados->>arquivado.is.null,dados->>arquivado.eq.false,dados->>apagado.eq.true)&order=atualizado_em.desc&limit=3000'),
         api('sol_proposta_eventos?select=orcamento_id,tipo,dados,em&order=em.asc&limit=20000'),
         api('sol_interacoes?select=orcamento_id,tipo,texto,em&order=em.desc&limit=5000'),
         api('sol_parametros?select=dados&vigente=eq.true&limit=1'),
