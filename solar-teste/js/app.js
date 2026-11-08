@@ -1451,23 +1451,126 @@
     const lista = B.avulsos().filter((o) => !o.apagado).sort((x, y) => String(y.atualizadoEm || '').localeCompare(String(x.atualizadoEm || '')));
     const tot = (o) => AV().calcular(o, P()).total, abertos = lista.filter((o) => o.status === 'proposta'), aceitos = lista.filter((o) => o.status === 'ganho');
     app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Serviços e manutenção</h1><p class="sutil">Orçamentos fora do kit solar: manutenção por placa, inversor híbrido, materiais e mão de obra. Cada um vira uma proposta com link.</p></div>
-        <div class="linha-h"><a class="btn vidro" href="#servico-novo-manutencao">🧽 Nova manutenção</a><a class="btn sol" href="#servico-novo-servico">🔧 Novo serviço / itens</a></div></div>
+        <div class="linha-h"><a class="btn vidro" href="#servico-novo-manutencao">🧽 Nova manutenção</a><a class="btn vidro" href="#servico-novo-ampliacao">⚡ Ampliação / retrofit</a><a class="btn sol" href="#servico-novo-servico">🔧 Novo serviço / itens</a></div></div>
       <div class="kpis entra"><div class="kpi destaque"><span class="rotulo">Em aberto</span><b>${abertos.length}</b><span class="sutil">${brl(abertos.reduce((t, o) => t + tot(o), 0))} em propostas</span></div>
         <div class="kpi"><span class="rotulo">Aceitas</span><b>${aceitos.length}</b><span class="sutil">${brl(aceitos.reduce((t, o) => t + tot(o), 0))}</span></div>
         <div class="kpi"><span class="rotulo">Manutenções</span><b>${lista.filter((o) => o.tipo === 'manutencao').length}</b><span class="sutil">R$ ${n(P().manutencaoPorPlaca || 25)} por placa</span></div>
         <div class="kpi"><span class="rotulo">Serviços</span><b>${lista.filter((o) => o.tipo === 'servico').length}</b><span class="sutil">itens fora do kit</span></div></div>
       <div class="ops-v duas">${lista.map((o) => { const c = AV().calcular(o, P()), [stt, cor] = ST_AV[o.status] || ST_AV.novo, ev = B.eventos(o.token), viu = ev.filter((e) => e.tipo === 'abriu').length;
-        return `<a class="op-v" href="#servico-${o.id}" style="text-decoration:none;color:inherit"><div class="entre"><b style="font-size:17px">${o.tipo === 'manutencao' ? '🧽' : '🔧'} ${esc(o.nome || 'Sem nome')}</b><span class="mini" style="color:${cor};font-weight:700">${stt}</span></div>
+        return `<a class="op-v" href="#servico-${o.id}" style="text-decoration:none;color:inherit"><div class="entre"><b style="font-size:17px">${o.tipo === 'manutencao' ? '🧽' : o.tipo === 'ampliacao' ? '⚡' : '🔧'} ${esc(o.nome || 'Sem nome')}</b><span class="mini" style="color:${cor};font-weight:700">${stt}</span></div>
           <span class="mini">${esc(o.id)} · ${esc(o.titulo || '')} · ${esc(o.cidade || '')}</span><div class="preco" style="margin-top:8px">${brl(c.total, 2)}</div>
           <span class="mini">${o.tipo === 'manutencao' ? `${c.placas} placas${c.plano ? ` · plano a cada ${c.plano.meses} meses` : ''}` : `margem real ${n(c.margemReal * 100, 1)}% · lucro ${brl(c.lucro)}`}${viu ? ` · cliente abriu ${viu}×` : ''}</span></a>`; }).join('') || '<p class="sutil">Nenhum ainda. Comece por uma manutenção ou um serviço.</p>'}</div>`;
   }
   let avDeb = null;
+  /* =====================================================================
+     CLIENTES (quem já comprou) e ARQUIVO (o que não está em negociação).
+     O funil fica só com quem está negociando agora.
+     ===================================================================== */
+  const ultimoMov = (o) => { let t = new Date(o.atualizadoEm || o.enviadoEm || o.criadoEm || 0).getTime();
+    try { (B.eventos(o.token) || []).forEach((e) => { t = Math.max(t, new Date(e.em).getTime()); }); (B.interacoes(o.id) || []).forEach((i) => { t = Math.max(t, new Date(i.em).getTime()); }); } catch { /* sem histórico */ }
+    return t; };
+  const diasDesde = (t) => Math.floor((Date.now() - t) / 864e5);
+  const fone = (o) => String(o.whatsapp || o.telefone || '').replace(/\D/g, '').slice(-9);
+  const kwpDe = (o) => { try { const op = C.opcoes(o, P())[0]; return op ? op.dim.kwpReal : 0; } catch { return 0; } };
+  /* uma vez por dia: proposta parada há X dias (padrão 45) e perdida há 7 dias saem do funil para o Arquivo */
+  function arquivarParados() {
+    const p = P(), dias = +p.diasArquivar || 45, hoje = new Date().toISOString().slice(0, 10);
+    try { if (localStorage.getItem('sol_arquivou') === hoje) return; localStorage.setItem('sol_arquivou', hoje); } catch { /* sem armazenamento */ }
+    const futuros = new Set((p.lembretes || []).filter((l) => !l.feito && new Date(l.quando) > new Date()).map((l) => l.ref));
+    let n = 0;
+    B.orcamentos().forEach((o) => { const parado = diasDesde(ultimoMov(o));
+      const sai = (['proposta', 'visualizou', 'negociando'].includes(o.status) && parado >= dias && !futuros.has(o.id)) || (o.status === 'perdido' && parado >= 7);
+      if (!sai) return; o.arquivado = true; o.arquivadoEm = new Date().toISOString(); o.arquivadoMotivo = o.status === 'perdido' ? 'perdido' + (o.motivoPerda ? ': ' + o.motivoPerda : '') : `sem resposta há ${parado} dias`; B.salvar(o); n++; });
+    if (n) novoLembrete({ texto: `${n} proposta(s) parada(s) saíram do funil e foram para o Arquivo. Veja as sugestões de retomada da semana.`, ref: 'arquivo', quando: new Date().toISOString(), topo: false });
+  }
+  setTimeout(() => { try { arquivarParados(); } catch { /* segue */ } }, 4000);
+  function repetidos(lista) {
+    const grupos = {}; lista.forEach((o) => { const k = (o.cpf || o.documento || '').replace(/\D/g, '') || fone(o); if (k && k.length >= 8) (grupos[k] = grupos[k] || []).push(o); });
+    return Object.values(grupos).filter((g) => g.length > 1);
+  }
+  function juntar(grupo) {
+    const [fica, ...saem] = grupo.slice().sort((a, b) => ultimoMov(b) - ultimoMov(a));
+    saem.forEach((o) => { ['whatsapp', 'email', 'endereco', 'cpf'].forEach((k) => { if (!fica[k] && o[k]) fica[k] = o[k]; }); fica.historico = [...(fica.historico || []), { id: o.id, nome: o.nome, status: o.status, em: o.criadoEm }];
+      o.juntadoEm = fica.id; o.arquivado = true; o.arquivadoMotivo = 'repetido de ' + fica.id; B.salvar(o); });
+    B.salvar(fica); return fica;
+  }
+  function clientesPag() {
+    const todos = B.clientes(), busca = (sessionStorage.getItem('cliBusca') || '').toLowerCase();
+    const lista = todos.filter((o) => !busca || [o.nome, o.cidade, o.whatsapp, o.id].join(' ').toLowerCase().includes(busca)).sort((a, b) => ultimoMov(b) - ultimoMov(a));
+    const rep = repetidos(todos), manutAntiga = (o) => { const ult = B.avulsos().filter((x) => x.clienteDe === o.id && x.tipo === 'manutencao').map((x) => new Date(x.criadoEm).getTime()); const base = Math.max(new Date(o.instaladoEm || o.criadoEm || 0).getTime(), ...ult); return diasDesde(base) > 180; };
+    app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Clientes</h1><p class="sutil">Quem já comprou: sistema, documentos e histórico. Daqui saem manutenção, ampliação e indicação, sem lotar o funil.</p></div>
+        <div class="linha-h"><a class="btn vidro" href="#arquivo">🗂 Arquivo</a></div></div>
+      <div class="kpis entra"><div class="kpi destaque"><span class="rotulo">Clientes</span><b>${todos.length}</b><span class="sutil">${todos.filter((o) => o.origem === 'groner').length} vieram da Groner</span></div>
+        <div class="kpi"><span class="rotulo">Manutenção vencida</span><b>${todos.filter(manutAntiga).length}</b><span class="sutil">mais de 6 meses sem visita</span></div>
+        <div class="kpi"><span class="rotulo">Repetidos</span><b>${rep.length}</b><span class="sutil">mesmo telefone ou CPF</span></div></div>
+      ${rep.length ? `<div class="painel entra"><div class="entre"><span class="rotulo">Possíveis repetidos</span><button class="btn vidro pequeno" id="cliJuntarTodos">Juntar todos</button></div>${rep.slice(0, 8).map((g, i) => `<div class="entre mini" style="padding:6px 0;border-top:1px dashed var(--linha)"><span>${g.map((o) => `<b>${esc(o.nome || '?')}</b> (${esc(o.id)})`).join(' · ')}</span><button class="link" data-junta="${i}">juntar</button></div>`).join('')}<p class="mini">Fica a ficha mais recente; as outras viram histórico dela.</p></div>` : ''}
+      <div class="painel entra"><input type="search" id="cliBusca" placeholder="Buscar por nome, cidade, telefone ou código" value="${esc(busca)}" style="width:100%"></div>
+      <div class="ops-v duas">${lista.slice(0, 200).map((o) => { const kwp = kwpDe(o), velha = manutAntiga(o);
+        return `<div class="op-v"><div class="entre"><b style="font-size:17px">${esc(o.nome || 'Sem nome')}</b>${o.origem === 'groner' ? '<span class="mini" style="opacity:.75">Groner</span>' : ''}</div>
+          <span class="mini">${esc(o.id)} · ${esc(o.cidade || '')}${kwp ? ` · ${n(kwp, 2)} kWp` : ''}${o.instaladoEm || o.criadoEm ? ` · desde ${new Date(o.instaladoEm || o.criadoEm).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })}` : ''}</span>
+          ${velha ? '<span class="mini" style="color:var(--laranja)">🧽 manutenção vencida: boa hora de oferecer</span>' : ''}
+          <div class="acoes-r" style="margin-top:8px;flex-wrap:wrap"><a class="btn vidro pequeno" href="#lead-${o.id}">Ficha</a><a class="btn vidro pequeno" href="#servico-novo-manutencao-de-${o.id}">🧽 Manutenção</a><a class="btn vidro pequeno" href="#servico-novo-ampliacao-de-${o.id}">⚡ Ampliação</a></div></div>`; }).join('') || '<p class="sutil">Nenhum cliente ainda. Quem fechar (status Ganho) aparece aqui, e os clientes da Groner entram aqui na importação.</p>'}</div>
+      ${lista.length > 200 ? `<p class="mini">Mostrando 200 de ${lista.length}. Use a busca.</p>` : ''}`;
+    const bx = $('#cliBusca'); bx.oninput = () => { try { sessionStorage.setItem('cliBusca', bx.value); } catch { /* */ } clearTimeout(avDeb); avDeb = setTimeout(() => { clientesPag(); const b = $('#cliBusca'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }, 300); };
+    app.querySelectorAll('[data-junta]').forEach((b) => b.onclick = () => { const f = juntar(rep[+b.dataset.junta]); toast('Juntado em ' + f.id); clientesPag(); });
+    if ($('#cliJuntarTodos')) $('#cliJuntarTodos').onclick = () => { if (!confirm(`Juntar ${rep.length} grupo(s) de repetidos?`)) return; rep.forEach(juntar); toast('Repetidos juntados'); clientesPag(); };
+  }
+  /* sugestão da semana: as que mais valem retomar (recentes, maiores, com WhatsApp e que já abriram a proposta) */
+  function notaRetomada(o) {
+    const dias = diasDesde(new Date(o.criadoEm || 0).getTime()), kwp = kwpDe(o), abriu = (B.eventos(o.token) || []).some((e) => e.tipo === 'abriu');
+    if (o.juntadoEm || /concorr/.test(o.arquivadoMotivo || '') && dias < 180) return -1;
+    return (dias < 90 ? 3 : dias < 365 ? 2 : dias < 730 ? 1 : 0) + Math.min(3, kwp / 4) + (fone(o) ? 1 : -5) + (abriu ? 1.5 : 0) - (o.retomadoEm && diasDesde(new Date(o.retomadoEm).getTime()) < 90 ? 10 : 0);
+  }
+  function arquivoPag() {
+    const todos = B.arquivados().filter((o) => !o.juntadoEm), busca = (sessionStorage.getItem('arqBusca') || '').toLowerCase(), orig = sessionStorage.getItem('arqOrig') || '';
+    const lista = todos.filter((o) => (!busca || [o.nome, o.cidade, o.whatsapp, o.id, o.arquivadoMotivo].join(' ').toLowerCase().includes(busca)) && (!orig || (orig === 'groner' ? o.origem === 'groner' : o.origem !== 'groner'))).sort((a, b) => ultimoMov(b) - ultimoMov(a));
+    const semana = todos.map((o) => ({ o, s: notaRetomada(o) })).filter((x) => x.s >= 2).sort((a, b) => b.s - a.s).slice(0, 10).map((x) => x.o);
+    const cartao = (o) => `<div class="op-v"><div class="entre"><b>${esc(o.nome || 'Sem nome')}</b>${o.origem === 'groner' ? '<span class="mini" style="opacity:.75">Groner</span>' : ''}</div>
+      <span class="mini">${esc(o.id)} · ${esc(o.cidade || '')}${kwpDe(o) ? ` · ${n(kwpDe(o), 2)} kWp` : ''} · ${esc(o.arquivadoMotivo || 'arquivado')}</span>
+      <div class="acoes-r" style="margin-top:8px"><a class="btn vidro pequeno" href="#lead-${o.id}">Ver</a><button class="btn sol pequeno" data-reativar="${o.id}">↩ Reativar no funil</button></div></div>`;
+    app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Arquivo</h1><p class="sutil">Propostas que não estão em negociação: paradas, perdidas e as antigas da Groner. Ficam guardadas e pesquisáveis, fora do funil.</p></div>
+        <div class="linha-h"><label class="mini">sai do funil depois de <input type="number" id="arqDias" min="15" value="${+P().diasArquivar || 45}" style="width:64px;padding:4px 6px"> dias sem resposta</label></div></div>
+      ${semana.length ? `<div class="painel entra"><span class="rotulo">Para retomar esta semana (${semana.length})</span><p class="mini" style="margin:4px 0 8px">As que mais valem uma nova conversa: recentes, maiores, com WhatsApp e que abriram a proposta. Reativar leva para o funil com um lembrete para hoje.</p><div class="ops-v duas">${semana.map(cartao).join('')}</div></div>` : ''}
+      <div class="painel entra"><div class="grade g2"><input type="search" id="arqBusca" placeholder="Buscar por nome, cidade, telefone, código ou motivo" value="${esc(busca)}"><div class="chips">${[['', 'Todos'], ['groner', 'Groner'], ['sistema', 'Deste sistema']].map(([v, t]) => `<button class="chip ${orig === v ? 'sel' : ''}" data-arqo="${v}">${t}</button>`).join('')}</div></div></div>
+      <p class="mini">${lista.length} no arquivo${lista.length > 100 ? ' · mostrando 100, use a busca' : ''}</p>
+      <div class="ops-v duas">${lista.slice(0, 100).map(cartao).join('') || '<p class="sutil">Arquivo vazio.</p>'}</div>`;
+    const bx = $('#arqBusca'); bx.oninput = () => { try { sessionStorage.setItem('arqBusca', bx.value); } catch { /* */ } clearTimeout(avDeb); avDeb = setTimeout(() => { arquivoPag(); const b = $('#arqBusca'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }, 300); };
+    app.querySelectorAll('[data-arqo]').forEach((b) => b.onclick = () => { try { sessionStorage.setItem('arqOrig', b.dataset.arqo); } catch { /* */ } arquivoPag(); });
+    $('#arqDias').onchange = (e) => { B.salvarParametros({ diasArquivar: Math.max(15, +e.target.value || 45) }); toast('Prazo salvo'); };
+    app.querySelectorAll('[data-reativar]').forEach((b) => b.onclick = () => { const o = B.obter(b.dataset.reativar); if (!o) return;
+      o.arquivado = false; o.retomadoEm = new Date().toISOString(); o.atualizadoEm = o.retomadoEm; if (o.status === 'perdido' || o.status === 'novo') o.status = 'negociando'; B.salvar(o);
+      novoLembrete({ texto: `Retomar ${o.nome}: atualizar o preço e chamar no WhatsApp`, ref: o.id, quando: new Date().toISOString(), topo: true }); toast(`${o.nome} voltou para o funil`); arquivoPag(); });
+  }
+  /* ampliação a partir de um cliente: puxa o sistema que ele já tem */
+  function ampDe(o, de) {
+    let op = null; try { op = C.opcoes(de, P())[0]; } catch { /* sem dados */ }
+    const k = (de.kitsFechados || []).find(Boolean), d = op && op.dim;
+    Object.assign(o, { nome: de.nome || '', whatsapp: de.whatsapp || de.telefone || '', cidade: de.cidade || o.cidade, distanciaKm: ((D.cidades || {})[de.cidade] || {}).km || o.distanciaKm, clienteDe: de.id });
+    Object.assign(o.amp, { placasAtuais: (d && d.placas) || 0, potPlacaAtualW: (op && op.modulo && op.modulo.potenciaW) || 550, kwpAtual: (d && d.kwpReal) || 0, kwInversor: (op && op.inversor && op.inversor.potenciaKw * (op.inversor.qtd || 1)) || 0, marcaInversor: (k && typeof k.inversor === 'string' && k.inversor) || (op && op.inversor && op.inversor.nome) || '', consumoAtual: (d && d.consumoMedio) || Math.round(((de.consumos || []).map(Number).filter((v) => v > 0).reduce((a, b, _, l) => a + b / l.length, 0))) || 0, antes2023: new Date(de.criadoEm || Date.now()) < new Date('2023-01-07') });
+  }
   function servicoEd(arg) {
     let o;
-    if (arg.startsWith('novo-')) { o = AV().novo(arg.slice(5) === 'manutencao' ? 'manutencao' : 'servico', P()); B.salvar(o); history.replaceState(null, '', '#servico-' + o.id); }
+    if (arg.startsWith('novo-')) { const tp = arg.slice(5).split('-')[0]; o = AV().novo(['manutencao', 'ampliacao'].includes(tp) ? tp : 'servico', P()); const de = arg.split('-de-')[1] && B.obter(arg.split('-de-')[1]); if (de && o.tipo === 'ampliacao') ampDe(o, de); if (de && o.tipo === 'manutencao') { let op = null; try { op = C.opcoes(de, P())[0]; } catch { /* */ } Object.assign(o, { nome: de.nome || '', whatsapp: de.whatsapp || '', cidade: de.cidade || o.cidade, distanciaKm: ((D.cidades || {})[de.cidade] || {}).km || o.distanciaKm, clienteDe: de.id, placas: (op && op.dim.placas) || o.placas, kwp: (op && op.dim.kwpReal) || 0 }); } B.salvar(o); history.replaceState(null, '', '#servico-' + o.id); }
     else o = B.obter(arg);
     if (!o) { app.innerHTML = '<p class="sutil">Orçamento não encontrado.</p>'; return; }
-    const M = o.tipo === 'manutencao', cid = Object.keys(D.cidades || {});
+    const M = o.tipo === 'manutencao', AMP = o.tipo === 'ampliacao', cid = Object.keys(D.cidades || {});
+    const hspDe = () => ((D.cidades || {})[o.cidade] || {}).hsp || 5.3;
+    const ampSinc = () => { if (!AMP) return; const a = AV().ampliar(o, hspDe()); o.ampCalc = a;
+      (o.itens || []).forEach((i) => { if (i.auto === 'placas') i.qtd = a.placasNovas; });
+      if (a.precisaInversor && !(o.itens || []).some((i) => i.auto === 'inversor')) o.itens.splice(1, 0, { desc: `Inversor de ${a.kwInversorSugerido} kW (troca ou segundo inversor)`, cat: 'equipamento', qtd: 1, un: 'un', custo: 0, auto: 'inversor' });
+      return a; };
+    const ampHtml = () => { if (!AMP) return ''; const a = ampSinc(), x = o.amp, R = x.modo === 'retrofit';
+      const ca = (k, rot, extra = '') => `<label class="campo"><span>${rot}</span><input type="number" step="any" min="0" data-amp="${k}" value="${x[k] || ''}" ${extra}></label>`;
+      return `<div class="painel"><div class="entre"><span class="rotulo">${R ? 'Retrofit (troca de equipamento)' : 'Ampliação'}: sistema de hoje</span>
+          <div class="chips"><button class="chip ${!R ? 'sel' : ''}" data-ampmodo="ampliacao">Ampliação</button><button class="chip ${R ? 'sel' : ''}" data-ampmodo="retrofit">Retrofit</button></div></div>
+        <div class="grade g2" style="margin-top:8px">${ca('placasAtuais', 'Placas instaladas hoje')}${ca('potPlacaAtualW', 'Potência de cada placa (W)')}${ca('kwpAtual', `Potência total (kWp) <small style="font-weight:400;opacity:.75">vazio = placas × W</small>`)}${ca('kwInversor', 'Inversor atual (kW)')}
+          <label class="campo"><span>Marca/modelo do inversor</span><input type="text" data-ampt="marcaInversor" value="${esc(x.marcaInversor || '')}"></label>${ca('geracaoAtual', `Geração atual (kWh/mês) <small style="font-weight:400;opacity:.75">vazio = estimada</small>`)}
+          ${R ? `<label class="campo"><span>Motivo do retrofit</span><input type="text" data-ampt="motivo" value="${esc(x.motivo || '')}" placeholder="ex.: inversor queimado, fora da garantia, sem monitoramento"></label>` : `${ca('consumoAtual', 'Consumo antes (kWh/mês)')}${ca('consumoNovo', 'Consumo novo (kWh/mês)', 'placeholder="ex.: com ar-condicionado, carro elétrico"')}${ca('novaPlacaW', 'Placa nova (W)')}${ca('placasNovas', `Placas novas <small style="font-weight:400;opacity:.75">vazio = calcula pelo consumo</small>`)}`}
+          <label class="alternar"><span><b>Sistema ligado antes de 07/01/2023</b><br><span class="sutil">regra antiga até 2045 (Lei 14.300)</span></span><input type="checkbox" id="ampAntes" ${x.antes2023 ? 'checked' : ''}></label></div>
+        <div class="numeros4" style="margin-top:10px"><div><span>Hoje</span><b>${n(a.kwpAtual, 2)} kWp</b></div><div><span>Depois</span><b>${n(a.kwpNovo, 2)} kWp</b></div><div><span>Geração</span><b>${n(a.geracaoAtual)} → ${n(a.geracaoNova)} kWh</b></div><div><span>${R ? 'Inversor/placas' : 'Placas novas'}</span><b>${R ? n(a.ratio, 2) + '×' : a.placasNovas + ' × ' + a.novaPlacaW + ' W'}</b></div></div>
+        ${!R && a.precisaInversor ? `<div class="aviso" style="margin-top:8px">⚠️ Com ${n(a.kwpNovo, 2)} kWp o inversor de ${n(x.kwInversor, 1)} kW fica com ${n(a.ratio, 2)}× de carregamento (passa de 1,35×). Entrou um item de inversor de ${a.kwInversorSugerido} kW: troque ou some um segundo inversor (ou micro só nas placas novas).</div>` : ''}
+        ${!R && !x.kwInversor ? '<p class="mini" style="margin-top:6px">Informe o inversor atual para conferir se ele aguenta as placas novas.</p>' : ''}
+        <p class="mini" style="margin-top:8px">${R ? 'Troca com a mesma potência: comunicar a troca à distribuidora. Se aumentar a potência, vira ampliação.' : x.antes2023 ? `Regra: os ${n(a.kwpAtual, 2)} kWp de hoje seguem na regra antiga; os ${n(a.kwpExtra, 2)} kWp novos entram na regra da Lei 14.300 (paga parte do Fio B). Isso aparece na proposta.` : 'Sistema já na Lei 14.300: a ampliação segue a mesma regra.'} Precisa de projeto e pedido de aumento de potência na distribuidora.</p></div>`; };
     const campo = (k, rot, tipo = 'text', extra = '') => `<label class="campo"><span>${rot}</span><input type="${tipo}" data-av="${k}" value="${esc(o[k] ?? '')}" ${tipo === 'number' ? 'step="any" min="0"' : ''} ${extra}></label>`;
     const itensHtml = () => M ? '' : `<div class="painel"><div class="entre"><span class="rotulo">Itens (digite o custo; o preço sai com margem e imposto)</span><button class="link" data-av-add="item">＋ item</button></div>
         <div class="av-itens">${(o.itens || []).map((i, k) => `<div class="av-item"><input type="text" data-it="${k}" data-k="desc" value="${esc(i.desc)}" placeholder="Descrição (ex.: Inversor híbrido Deye 5 kW)">
@@ -1493,19 +1596,19 @@
         ${(() => { const ac = B.eventos(o.token).find((e) => e.tipo === 'aceite'); return ac ? `<div class="aviso ok" style="margin-top:8px">✓ O cliente aceitou em ${new Date(ac.em).toLocaleString('pt-BR')}: ${(ac.dados || {}).pagamento === 'cartao' ? 'cartão' : 'PIX'}${(ac.dados || {}).plano ? ', com plano' : ''}, ${brl((ac.dados || {}).valor || 0, 2)}.${o.status !== 'ganho' ? ' Toque em "Aceita ✓" abaixo para fechar.' : ''}</div>` : ''; })()}
         <p class="mini" style="margin-top:8px">${B.eventos(o.token).filter((e) => e.tipo === 'abriu').length ? `O cliente abriu a proposta ${B.eventos(o.token).filter((e) => e.tipo === 'abriu').length}×.` : 'O cliente ainda não abriu.'}</p></div>`; };
     const tela = () => {
-      app.innerHTML = `${cabCelular()}<div class="cab entra"><div><a class="link" href="#servicos">← Serviços</a><h1>${M ? '🧽 Manutenção' : '🔧 Serviço / itens avulsos'} <span class="sutil" style="font-size:16px">${esc(o.id)}</span></h1></div>
+      app.innerHTML = `${cabCelular()}<div class="cab entra"><div><a class="link" href="#servicos">← Serviços</a><h1>${M ? '🧽 Manutenção' : AMP ? '⚡ Ampliação / retrofit' : '🔧 Serviço / itens avulsos'} <span class="sutil" style="font-size:16px">${esc(o.id)}</span></h1></div>
           <div class="linha-h"><button class="btn vidro pequeno" id="avApagar">Apagar</button></div></div>
         <div class="av-grade"><div>
           <div class="painel"><span class="rotulo">Cliente</span><div class="grade g2" style="margin-top:8px">${campo('nome', 'Nome')}${campo('whatsapp', 'WhatsApp', 'tel')}
             <label class="campo"><span>Cidade</span><input type="text" data-av="cidade" list="avCid" value="${esc(o.cidade || '')}"><datalist id="avCid">${cid.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></label>
             ${campo('distanciaKm', 'Distância da Chama Solar (km)', 'number')}${campo('deslocamento', `Deslocamento (R$) <small style="font-weight:400;opacity:.75">vazio = km × 2 × R$ ${n(P().custoKm || 1, 2)}</small>`, 'number')}${campo('titulo', 'Título da proposta')}</div></div>
-          ${manutHtml()}${itensHtml()}
+          ${manutHtml()}${ampHtml()}${itensHtml()}
           <div class="painel"><span class="rotulo">Condições</span><div class="grade g2" style="margin-top:8px">${campo('prazo', 'Prazo')}${campo('validadeDias', 'Validade (dias)', 'number')}${campo('parcelasCartao', 'Parcelas no cartão', 'number')}
             <label class="campo"><span>Observações para o cliente</span><textarea data-av="observacoes" rows="3">${esc(o.observacoes || '')}</textarea></label></div></div>
         </div><div class="av-lado" id="avResumo">${resumo()}</div></div>`;
       ligar();
     };
-    const salvar = (redesenhar) => { B.salvar(o); clearTimeout(avDeb); if (redesenhar) tela(); else avDeb = setTimeout(() => { const r = $('#avResumo'); if (r) { r.innerHTML = resumo(); ligarResumo(); } }, 250); };
+    const salvar = (redesenhar) => { if (AMP) ampSinc(); B.salvar(o); clearTimeout(avDeb); if (redesenhar) tela(); else avDeb = setTimeout(() => { const r = $('#avResumo'); if (r) { r.innerHTML = resumo(); ligarResumo(); } }, 250); };
     const ligarResumo = () => {
       app.querySelectorAll('#avResumo [data-av]').forEach((x) => x.oninput = () => { o.precoManual = +x.value || null; B.salvar(o); clearTimeout(avDeb); avDeb = setTimeout(() => { const foco = document.activeElement === x; const r = $('#avResumo'); r.innerHTML = resumo(); ligarResumo(); if (foco) { const y = r.querySelector('[data-av="precoManual"]'); y.focus(); y.setSelectionRange(y.value.length, y.value.length); } }, 700); });
       $('#avCopiar').onclick = async () => { if (o.status === 'novo') { o.status = 'proposta'; o.enviadoEm = new Date().toISOString(); B.salvar(o); } try { await navigator.clipboard.writeText(linkServico(o)); toast('Link copiado'); } catch { toast(linkServico(o)); } };
@@ -1515,6 +1618,13 @@
       app.querySelectorAll('[data-avst]').forEach((b) => b.onclick = () => { o.status = b.dataset.avst; if (o.status === 'proposta' && !o.enviadoEm) o.enviadoEm = new Date().toISOString(); salvar(true); });
     };
     const ligar = () => {
+      app.querySelectorAll('[data-amp]').forEach((x) => x.onchange = () => { o.amp[x.dataset.amp] = x.value === '' ? 0 : +x.value; ampSinc(); salvar(true); });
+      app.querySelectorAll('[data-ampt]').forEach((x) => x.oninput = () => { o.amp[x.dataset.ampt] = x.value; salvar(); });
+      if ($('#ampAntes')) $('#ampAntes').onchange = (e) => { o.amp.antes2023 = e.target.checked; salvar(true); };
+      app.querySelectorAll('[data-ampmodo]').forEach((b) => b.onclick = () => { const m = b.dataset.ampmodo; if (o.amp.modo === m) return; o.amp.modo = m;
+        if ((o.itens || []).every((i) => !+i.custo)) { const nv = AV().novo('ampliacao', P()); o.itens = m === 'retrofit' ? [{ desc: 'Inversor novo', cat: 'equipamento', qtd: 1, un: 'un', custo: 0 }, { desc: 'Materiais CA/CC e proteções', cat: 'material', qtd: 1, un: 'kit', custo: 0 }, { desc: 'Mão de obra: retirada, troca e configuração', cat: 'mao', qtd: 1, un: '', custo: 0 }, { desc: 'Comunicação da troca à distribuidora', cat: 'mao', qtd: 1, un: '', custo: 0 }] : nv.itens;
+          o.inclui = m === 'retrofit' ? ['Retirada do equipamento antigo', 'Instalação e configuração do equipamento novo', 'Monitoramento no celular', 'Comunicação da troca à distribuidora', 'Garantia do serviço de 12 meses'] : nv.inclui; }
+        o.titulo = m === 'retrofit' ? 'Retrofit do sistema solar' : 'Ampliação do sistema solar'; ampSinc(); salvar(true); });
       app.querySelectorAll('.av-grade > div:first-child [data-av]').forEach((x) => x.oninput = () => { const k = x.dataset.av; let v = x.value;
         if (k === 'inclui' || k === 'checklist') v = v.split('\n').map((t) => t.trim()).filter(Boolean);
         else if (x.type === 'number') v = x.value === '' ? (k === 'deslocamento' ? null : 0) : +x.value;
@@ -1667,7 +1777,7 @@
     const [rota, arg] = h.startsWith('lead-') ? ['lead', h.slice(5)] : h.startsWith('servico-') ? ['servico', h.slice(8)] : [h, null];
     document.querySelectorAll('[data-rota]').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === (rota === 'lead' ? 'painel' : rota === 'servico' ? 'servicos' : rota)));
     if (rota !== 'novo') { document.body.classList.remove('com-barra'); $('#barra').hidden = true; }
-    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') diaPag(); else if (rota === 'servicos') servicosPag(); else if (rota === 'servico') servicoEd(arg); else if (rota === 'parametros') parametrosPag(); else painel(); };
+    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') diaPag(); else if (rota === 'servicos') servicosPag(); else if (rota === 'clientes') clientesPag(); else if (rota === 'arquivo') arquivoPag(); else if (rota === 'servico') servicoEd(arg); else if (rota === 'parametros') parametrosPag(); else painel(); };
     if (document.startViewTransition) {
       const t = document.startViewTransition(ir);
       [t.ready, t.finished, t.updateCallbackDone].forEach((pr) => pr && pr.catch(() => {})); // navegação rápida cancela a animação, sem problema

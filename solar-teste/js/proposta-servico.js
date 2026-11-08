@@ -17,6 +17,8 @@
   if (!o) { raiz.innerHTML = '<div class="ps"><div class="bloco vis" style="margin-top:20vh;text-align:center"><h2 style="justify-content:center">Proposta não encontrada</h2><p class="apoio">Confira o link ou fale com a Chama Solar.</p></div></div>'; return; }
   const P = B.parametros(), E = D.empresa, M = o.tipo === 'manutencao';
   const c = o.calc || AV.calcular(o, P);
+  const A = o.tipo === 'ampliacao' && o.amp, R = A && o.amp.modo === 'retrofit';
+  const ac = A ? (o.ampCalc || AV.ampliar(o, ((D.cidades || {})[o.cidade] || {}).hsp || 5.3)) : null;
   const est = { pag: 'pix', plano: !!c.plano, aceito: o.status === 'ganho' || !!((B.eventos && B.eventos(o.token)) || []).find((e) => e.tipo === 'aceite') };
   const registrar = (tipo, dados) => { if (!vendedor) try { B.evento(o.token, tipo, dados); } catch { /* sem conexão */ } };
   const ICON = { equipamento: ['⚡', '#4cc3ff33'], material: ['🔌', '#ffb23d33'], mao: ['🛠️', '#3ddc9733'], extra: ['🔧', '#ff6a0026'], outro: ['🚐', '#ffffff1a'] };
@@ -48,6 +50,20 @@
         <div class="opcoes"><button class="op" data-plano="0" aria-pressed="${!est.plano}"><small>só esta vez</small><b>${brl(c.total)}</b><small>1 visita</small></button>
           <button class="op" data-plano="1" aria-pressed="${est.plano}"><span class="tag">economize ${nf(c.plano.desconto * 100)}%</span><small style="margin-top:6px">plano a cada ${c.plano.meses} meses</small><b>${brl(c.plano.porVisita)}</b><small>por visita · ${c.plano.visitasAno}× por ano = ${brl(c.plano.porAno)}</small></button></div></section>` : ''}`;
   }
+  function blocoAmp() {
+    const barra = (v, max, cor) => `<i data-w="${Math.min(100, (v / max) * 100)}" style="background:${cor}"></i>`, max = Math.max(ac.geracaoNova, ac.consumoNovo || 0, 1);
+    return `<section class="bloco" data-secao="antes-depois"><h2><i>${R ? '🔁' : '📈'}</i>${R ? 'O que muda no seu sistema' : 'Seu sistema hoje e depois'}</h2>
+      <p class="apoio">${R ? `Troca do equipamento${o.amp.motivo ? ` (${esc(o.amp.motivo)})` : ''}, mantendo as placas e a potência de ${nf(ac.kwpAtual, 2)} kWp.` : `Hoje o sistema gera por volta de ${nf(ac.geracaoAtual)} kWh por mês. Com ${ac.placasNovas} placa${ac.placasNovas === 1 ? '' : 's'} nova${ac.placasNovas === 1 ? '' : 's'} de ${ac.novaPlacaW} W, passa para cerca de ${nf(ac.geracaoNova)} kWh${ac.consumoNovo ? `, para um consumo de ${nf(ac.consumoNovo)} kWh` : ''}.`}</p>
+      ${R ? '' : `<div class="opcoes"><div class="op" aria-pressed="false"><small>hoje</small><b>${nf(ac.kwpAtual, 2)} kWp</b><small>${nf(ac.geracaoAtual)} kWh/mês</small></div><div class="op" aria-pressed="true"><span class="tag">+${nf(ac.kwpExtra, 2)} kWp</span><small style="margin-top:6px">depois</small><b>${nf(ac.kwpNovo, 2)} kWp</b><small>${nf(ac.geracaoNova)} kWh/mês</small></div></div>
+      <div style="margin-top:14px"><div class="leg"><span style="--c:#8792ad">geração hoje</span></div><div class="barra-c">${barra(ac.geracaoAtual, max, '#8792ad')}</div>
+        <div class="leg" style="margin-top:8px"><span style="--c:#ffb23d">geração depois</span></div><div class="barra-c">${barra(ac.geracaoNova, max, '#ffb23d')}</div>
+        ${ac.consumoNovo ? `<div class="leg" style="margin-top:8px"><span style="--c:#4cc3ff">seu consumo novo</span></div><div class="barra-c">${barra(ac.consumoNovo, max, '#4cc3ff')}</div>` : ''}</div>
+      ${ac.consumoNovo ? `<p class="apoio" style="margin-top:12px">Cobre cerca de <b>${nf(Math.min(100, ac.cobre * 100))}%</b> do consumo novo. Estimativa com o sol médio de ${esc(o.cidade || 'Ribeirão Preto')}.</p>` : ''}`}</section>
+      <section class="bloco" data-secao="regras"><h2><i>⚖️</i>Regras da distribuidora</h2><ul class="checks">
+        ${R ? `<li>A troca é comunicada à distribuidora, como pede a regra, e a Chama Solar cuida disso.</li><li>Sem aumentar a potência, nada muda na conta de compensação. Se um dia quiser aumentar, fazemos como ampliação.</li>`
+          : `<li>Precisa de projeto e pedido de aumento de potência na distribuidora. A Chama Solar faz tudo e só instala depois da aprovação.</li>
+            ${o.amp.antes2023 ? `<li>Os ${nf(ac.kwpAtual, 2)} kWp que você já tem continuam na regra antiga até 2045.</li><li>Os ${nf(ac.kwpExtra, 2)} kWp novos entram na regra atual (Lei 14.300), que paga uma parte do uso da rede (Fio B) sobre a energia injetada. Por isso a economia da parte nova é um pouco menor que a da parte antiga.</li>` : '<li>Seu sistema já está na regra atual (Lei 14.300), e a ampliação segue a mesma regra.</li>'}`}</ul></section>`;
+  }
   function blocoServ() {
     return `${(o.inclui || []).length ? `<section class="bloco" data-secao="inclui"><h2><i>✅</i>Está incluso</h2><ul class="checks">${o.inclui.map((t, i) => `<li style="transition-delay:${i * 0.12}s">${esc(t)}</li>`).join('')}</ul></section>` : ''}
       <section class="bloco" data-secao="etapas"><h2><i>🗓️</i>Como vai ser</h2><p class="apoio">${esc(o.prazo || 'Combinamos a data com você.')}</p>
@@ -67,11 +83,11 @@
 
   function montar() {
     raiz.innerHTML = `${vendedor ? '<div class="faixa-v">VOCÊ ESTÁ VENDO COMO O CLIENTE · nada aqui conta como visita</div>' : ''}<div class="ps">
-      <header class="heroi"><div class="topo"><img src="marca/logo-branco.webp" alt="Chama Solar" width="94" height="40"><span class="selo">${M ? 'Manutenção' : 'Serviço'} · ${esc(o.id || '')}</span></div>
-        <h1>${primeiro ? `${esc(primeiro)}, ` : ''}${M ? 'seu sistema solar <em>de volta ao máximo</em>' : `<em>${esc(o.titulo || 'sua proposta')}</em>`}</h1>
+      <header class="heroi"><div class="topo"><img src="marca/logo-branco.webp" alt="Chama Solar" width="94" height="40"><span class="selo">${M ? 'Manutenção' : R ? 'Retrofit' : A ? 'Ampliação' : 'Serviço'} · ${esc(o.id || '')}</span></div>
+        <h1>${primeiro ? `${esc(primeiro)}, ` : ''}${M ? 'seu sistema solar <em>de volta ao máximo</em>' : R ? 'seu sistema solar <em>renovado</em>' : A ? 'seu sistema solar <em>do tamanho da sua casa hoje</em>' : `<em>${esc(o.titulo || 'sua proposta')}</em>`}</h1>
         <p>${M ? `Manutenção completa de ${nf(c.placas)} placa${c.placas === 1 ? '' : 's'}${o.marcaInversor ? ` e do inversor ${esc(o.marcaInversor)}` : ''}, em ${esc(o.cidade || 'sua cidade')}.` : `Proposta preparada pela Chama Solar para ${esc(o.cidade || 'você')}.`}</p>
         <div class="valor-h"><div><small id="vLeg">valor ${M && est.plano && c.plano ? 'por visita no plano' : 'total'}</small><b class="num" id="vTopo">${brl(M && est.plano && c.plano ? c.plano.porVisita : c.total)}</b></div><div class="val">${esc(o.prazo || '')}</div></div></header>
-      ${M ? blocoManut() : ''}${blocoItens()}${M ? '' : blocoServ()}${blocoPagar()}
+      ${M ? blocoManut() : ''}${A ? blocoAmp() : ''}${blocoItens()}${M ? '' : blocoServ()}${blocoPagar()}
       <section class="bloco" data-secao="quem"><h2><i>🔆</i>Quem vai cuidar disso</h2><p class="apoio" style="margin:0">A ${esc(E.nome)} instala e cuida de sistemas solares há ${E.anos} anos em Ribeirão Preto e região. ${esc(E.selo || '')}.</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><a class="btn zap" href="${zap(`Olá, ${E.vendedor}! Tenho uma dúvida sobre a proposta ${o.id}.`)}" target="_blank" rel="noopener" data-z="1">Tirar dúvida no WhatsApp</a><a class="btn vidro" href="${esc(E.instagram)}" target="_blank" rel="noopener">Ver obras no Instagram</a><button class="btn vidro" id="pdf">📄 Baixar PDF</button></div></section>
       <footer class="rodape">${esc(E.nome)} · ${esc(E.endereco)}<br>${esc(E.telefone)} · ${esc(E.email)}</footer></div>

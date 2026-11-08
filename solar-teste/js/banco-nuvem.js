@@ -9,7 +9,7 @@
    ===================================================================== */
 (function (raiz) {
   'use strict';
-  const AVULSO = (o) => !!o && (o.tipo === 'servico' || o.tipo === 'manutencao');
+  const AVULSO = (o) => !!o && (o.tipo === 'servico' || o.tipo === 'manutencao' || o.tipo === 'ampliacao');
   const D = raiz.DadosTeste;
   const SB = 'https://jmpvmyyokikpwphwylob.supabase.co';
   const KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImptcHZteXlva2lrcHdwaHd5bG9iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIyMTc1MzEsImV4cCI6MjEwNzc5MzUzMX0.e5XT2R7eOj3x-ZYcRFkY4OFg0QEr3_guxT6-W0xpnfY';
@@ -142,7 +142,9 @@
     async roboChave() { return api('rpc/sol_robo_chave', { method: 'POST', body: '{}' }); },
 
     todos() { return publico ? [publico.orc] : orcs; },
-    orcamentos() { return this.todos().filter((o) => !AVULSO(o)); }, // serviços e manutenções ficam fora das listas de energia solar
+    orcamentos() { return this.todos().filter((o) => !AVULSO(o) && !o.arquivado && !o.carteira); }, // serviços, manutenções e o arquivo ficam fora das listas do funil
+    arquivados() { return this.todos().filter((o) => !AVULSO(o) && o.arquivado); },
+    clientes() { return this.todos().filter((o) => !AVULSO(o) && !o.juntadoEm && (o.status === 'ganho' || o.carteira)); },
     avulsos() { return this.todos().filter(AVULSO); },
     obter(id) { return this.todos().find((o) => o.id === id) || null; },
     porToken(t) { return this.todos().find((o) => o.token === t) || null; },

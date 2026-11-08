@@ -5,7 +5,7 @@
    ===================================================================== */
 (function (raiz) {
   'use strict';
-  const AVULSO = (o) => !!o && (o.tipo === 'servico' || o.tipo === 'manutencao');
+  const AVULSO = (o) => !!o && (o.tipo === 'servico' || o.tipo === 'manutencao' || o.tipo === 'ampliacao');
   const D = raiz.DadosTeste;
   const PREFIXO = 'sol2_';
 
@@ -34,7 +34,9 @@
     zerarParametros() { gravar('parametros', {}); },
 
     todos() { return ler('orcamentos', []); },
-    orcamentos() { return this.todos().filter((o) => !AVULSO(o)); }, // serviços e manutenções ficam fora das listas de energia solar
+    orcamentos() { return this.todos().filter((o) => !AVULSO(o) && !o.arquivado && !o.carteira); }, // serviços, manutenções e o arquivo ficam fora das listas do funil
+    arquivados() { return this.todos().filter((o) => !AVULSO(o) && o.arquivado); },
+    clientes() { return this.todos().filter((o) => !AVULSO(o) && !o.juntadoEm && (o.status === 'ganho' || o.carteira)); },
     avulsos() { return this.todos().filter(AVULSO); },
     obter(id) { return this.todos().find((o) => o.id === id) || null; },
     porToken(token) { return this.todos().find((o) => o.token === token) || null; },

@@ -19,10 +19,31 @@
   function novo(tipo, p) {
     const base = { tipo, status: 'novo', nome: '', whatsapp: '', cidade: 'Ribeirão Preto', distanciaKm: 12, validadeDias: 10, prazo: '', observacoes: '', condicoes: 'pix', parcelasCartao: 6, criadoEm: new Date().toISOString() };
     if (tipo === 'manutencao') return { ...base, titulo: 'Manutenção do sistema solar', placas: 12, porPlaca: (p && p.manutencaoPorPlaca) || 25, kwp: 0, marcaInversor: '', extras: [], checklist: [...CHECK_MANUT], plano: { ativo: false, meses: 6, desconto: 0.1 }, prazo: 'Agendamento em até 5 dias úteis' };
+    if (tipo === 'ampliacao') return { ...base, titulo: 'Ampliação do sistema solar', margem: (p && p.margemAvulso) ?? 0.2,
+      amp: { modo: 'ampliacao', kwpAtual: 0, placasAtuais: 0, potPlacaAtualW: 550, kwInversor: 0, marcaInversor: '', consumoAtual: 0, consumoNovo: 0, geracaoAtual: 0, novaPlacaW: 610, antes2023: true, motivo: '' },
+      itens: [{ desc: 'Módulos fotovoltaicos', cat: 'equipamento', qtd: 0, un: 'placa', custo: 0, auto: 'placas' }, { desc: 'Estrutura de fixação das placas novas', cat: 'material', qtd: 0, un: 'placa', custo: 0, auto: 'placas' },
+        { desc: 'Cabos, conectores MC4 e proteções CC', cat: 'material', qtd: 1, un: 'kit', custo: 0 }, { desc: 'Mão de obra de instalação', cat: 'mao', qtd: 0, un: 'placa', custo: 0, auto: 'placas' },
+        { desc: 'Projeto e homologação do aumento de potência na distribuidora', cat: 'mao', qtd: 1, un: '', custo: 0 }],
+      inclui: ['Visita técnica e conferência do sistema atual', 'Projeto elétrico e pedido de aumento de potência na distribuidora', 'Instalação das placas novas no mesmo padrão', 'Teste, monitoramento e explicação de uso', 'Garantia do serviço de 12 meses'],
+      prazo: 'Instalação após a aprovação da distribuidora' };
     return { ...base, titulo: 'Instalação de inversor híbrido', itens: [{ desc: 'Inversor híbrido', cat: 'equipamento', qtd: 1, un: 'un', custo: 0 }, { desc: 'Materiais elétricos CA (cabos, disjuntores, DPS, quadro)', cat: 'material', qtd: 1, un: 'kit', custo: 0 }, { desc: 'Mão de obra de instalação e comissionamento', cat: 'mao', qtd: 1, un: 'serv.', custo: 0 }],
       margem: (p && p.margemAvulso) ?? 0.2, inclui: ['Instalação e configuração completa', 'Teste de funcionamento e explicação de uso', 'Garantia do serviço de 12 meses'], prazo: 'Instalação em até 10 dias úteis após o aceite' };
   }
 
+  /* AMPLIAÇÃO / RETROFIT: hoje × depois. hsp da cidade, 80% de rendimento (o mesmo do resto do sistema) */
+  function ampliar(o, hsp) {
+    const a = o.amp || {}, h = +hsp || 5.3, fator = h * 30 * 0.8, kwpAtual = +a.kwpAtual || ((+a.placasAtuais || 0) * (+a.potPlacaAtualW || 0)) / 1000;
+    const geracaoAtual = +a.geracaoAtual || Math.round(kwpAtual * fator), consumoNovo = +a.consumoNovo || +a.consumoAtual || 0;
+    if (a.modo === 'retrofit') {
+      const kwInv = +a.kwInversor || 0, ratio = kwInv ? kwpAtual / kwInv : 0;
+      return { modo: 'retrofit', kwpAtual: arred(kwpAtual, 2), kwpNovo: arred(kwpAtual, 2), placasNovas: 0, geracaoAtual, geracaoNova: geracaoAtual, consumoNovo, ratio: arred(ratio, 2), mesmaPotencia: true };
+    }
+    const falta = Math.max(0, consumoNovo - geracaoAtual), kwpExtra = falta / fator, w = +a.novaPlacaW || 610;
+    const placasNovas = a.placasNovas > 0 ? Math.round(+a.placasNovas) : Math.ceil((kwpExtra * 1000) / w - 1e-9);
+    const kwpNovo = kwpAtual + (placasNovas * w) / 1000, kwInv = +a.kwInversor || 0, ratio = kwInv ? kwpNovo / kwInv : 0;
+    return { modo: 'ampliacao', kwpAtual: arred(kwpAtual, 2), kwpExtra: arred((placasNovas * w) / 1000, 2), kwpNovo: arred(kwpNovo, 2), placasNovas, novaPlacaW: w, geracaoAtual, geracaoNova: Math.round(kwpNovo * fator), consumoAtual: +a.consumoAtual || 0, consumoNovo,
+      ratio: arred(ratio, 2), precisaInversor: kwInv > 0 && ratio > 1.35, kwInversorSugerido: kwInv > 0 && ratio > 1.35 ? Math.ceil((kwpNovo / 1.25) * 2) / 2 : 0, cobre: consumoNovo ? Math.min(1.2, (kwpNovo * fator) / consumoNovo) : 0 };
+  }
   function deslocamentoDe(o, p) { return o.deslocamento != null && o.deslocamento !== '' ? +o.deslocamento : arred((+o.distanciaKm || 0) * 2 * ((p && p.custoKm) || 1)); }
 
   function calcular(o, p) {
@@ -54,12 +75,12 @@
 
   /* o que vai para o cliente: preços finais, sem custo, margem nem imposto */
   function publico(o, c) {
-    const pick = ['tipo', 'id', 'token', 'status', 'nome', 'cidade', 'titulo', 'validadeDias', 'prazo', 'observacoes', 'condicoes', 'inclui', 'checklist', 'kwp', 'placas', 'marcaInversor', 'enviadoEm', 'criadoEm'];
+    const pick = ['tipo', 'id', 'token', 'status', 'nome', 'cidade', 'titulo', 'validadeDias', 'prazo', 'observacoes', 'condicoes', 'inclui', 'checklist', 'kwp', 'placas', 'marcaInversor', 'enviadoEm', 'criadoEm', 'amp', 'ampCalc'];
     const r = {}; pick.forEach((k) => { if (o[k] !== undefined) r[k] = o[k]; });
     r.nome = String(o.nome || '').trim(); r.calc = { ...c, linhas: c.linhas.map(({ custo, imposto, ...l }) => { void custo; void imposto; return l; }) };
     delete r.calc.custo; delete r.calc.imposto; delete r.calc.lucro; delete r.calc.margemReal; delete r.calc.impostoCalc; delete r.calc.calculado; delete r.calc.ajustado;
     return r;
   }
 
-  raiz.Avulso = { CATS, CHECK_MANUT, novo, calcular, publico, deslocamentoDe };
+  raiz.Avulso = { CATS, CHECK_MANUT, novo, calcular, publico, deslocamentoDe, ampliar };
 })(typeof window !== 'undefined' ? window : globalThis);
