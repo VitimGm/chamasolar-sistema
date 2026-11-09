@@ -16,7 +16,7 @@
   const arred = (v, c = 2) => Math.round(v * 10 ** c) / 10 ** c;
   const media = (v) => { const x = (v || []).map(Number).filter((n) => n > 0); return x.length ? x.reduce((s, n) => s + n, 0) / x.length : 0; };
   const PADRAO = { modalidade: 'verde', consumoP: Array(12).fill(''), consumoFP: Array(12).fill(''), demanda: 0, demandaP: 0, demandaFP: 0,
-    tarifas: { teP: 0, tusdP: 0, teFP: 0, tusdFP: 0, demanda: 0, demandaP: 0 }, fioBParte: 0.5, simultaneidade: 0.6, alvo: 'fp', limitarDemanda: false };
+    tarifas: { teP: 0, tusdP: 0, teFP: 0, tusdFP: 0, demanda: 0, demandaP: 0 }, fioBParte: 0.5, simultaneidade: 0.6, alvo: 'fp', limitarDemanda: false, porMedia: true };
   const novo = () => JSON.parse(JSON.stringify(PADRAO));
   const completo = (ga) => { const t = (ga && ga.tarifas) || {}; return media(ga && ga.consumoFP) > 0 && t.teFP > 0 && t.tusdFP >= 0 && (t.teP > 0 || !(media(ga.consumoP) > 0)); };
   /* 1 kWh de ponta vale "fa" kWh de crédito gerado fora da ponta */

@@ -504,7 +504,7 @@
   const SEGMENTOS = [['residencial', '🏠 Residencial'], ['comercial', '🏪 Comercial'], ['grandes', '🏭 Grandes contas / indústria'], ['rural', '🌾 Rural']];
   const novoOrc = () => ({ segmento: 'residencial', nome: '', whatsapp: '', cep: '', cidade: '', distanciaKm: 0, ligacao: 'bi', consumos: Array(12).fill(''), tarifaKwh: P().tarifaKwh, lidoPorIA: false, modo: 'pdf', telhado: 'ceramico', orientacao: '?', areaDisponivel: '', trocaPadrao: false, opcaoEscolhida: 1, formaPagamento: 'financiamento', comissaoParceria: 0, kitFaturadoDireto: false, descontoPct: 0, origem: 'WhatsApp', status: 'novo' });
   /* várias propostas no mesmo cliente: todas ligadas pelo clienteId (o código da primeira) */
-  const CAMPOS_CLIENTE = ['segmento', 'nome', 'whatsapp', 'email', 'cpf', 'documento', 'cep', 'endereco', 'numero', 'bairro', 'cidade', 'distanciaKm', 'ligacao', 'consumos', 'tarifaKwh', 'grupo', 'grupoA', 'telhado', 'orientacao', 'areaDisponivel', 'lat', 'lng', 'origem', 'indicadoPor', 'parceiro'];
+  const CAMPOS_CLIENTE = ['segmento', 'nome', 'whatsapp', 'email', 'cpf', 'documento', 'cep', 'endereco', 'numero', 'bairro', 'cidade', 'distanciaKm', 'ligacao', 'consumos', 'tarifaKwh', 'cargasFuturas', 'grupo', 'grupoA', 'telhado', 'orientacao', 'areaDisponivel', 'lat', 'lng', 'origem', 'indicadoPor', 'parceiro'];
   function propostasDoCliente(o) { const cid = o.clienteId || o.id; return B.todos().filter((x) => !x.apagado && !['servico', 'manutencao', 'ampliacao'].includes(x.tipo) && (x.id === cid || x.clienteId === cid)).sort((a, b) => String(a.criadoEm).localeCompare(String(b.criadoEm))); }
   function novaPropostaDe(o) {
     if (!o.clienteId) { o.clienteId = o.id; B.salvar(o); }
@@ -561,14 +561,47 @@
   const MODOS = [['pdf', 'documento', 'Anexar conta (PDF)'], ['meses', 'conta', 'Digitar 12 meses'], ['media', 'grafico', 'Só a média'], ['geracao', 'sol', 'Geração desejada']];
   /* ---------- Grupo A: conta de média tensão (ponta, fora ponta, demanda) ---------- */
   const GA = window.GrupoA;
+  /* ---------- aparelhos que o cliente vai instalar: aumentam o consumo usado no dimensionamento ---------- */
+  const TIPOS_CARGA = { ar: 'Ar-condicionado', carro: 'Carro elétrico', outro: 'Outro aparelho' };
+  function painelCargas() {
+    const L = orc.cargasFuturas || [], tot = C.cargaExtra(orc), atual = C.consumoMedio(orc);
+    const campo = (i, k, rot, v, ph, st = '1') => `<label class="campo"><span>${rot}</span><input type="number" min="0" step="${st}" data-cg="${i}" data-k="${k}" value="${v ?? ''}" placeholder="${ph}"></label>`;
+    const linha = (c, i) => `<div class="painel" style="margin-top:8px;padding:12px">
+      <div style="display:flex;gap:8px;align-items:center;justify-content:space-between"><div class="chips">${Object.entries(TIPOS_CARGA).map(([v, t]) => `<button class="chip ${c.tipo === v ? 'sel' : ''}" data-cgtipo="${i}" data-v="${v}">${t}</button>`).join('')}</div>
+        <button class="btn vidro pequeno" data-cgdel="${i}" title="Tirar">✕</button></div>
+      <div class="grade g2" style="margin-top:8px;align-items:end">
+        ${c.tipo === 'ar' ? campo(i, 'btu', 'BTUs (cada)', c.btu, '12000', '1000') + campo(i, 'qtd', 'Quantidade', c.qtd, '1') + campo(i, 'horas', 'Horas ligado por dia', c.horas, '8', '0.5') + campo(i, 'dias', 'Dias por mês', c.dias, '30')
+          : c.tipo === 'carro' ? campo(i, 'km', 'Km rodados por mês', c.km, '1500', '50') + campo(i, 'qtd', 'Quantidade', c.qtd, '1') + campo(i, 'kwhKm', 'kWh por km', c.kwhKm, '0,18', '0.01')
+          : campo(i, 'watts', 'Potência (W)', c.watts, '1500', '10') + campo(i, 'qtd', 'Quantidade', c.qtd, '1') + campo(i, 'horas', 'Horas por dia', c.horas, '2', '0.5') + campo(i, 'dias', 'Dias por mês', c.dias, '30')}</div>
+      ${c.tipo === 'ar' ? `<label class="alternar" style="margin-top:6px"><span>Aparelho convencional (sem inverter) <small class="sutil">gasta uns 40% a mais</small></span><input type="checkbox" data-cgconv="${i}" ${c.convencional ? 'checked' : ''}></label>` : ''}
+      <p class="mini" style="margin:6px 0 0">≈ <b data-cgkwh="${i}">${n(C.kwhCarga(c))} kWh por mês</b></p></div>`;
+    return `<div class="painel"><span class="rotulo">Aparelhos que o cliente vai instalar</span>
+      <p class="mini" style="margin:6px 0 0">Ar-condicionado, carro elétrico, piscina… entram no tamanho da usina e na economia.</p>
+      ${L.map(linha).join('')}
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px"><button class="btn vidro pequeno" id="cg-mais">+ aparelho</button>
+      ${L.length ? `<span class="mini">Consumo de hoje <b>${n(atual)}</b> + aparelhos <b id="cg-tot">${n(tot)}</b> = <b id="cg-fim" class="grad">${n(atual + tot)} kWh/mês</b></span>` : ''}</div></div>`;
+  }
+  function ligarCargas(el) {
+    const L = () => (orc.cargasFuturas = orc.cargasFuturas || []);
+    const mais = $('#cg-mais', el); if (mais) mais.onclick = () => { L().push({ tipo: 'ar', btu: 12000, qtd: 1, horas: 8, dias: 30 }); salvarR(); novo(); };
+    el.querySelectorAll('[data-cgdel]').forEach((b) => b.onclick = () => { L().splice(+b.dataset.cgdel, 1); salvarR(); novo(); });
+    el.querySelectorAll('[data-cgtipo]').forEach((b) => b.onclick = () => { const c = L()[+b.dataset.cgtipo]; c.tipo = b.dataset.v; if (c.tipo === 'carro' && !c.km) c.km = 1500; if (c.tipo === 'outro' && !c.watts) c.watts = 1500; salvarR(); novo(); });
+    const refaz = () => { const tot = C.cargaExtra(orc), at = C.consumoMedio(orc); L().forEach((c, i) => { const e = el.querySelector(`[data-cgkwh="${i}"]`); if (e) e.textContent = n(C.kwhCarga(c)) + ' kWh por mês'; }); const t = $('#cg-tot', el), f = $('#cg-fim', el); if (t) t.textContent = n(tot); if (f) f.textContent = n(at + tot) + ' kWh/mês'; salvarR(); barra(); };
+    el.querySelectorAll('[data-cg]').forEach((x) => x.oninput = () => { const c = L()[+x.dataset.cg]; c[x.dataset.k] = x.value === '' ? '' : +String(x.value).replace(',', '.'); refaz(); });
+    el.querySelectorAll('[data-cgconv]').forEach((x) => x.onchange = () => { L()[+x.dataset.cgconv].convencional = x.checked; refaz(); });
+  }
   function painelGrupoA() {
     const ga = orc.grupoA = orc.grupoA || GA.novo(), t = ga.tarifas, azul = ga.modalidade === 'azul';
     const mP = GA.media(ga.consumoP), mFP = GA.media(ga.consumoFP), fa = GA.fatorAjuste(ga), dem = GA.demandaMes(ga), conta = mP * ((t.teP || 0) + (t.tusdP || 0)) + mFP * ((t.teFP || 0) + (t.tusdFP || 0)) + dem;
     const inp = (k, v, ph, st = '0.0001') => `<input type="number" step="${st}" min="0" data-ga="${k}" value="${v || ''}" placeholder="${ph}">`;
     return `<div class="painel"><span class="rotulo">Grupo A · conta de média tensão</span>
       <div class="chips" style="margin:10px 0">${[['verde', 'Tarifa verde'], ['azul', 'Tarifa azul']].map(([v, tt]) => `<button class="chip ${ga.modalidade === v ? 'sel' : ''}" data-gamod="${v}">${tt}</button>`).join('')}</div>
-      <table class="ga-tab" style="margin-top:4px"><tr><th>Mês</th><th class="v">Ponta (kWh)</th><th class="v">Fora ponta (kWh)</th></tr>
-        ${MESES.map((m, i) => `<tr><td>${m}</td><td class="v"><input type="number" min="0" data-gap="${i}" value="${ga.consumoP[i]}" style="width:110px"></td><td class="v"><input type="number" min="0" data-gafp="${i}" value="${ga.consumoFP[i]}" style="width:120px"></td></tr>`).join('')}</table>
+      <div class="chips" style="margin:0 0 8px">${[[true, 'Pela média'], [false, 'Mês a mês']].map(([v, tt]) => `<button class="chip ${(ga.porMedia !== false) === v ? 'sel' : ''}" data-gamedia="${v ? 1 : 0}">${tt}</button>`).join('')}</div>
+      ${ga.porMedia !== false ? `<div class="grade g2" style="align-items:end"><label class="campo"><span>Média fora ponta (kWh por mês)</span><input type="number" min="0" id="ga-medFP" value="${mFP ? Math.round(mFP) : ''}" placeholder="ex.: 36.000"></label>
+        <label class="campo"><span>Média ponta (kWh por mês)</span><input type="number" min="0" id="ga-medP" value="${mP ? Math.round(mP) : ''}" placeholder="ex.: 3.500"></label></div>
+        <p class="mini" style="margin:4px 0 0">Vale a média dos últimos 12 meses da fatura. Para usar mês a mês, toque em "Mês a mês".</p>`
+      : `<table class="ga-tab" style="margin-top:4px"><tr><th>Mês</th><th class="v">Ponta (kWh)</th><th class="v">Fora ponta (kWh)</th></tr>
+        ${MESES.map((m, i) => `<tr><td>${m}</td><td class="v"><input type="number" min="0" data-gap="${i}" value="${ga.consumoP[i]}" style="width:110px"></td><td class="v"><input type="number" min="0" data-gafp="${i}" value="${ga.consumoFP[i]}" style="width:120px"></td></tr>`).join('')}</table>`}
       <p class="mini" style="margin:12px 0 0">Tarifas como estão na fatura, <b>com impostos</b>.</p>
       <div class="grade g2" style="margin-top:8px;align-items:end">
         ${azul ? `<label class="campo"><span>Demanda contratada na ponta (kW)</span>${inp('demandaP', ga.demandaP, 'ex.: 180', '1')}</label><label class="campo"><span>Demanda contratada fora ponta (kW)</span>${inp('demandaFP', ga.demandaFP, 'ex.: 250', '1')}</label>`
@@ -596,6 +629,10 @@
     const ex = $('#ga-ex', el); if (ex) ex.onclick = () => { const e = D.grupoAExemplo; orc.grupoA = { ...GA.novo(), ...JSON.parse(JSON.stringify(e.grupoA)) }; Object.assign(orc, { nome: orc.nome || e.nome, cidade: orc.cidade || e.cidade, distanciaKm: orc.distanciaKm || e.distanciaKm, ligacao: 'tri' }); sincGA(); salvarR(); novo(); toast('Conta de exemplo do Grupo A carregada'); };
     el.querySelectorAll('[data-gamod]').forEach((b) => b.onclick = () => { ga.modalidade = b.dataset.gamod; sincGA(); salvarR(); novo(); });
     el.querySelectorAll('[data-gaalvo]').forEach((b) => b.onclick = () => { ga.alvo = b.dataset.gaalvo; sincGA(); salvarR(); novo(); });
+    el.querySelectorAll('[data-gamedia]').forEach((b) => b.onclick = () => { ga.porMedia = b.dataset.gamedia === '1'; salvarR(); novo(); });
+    const mfp = $('#ga-medFP', el), mp = $('#ga-medP', el);
+    if (mfp) mfp.oninput = () => { ga.consumoFP = Array(12).fill(+mfp.value > 0 ? Math.round(+mfp.value) : ''); sincGA(true); };
+    if (mp) mp.oninput = () => { ga.consumoP = Array(12).fill(+mp.value > 0 ? Math.round(+mp.value) : ''); sincGA(true); };
     el.querySelectorAll('[data-gap]').forEach((x) => x.oninput = () => { ga.consumoP[+x.dataset.gap] = x.value; sincGA(true); });
     el.querySelectorAll('[data-gafp]').forEach((x) => x.oninput = () => { ga.consumoFP[+x.dataset.gafp] = x.value; sincGA(true); });
     el.querySelectorAll('[data-ga]').forEach((x) => x.oninput = () => { const k = x.dataset.ga, v = Number(String(x.value).replace(',', '.')) || 0, val = x.dataset.pct ? v / 100 : v; if (k.startsWith('t.')) ga.tarifas[k.slice(2)] = val; else ga[k] = val; sincGA(true); });
@@ -627,7 +664,7 @@
     el.innerHTML = `<div class="lado"><div>
       <div class="painel brilha"><span class="rotulo" style="color:var(--sol)">Como você tem o consumo?</span>
         <label class="alternar" style="margin:10px 0"><span><b>Cliente do Grupo A</b><br><span class="sutil">média tensão: ponta, fora ponta e demanda contratada (supermercado, indústria)</span></span><input type="checkbox" id="f-grupoA" ${orc.grupo === 'A' ? 'checked' : ''}></label>
-        ${orc.grupo === 'A' ? '<p class="mini" style="margin:0">Preencha a conta de média tensão ao lado: os 12 meses de ponta e fora ponta, a demanda e as tarifas da fatura.</p>' : `<div class="chips" style="margin:12px 0">${MODOS.map(([v, ic, t]) => `<button class="chip ${modo === v ? 'sel' : ''}" data-modo="${v}">${Icone(ic)} ${t}</button>`).join('')}</div>
+        ${orc.grupo === 'A' ? '<p class="mini" style="margin:0">Preencha a conta de média tensão ao lado: a média (ou os 12 meses) de ponta e fora ponta, a demanda e as tarifas da fatura.</p>' : `<div class="chips" style="margin:12px 0">${MODOS.map(([v, ic, t]) => `<button class="chip ${modo === v ? 'sel' : ''}" data-modo="${v}">${Icone(ic)} ${t}</button>`).join('')}</div>
         ${blocoModo}`}</div>
       <div class="painel grade">
         <label class="campo"><span>Nome do cliente</span><input type="text" id="f-nome" value="${esc(orc.nome)}"></label>
@@ -646,8 +683,9 @@
         <div style="grid-column:1/-1"><span>Pagou nos últimos 12 meses (estimado)</span><b id="pago" class="grad">${brl(media * 12 * orc.tarifaKwh)}</b></div></div>
         <label class="campo" style="margin-top:14px"><span>Potência da usina em kWp (opcional)</span><input type="text" id="f-kwp" inputmode="decimal" placeholder="ex.: 13,75 · vazio = calcula pelo consumo" value="${orc.kwpDesejado ? String(orc.kwpDesejado).replace('.', ',') : ''}"></label>
         <p class="mini" style="margin:6px 0 0" id="kwpInfo">${orc.kwpDesejado ? `Usina fixa em ${esc(String(orc.kwpDesejado).replace('.', ','))} kWp: o dimensionamento, o robô e a proposta usam esse tamanho.` : 'Use quando o cliente já pediu um tamanho. Sem consumo, estimamos a conta pela geração dessa potência.'}</p>
-        ${orc.avisosLeitura ? orc.avisosLeitura.map((a) => `<div class="aviso">${esc(a)}</div>`).join('') : ''}</div>`}</div>`;
-    ligarGrupoA(el);
+        ${orc.avisosLeitura ? orc.avisosLeitura.map((a) => `<div class="aviso">${esc(a)}</div>`).join('') : ''}</div>`}
+      ${painelCargas()}</div>`;
+    ligarGrupoA(el); ligarCargas(el);
     const atual = () => { const m = C.consumoMedio(orc); if (!$('#media')) { salvarR(); barra(); return; } $('#media').textContent = n(m) + ' kWh'; $('#pago').textContent = brl(orc.consumos.map(Number).filter(Boolean).reduce((s, x) => s + x, 0) * orc.tarifaKwh); salvarR(); barra(); };
     const preencher = (v) => { orc.consumos = Array(12).fill(v > 0 ? Math.round(v) : ''); el.querySelectorAll('[data-mes]').forEach((i) => { i.value = orc.consumos[+i.dataset.mes]; }); atual(); };
     $('#f-nome').oninput = (e) => { orc.nome = e.target.value; salvarR(); barra(); };
@@ -815,6 +853,7 @@
       ${!op.cabeNoTelhado ? `<div class="aviso ruim">Área necessária passa da área livre informada (${orc.areaDisponivel} m²).</div>` : ''}
       ${C.ehGA(orc) ? avisoDemanda(op) : ''}
       <div class="painel"><span class="rotulo">Como foi calculado</span>
+        ${C.cargaExtra(orc) > 0 ? `<p class="mini" style="margin:8px 0 0">Inclui <b>${n(C.cargaExtra(orc))} kWh/mês</b> dos aparelhos que o cliente vai instalar (${(orc.cargasFuturas || []).map((c) => (c.qtd > 1 ? c.qtd + '× ' : '') + (c.tipo === 'ar' ? 'ar ' + n(c.btu) + ' BTUs' : c.tipo === 'carro' ? 'carro elétrico' : 'aparelho de ' + n(c.watts) + ' W')).join(', ')}).</p>` : ''}
         ${C.ehGA(orc) ? `<p class="mini" style="margin:8px 0 0">Grupo A: dimensionado pelo ${orc.grupoA.alvo === 'total' ? `fora ponta + a ponta convertida em crédito (1 kWh de ponta = ${n(GA.fatorAjuste(orc.grupoA), 2)} kWh)` : 'consumo fora ponta'}${orc.grupoA.limitarDemanda ? `, limitado à demanda contratada (${n(GA.demandaLimite(orc.grupoA))} kW)` : ''}.</p>` : ''}
         ${orc.kwpDesejado > 0 ? `<p class="num" style="margin:10px 0">Potência fixa pedida: <b>${n(orc.kwpDesejado, 2)} kWp</b> → ${d.placas} placas = ${n(d.kwpReal, 2)} kWp (cobre ${n(d.cobertura * 100)}% do consumo)</p>` : `<p class="num" style="margin:10px 0">kWp = (${n(C.entrada(orc).consumoMedio)}${d.descontado ? ' − ' + d.descontado : ''}) ÷ (${n(d.hspEfetivo, 2)} × 30 × ${n(p.pr, 3)}) = <b>${n(d.kwpNecessario, 2)} kWp</b></p>`}
         <table><tr><td>Inversor (${esc(op.nivel)})</td><td class="v">${esc(op.inversor.nome)}</td></tr>
@@ -957,7 +996,7 @@
       const prog = $('#a-prog'), modo = cotModo || 'simulado', inicio = Date.now(), erros = [];
       orc.salvarBel = !!($('#a-salvar') && $('#a-salvar').checked);
       const base = { salvar: orc.salvarBel, kwp: +kwpSug.toFixed(2), ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[orc.ligacao], cidade: orc.cidade, frete: $('#a-frete').value,
-        estruturaTipo: TIPO_ESTR[orc.telhado], fixacao: FIXACAO[orc.telhado] ? orc.fixacao || FIXACAO[orc.telhado][0][0] : null, arranjo: arranjoDoOrc(orc) };
+        estruturaTipo: TIPO_ESTR[orc.telhado], fixacao: FIXACAO[orc.telhado] ? orc.fixacao || FIXACAO[orc.telhado][0][0] : null, arranjo: arranjoDoOrc(orc), grupoA: orc.grupo === 'A' };
       for (let i = 0; i < NIVEIS_KIT.length; i++) {
         if (orc.kitsFechados[i] || !vaiCotar(i)) continue; // já cotada (use "Refazer") ou fora da escolha "só um"
         try {
@@ -1212,6 +1251,7 @@
     ['Formas de pagamento', [['taxaPagamento.avista', 'Taxa à vista (%)', 100], ['taxaPagamento.financiamento', 'Taxa no financiamento (%)', 100], ['taxaPagamento.cartao', 'Taxa no cartão (%)', 100], ['cartao.parcelas', 'Parcelas no cartão', 1], ['financiamento.jurosMes', 'Juros do financiamento (% ao mês)', 100]]],
     ['Semáforo do preço (R$/Wp)', [['semaforo.verdeAte', 'Verde até (R$/Wp)', 1], ['semaforo.amareloAte', 'Amarelo até (R$/Wp)', 1], ['semaforo.referencia', 'Média do mercado (R$/Wp)', 1]]],
     ['Serviços avulsos', [['manutencaoPorPlaca', 'Manutenção por placa (R$)', 1], ['margemAvulso', 'Margem de ampliação e troca (%)', 100]]],
+    ['Robô Belenergy', [['kwpMaxKit', 'kWp máximo por kit (acima disso cota kits iguais)', 1]]],
     ['Conversão e retorno', [['tarifaKwh', 'Tarifa padrão (R$/kWh)', 1], ['margemGeracao', 'Margem de geração (%)', 100], ['perdaOrientacao', 'Perda de segurança da orientação (%)', 100], ['reajusteAnual', 'Reajuste ao ano (%)', 100], ['simultaneidade', 'Simultaneidade (%)', 100], ['validadeDias', 'Validade da cotação (dias)', 1], ['manutencaoAnual', 'Manutenção/ano (R$)', 1], ['pr', 'PR (eficiência)', 1], ['degradacaoAnual', 'Degradação das placas ao ano (%)', 100], ['taxaDesconto', 'Taxa do VPL (%)', 100], ['fioB.valorKwh', 'Fio B (R$/kWh)', 1]]],
   ];
   const pegaP = (o, k) => k.split('.').reduce((a, x) => (a == null ? a : a[x]), o);
@@ -2109,7 +2149,7 @@
   function pedidoRobo(o) {
     let est = null; try { est = C.opcoes(o, P())[0]; } catch { /* sem consumo */ } const kwp = est ? +est.dim.kwpNecessario.toFixed(2) : 0, quais = o.cotarQuais || 'ambos';
     const base = { salvar: true, kwp, ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[o.ligacao] || 'BIFÁSICO', cidade: o.cidade || 'Ribeirão Preto', frete: P().freteRobo || 'Belenus Entrega no Cliente',
-      estruturaTipo: TIPO_ESTR[o.telhado], fixacao: FIXACAO[o.telhado] ? o.fixacao || FIXACAO[o.telhado][0][0] : null, arranjo: arranjoDoOrc(o),
+      estruturaTipo: TIPO_ESTR[o.telhado], fixacao: FIXACAO[o.telhado] ? o.fixacao || FIXACAO[o.telhado][0][0] : null, arranjo: arranjoDoOrc(o), grupoA: o.grupo === 'A',
       // o robô do escritório não lê os Parâmetros: vão junto no pedido (escolha do módulo e do inversor)
       custoPorPlaca: +P().maoDeObraPorPlaca || 0, regras: { overloadMin: P().roboOverloadMin, overloadMax: P().roboOverloadMax, modMinW: P().roboModMinW } };
     return { base, opcoes: NIVEIS_KIT.map((nivel, i) => ({ nivel, tipoInversor: TIPO_POR_OPCAO[i], nome: `${o.id} ${o.nome} ${nivel}` })).filter((x, i) => quais === 'ambos' || (quais === 'inversor' ? i === 0 : i === 1)) };

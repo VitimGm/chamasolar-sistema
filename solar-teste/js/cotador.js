@@ -71,7 +71,7 @@
 
   function simInversores({ tipo, ligacao, fabricantes, kwp, placas }) {
     const fabs = fabricantes && fabricantes.length ? fabricantes : PORTAL.fabricantes;
-    const pots = tipo === 'MICROINVERSOR' ? [2.25] : [3, 4, 5, 6, 7.5, 8, 10, 12, 15];
+    const pots = tipo === 'MICROINVERSOR' ? [2.25] : [3, 4, 5, 6, 7.5, 8, 10, 12, 15, 20, 25, 30, 36, 50, 60, 75];
     const lista = [];
     fabs.forEach((f) => pots.forEach((kw) => {
       if (ligacao === 'MONOFÁSICO' && kw > 10) return;
@@ -249,7 +249,15 @@
     let melhor = 1; for (let l = 1; l <= placas; l++) if (placas % l === 0 && (Math.abs(l - quer) < Math.abs(melhor - quer) || (Math.abs(l - quer) === Math.abs(melhor - quer) && l > melhor))) melhor = l;
     return { linhas: melhor, orientacao: ori, fonte: arr.fonte || '3d', exato: melhor === quer && (!fil.length || fil.every((x) => x === placas / melhor)) };
   }
+  /* usina grande (Grupo A): o portal monta um kit com um inversor. Acima do limite (Parâmetros → kWp máximo por kit)
+     cota N kits iguais e multiplica (quantidades e valor). */
   async function cotarAuto(modo, base, aviso = () => {}) {
+    const max = Number(parametrosDe().kwpMaxKit) || 75, N = base.tipoInversor === 'MICROINVERSOR' ? 1 : Math.max(1, Math.ceil((+base.kwp || 0) / max));
+    if (N === 1) return cotarUm(modo, base, aviso);
+    const s = await cotarUm(modo, { ...base, kwp: Math.round((base.kwp / N) * 100) / 100, potInv: base.potInv ? +base.potInv / N : base.potInv }, aviso);
+    s.multiplicador = N; return s;
+  }
+  async function cotarUm(modo, base, aviso = () => {}) {
     const par = parametrosDe(), rg = regrasDe(base, par);
     const s = novaSessao(modo);
     Object.assign(s.escolhas, { kwp: base.kwp, ligacao: base.ligacao, nome: base.nome });
@@ -267,15 +275,22 @@
     let ligDesejada = base.tipoInversor === 'MICROINVERSOR' || base.ligacao !== 'TRIFÁSICO' ? 'MONOFÁSICO' : potEst <= limite ? 'MONOFÁSICO' : 'TRIFÁSICO';
     const ligs = s.opcoes.ligacoes || [];
     const lig = ligs.includes(ligDesejada) ? ligDesejada : ligs.includes(base.ligacao) ? base.ligacao : ligs[0];
-    const tens = (s.opcoes.tensoes || {})[lig] || [];
-    const ten = tens.find((t) => /127\s*\/\s*220|^220/.test(t) && !/380/.test(t)) || tens[0];
+    /* tensão: rede 127/220 V primeiro; Grupo A (transformador próprio, quase sempre 220/380 V) e usinas grandes começam pela 380 V,
+       onde ficam os inversores grandes. Se não achar, tenta a outra tensão e a outra ligação. */
+    const pref380 = !!base.grupoA || (base.ligacao === 'TRIFÁSICO' && base.kwp > 40);
+    const ordemTens = (l) => { const t = (s.opcoes.tensoes || {})[l] || [], t220 = t.filter((x) => /127\s*\/\s*220|^220/.test(x) && !/380/.test(x)), t380 = t.filter((x) => /380/.test(x)); const o = pref380 ? [...t380, ...t220] : [...t220, ...t380]; return o.length ? o : t.length ? t : ['127/220V']; };
     const fabs = base.fabInv ? [base.fabInv] : [];
-    aviso('inversor'); await avancar(s, { filtrar: true, tipoInversor: base.tipoInversor, ligacao: lig, tensao: ten, fabricantes: fabs });
     const kwpSis = (s.escolhas.modulo.qtd * s.escolhas.modulo.potenciaW) / 1000;
-    let inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0, rg, kwpSis);
-    // não achou: tenta a outra ligação possível (mono ↔ trifásico) antes de desistir
-    const outra = lig === 'MONOFÁSICO' ? (base.ligacao === 'TRIFÁSICO' ? 'TRIFÁSICO' : null) : 'MONOFÁSICO';
-    if (!inv && outra && ligs.includes(outra)) { const t2 = ((s.opcoes.tensoes || {})[outra] || []).find((t) => /127\s*\/\s*220|^220/.test(t) && !/380/.test(t)) || '127/220V'; await avancar(s, { filtrar: true, tipoInversor: base.tipoInversor, ligacao: outra, tensao: t2, fabricantes: fabs }); inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0, rg, kwpSis); }
+    const outra = lig === 'MONOFÁSICO' ? (base.ligacao === 'TRIFÁSICO' ? 'TRIFÁSICO' : null) : (base.tipoInversor === 'MICROINVERSOR' || kwpSis <= 20 ? 'MONOFÁSICO' : null);
+    let inv = null; aviso('inversor');
+    for (const l of [lig, outra].filter((x, i, a) => x && ligs.includes(x) && a.indexOf(x) === i)) {
+      for (const ten of ordemTens(l)) {
+        await avancar(s, { filtrar: true, tipoInversor: base.tipoInversor, ligacao: l, tensao: ten, fabricantes: fabs });
+        inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0, rg, kwpSis);
+        if (inv) { s.tensaoInv = ten; break; }
+      }
+      if (inv) break;
+    }
     if (!inv) throw new Error(`O portal não tem ${base.tipoInversor.toLowerCase()}${base.fabInv ? ' ' + base.fabInv : ''}${base.potInv ? ' de ' + base.potInv + ' kW' : ''} para ${base.kwp} kWp nessa ligação.`);
     await avancar(s, { inversorSku: inv.sku });
     return fecharEstrutura(s, base, aviso);
@@ -319,7 +334,16 @@
     return fecharEstrutura(s, base, aviso);
   }
 
-  function paraKit(s, nivel) {
+  function paraKit(s0, nivel) {
+    const k = paraKit1(s0, nivel), N = s0.multiplicador || 1;
+    if (N === 1) return k;
+    const mult = (l) => (l || []).map((i) => ({ ...i, qtd: (+i.qtd || 0) * N }));
+    return { ...k, multiplicador: N, valorKit: (k.valorKit || 0) * N, valorProdutos: k.valorProdutos != null ? k.valorProdutos * N : k.valorProdutos, valorFrete: k.valorFrete != null ? k.valorFrete * N : k.valorFrete,
+      modulo: { ...k.modulo, qtd: k.modulo.qtd * N }, inversor: { ...k.inversor, qtd: (k.inversor.qtd || 1) * N, potenciaKw: (k.inversor.potenciaKw || 0) * N, nome: `${N} × ${k.inversor.nome}` },
+      itens: { estrutura: mult(k.itens.estrutura), cc: mult(k.itens.cc), ca: mult(k.itens.ca) },
+      avisos: [`Usina grande: cotada como ${N} kits iguais de ${((k.modulo.qtd * k.modulo.potenciaW) / 1000).toFixed(2).replace('.', ',')} kWp (um inversor por kit) e o valor multiplicado por ${N}.${k.numeroBelenergy ? ' No portal ficou salvo 1 kit.' : ''}`, ...(k.avisos || [])] };
+  }
+  function paraKit1(s, nivel) {
     const e = s.escolhas, f = s.final, ficha = raiz.Catalogo ? raiz.Catalogo.fichaModulo(e.modulo.potenciaW) : {};
     const kwp = (e.modulo.qtd * e.modulo.potenciaW) / 1000, avisos = [...(f.avisos || [])];
     if (s.notaArranjo) avisos.push(s.notaArranjo);

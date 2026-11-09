@@ -56,6 +56,7 @@
       { ate: 50, margem: 0.12 },
       { ate: Infinity, margem: 0.10 },
     ],
+    kwpMaxKit: 75,                       // usina maior que isso: o robô cota kits iguais (um inversor por kit)
     manutencaoPorPlaca: 25,              // manutenção avulsa (R$ por placa)
     margemAvulso: 0.20,                  // margem dos serviços avulsos (ampliação, troca de inversor)
     reservaNegociacao: 0.03,            // desconto máximo que o vendedor pode dar

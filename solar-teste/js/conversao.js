@@ -13,6 +13,15 @@
     const v = (o.consumos || []).map(Number).filter((x) => x > 0);
     return v.length ? soma(v) / v.length : 0;
   }
+  /* aparelhos que o cliente vai instalar (ar-condicionado, carro elétrico...): kWh por mês a mais */
+  const COP = { inverter: 4.5, convencional: 3.2 }; // W de frio por W elétrico (média de uso real)
+  function kwhCarga(c) {
+    const q = Math.max(+c.qtd || 1, 0), h = +c.horas || 0, d = +c.dias || 0;
+    if (c.tipo === 'ar') return q * (+c.btu || 0) * 0.293 / (c.convencional ? COP.convencional : COP.inverter) * h * d / 1000;
+    if (c.tipo === 'carro') return q * (+c.km || 0) * (+c.kwhKm || 0.18);
+    return q * (+c.watts || 0) * h * d / 1000;
+  }
+  const cargaExtra = (o) => (o.cargasFuturas || []).reduce((t, c) => t + (kwhCarga(c) || 0), 0);
   const hspDe = (o) => (D.cidades[o.cidade] || D.cidades['Ribeirão Preto']).hsp;
 
   const ehGA = (o) => o.grupo === 'A' && raiz.GrupoA && o.grupoA && raiz.GrupoA.completo(o.grupoA);
@@ -21,7 +30,7 @@
     const desconhecida = p3 === null && (!o.orientacao || o.orientacao === '?');
     const perda = p3 !== null ? p3 : desconhecida ? ((raiz.Banco && raiz.Banco.parametros().perdaOrientacao) ?? 0.07) : 0;
     const hsp = hspDe(o) * (1 - perda), orientacao = desconhecida || p3 !== null ? 'N' : o.orientacao;
-    let consumo = consumoMedio(o);
+    let consumo = consumoMedio(o) + cargaExtra(o); // + aparelhos que o cliente vai instalar
     // Grupo A: a usina pode ficar no limite da demanda contratada (o inversor não passa dela)
     if (ehGA(o) && o.grupoA.limitarDemanda) {
       const pp = (raiz.Banco && raiz.Banco.parametros()) || D.parametros;
@@ -221,5 +230,5 @@
 
   function fmt(v, c = 0) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: c, maximumFractionDigits: c }); }
 
-  raiz.Conversao = { ehGA, equipamentos, indiceOpcao, consumoMedio, entrada, opcoes, raioX, espera, custoEnergia, boleto, perfil, temperatura, proximaAcao, vizinhos, analisar, funil, fmt };
+  raiz.Conversao = { kwhCarga, cargaExtra, ehGA, equipamentos, indiceOpcao, consumoMedio, entrada, opcoes, raioX, espera, custoEnergia, boleto, perfil, temperatura, proximaAcao, vizinhos, analisar, funil, fmt };
 })(window);
