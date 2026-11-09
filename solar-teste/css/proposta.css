@@ -247,3 +247,5 @@ details.item .explica { padding: 0 16px 16px 70px; color: var(--tinta-2); font-s
 .conta-vs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .caixa { min-width: 0; container-type: inline-size; padding: 14px 10px; }
 .caixa b { font-size: clamp(1.1rem, 15cqi, 1.7rem); }
+.v3d-video { justify-self: start; padding: 10px 16px; border-radius: 999px; border: 0; background: linear-gradient(135deg, #ff8a3d, #ffb000); color: #1a0d00; font-weight: 700; font-size: .95rem; cursor: pointer; box-shadow: 0 6px 18px rgba(255, 138, 61, .35); }
+.v3d-video:disabled { opacity: .75; cursor: progress; }

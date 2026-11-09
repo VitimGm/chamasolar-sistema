@@ -755,7 +755,8 @@
     function tamanho() { const w = container.clientWidth || 600, h = container.clientHeight || 400; ren.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); const r = camTopo.userData.r || 14; camTopo.left = -r * w / h; camTopo.right = r * w / h; camTopo.top = r; camTopo.bottom = -r; camTopo.updateProjectionMatrix(); }
     const ro = new ResizeObserver(tamanho); ro.observe(container);
     let usarTopo = false, vivo = true;
-    (function quadro() { if (!vivo) return; ctl.update(); ren.render(cena, usarTopo ? camTopo : cam); requestAnimationFrame(quadro); })();
+    let gravando = false; // durante o vídeo quem desenha é a gravação
+    (function quadro() { if (!vivo) return; if (!gravando) { ctl.update(); ren.render(cena, usarTopo ? camTopo : cam); } requestAnimationFrame(quadro); })();
     montarChao();
     return {
       async recarregarFundo() { await montarChao(); },
@@ -775,6 +776,77 @@
         cam.position.copy(guarda.pos); ctl.target.copy(guarda.alvo); estado.di = guarda.di; estado.hora = guarda.hora;
         if (estado.cor !== guarda.cor) { estado.cor = guarda.cor; montar(); } else posicionarSol();
         tamanho(); return url;
+      },
+      /* VÍDEO para o WhatsApp: a câmera dá a volta na casa enquanto o sol atravessa o dia (sombras reais),
+         com a marca e os números da usina por cima. MP4 quando o navegador grava MP4 (Chrome/Safari novos); senão WebM. */
+      async gravar({ segundos = 14, w = 1080, h = 1350, di = 0, textos = {}, aoProgresso } = {}) {
+        if (!raiz.MediaRecorder || !document.createElement('canvas').captureStream) throw new Error('este navegador não grava vídeo (use o Chrome)');
+        const tipos = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+        // alguns navegadores dizem que gravam MP4 mas devolvem o arquivo vazio: tenta o próximo formato
+        const aceitos = tipos.filter((t) => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } });
+        const candidatos = [aceitos.find((t) => /mp4/.test(t)), aceitos.find((t) => /webm/.test(t)), ''].filter((t, i, l) => t !== undefined && l.indexOf(t) === i);
+        let cv = null, g = null;
+        let logo = null; if (textos.logo) logo = await new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = textos.logo; });
+        // logo de outra origem "suja" o quadro e o navegador não deixa gravar: confere antes e, se for o caso, escreve a marca
+        if (logo) { try { const tc = document.createElement('canvas'); tc.width = tc.height = 2; const tg = tc.getContext('2d'); tg.drawImage(logo, 0, 0, 2, 2); tg.getImageData(0, 0, 1, 1); } catch { logo = null; } }
+        const guarda = { pos: cam.position.clone(), alvo: ctl.target.clone(), di: estado.di, hora: estado.hora, cor: estado.cor, topo: usarTopo };
+        const hh = (x) => `${String(Math.floor(x)).padStart(2, '0')}:${String(Math.floor((x % 1) * 60)).padStart(2, '0')}`;
+        const sombraTxt = (t, x, y, tam, peso = 700, cor = '#fff', alinha = 'left') => { g.font = `${peso} ${tam}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`; g.textAlign = alinha; g.fillStyle = 'rgba(0,0,0,.45)'; g.fillText(t, x + 2, y + 2); g.fillStyle = cor; g.fillText(t, x, y); };
+        const desenharTextos = (f, hora) => {
+          const fade = (a, b) => Math.max(0, Math.min(1, (f - a) / (b - a)));
+          let gr = g.createLinearGradient(0, 0, 0, h * 0.2); gr.addColorStop(0, 'rgba(6,12,24,.55)'); gr.addColorStop(1, 'rgba(6,12,24,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h * 0.2);
+          gr = g.createLinearGradient(0, h * 0.62, 0, h); gr.addColorStop(0, 'rgba(6,12,24,0)'); gr.addColorStop(1, 'rgba(6,12,24,.86)'); g.fillStyle = gr; g.fillRect(0, h * 0.62, w, h * 0.38);
+          if (logo) { const lw = w * 0.3, lh = lw * (logo.height / logo.width); g.drawImage(logo, w * 0.05, h * 0.04, lw, lh); } else sombraTxt(textos.marca || 'CHAMA SOLAR', w * 0.05, h * 0.075, w * 0.05, 800);
+          sombraTxt(hh(hora), w * 0.95, h * 0.07, w * 0.06, 800, '#ffd27a', 'right');
+          sombraTxt(((DIAS[estado.di] || {}).nome || '') + ' · sol e sombra reais', w * 0.95, h * 0.105, w * 0.028, 600, '#e8eef7', 'right');
+          g.globalAlpha = fade(0.04, 0.16);
+          if (textos.titulo) sombraTxt(textos.titulo, w * 0.06, h * 0.83, w * 0.068, 800);
+          if (textos.sub) sombraTxt(textos.sub, w * 0.06, h * 0.875, w * 0.034, 600, '#ffd27a');
+          if (textos.rodape) sombraTxt(textos.rodape, w * 0.06, h * 0.93, w * 0.03, 500, '#d7e0ec');
+          g.globalAlpha = 1;
+          const fim = fade(0.86, 0.97); if (fim > 0 && textos.fim) { g.fillStyle = `rgba(6,12,24,${0.55 * fim})`; g.fillRect(0, 0, w, h); g.globalAlpha = fim; sombraTxt(textos.fim, w / 2, h * 0.47, w * 0.06, 800, '#fff', 'center'); if (textos.fim2) sombraTxt(textos.fim2, w / 2, h * 0.53, w * 0.034, 600, '#ffd27a', 'center'); g.globalAlpha = 1; }
+          g.fillStyle = '#ff8a3d'; g.fillRect(0, h - 8, w * f, 8); // barra do tempo
+        };
+        gravando = true; usarTopo = false;
+        try {
+          ren.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix();
+          const pts = (proj.blocos || []).flatMap((b) => b.pts), c = pts.length ? centroide(pts) : [0, 0], r = pts.length ? Math.max(8, ...pts.map((p) => Math.hypot(p[0] - c[0], p[1] - c[1]))) : 12;
+          ctl.target.set(c[0], 2.5, c[1]); estado.di = di; if (estado.cor !== 'normal') { estado.cor = 'normal'; montar(); }
+          mapas.forEach((m) => { m.visible = false; });
+          for (const tipo of candidatos) {
+          cv = document.createElement('canvas'); cv.width = w; cv.height = h; g = cv.getContext('2d');
+          const fluxo = cv.captureStream(30), opRec = { videoBitsPerSecond: 8e6 }; if (tipo) opRec.mimeType = tipo;
+          let rec; try { rec = new MediaRecorder(fluxo, opRec); } catch { fluxo.getTracks().forEach((tr) => tr.stop()); continue; }
+          const partes = [];
+          rec.ondataavailable = (e) => { if (e.data && e.data.size) partes.push(e.data); };
+          const parou = new Promise((ok) => { rec.onstop = ok; });
+          rec.start(200);
+          const dur = segundos * 1000, raio = r * 2.0 + 9, alt0 = r * 1.15 + 9, a0 = Math.atan2(guarda.pos.z - c[1], guarda.pos.x - c[0]);
+          let ultHora = -1; const t0 = performance.now();
+          await new Promise((ok) => {
+            const passo = (t) => {
+              const f = Math.max(0, Math.min((t - t0) / dur, 1)), suave = f < 0.5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;
+              const ang = a0 + suave * Math.PI * 1.5, alt = alt0 - Math.sin(f * Math.PI) * r * 0.35;
+              cam.position.set(c[0] + Math.cos(ang) * raio, alt, c[1] + Math.sin(ang) * raio); cam.lookAt(ctl.target);
+              const hora = 6.8 + f * 10.6; if (Math.abs(hora - ultHora) >= 0.08) { estado.hora = hora; posicionarSol(); ultHora = hora; }
+              ren.render(cena, cam); g.drawImage(ren.domElement, 0, 0, w, h); desenharTextos(f, hora);
+              if (aoProgresso) aoProgresso(f);
+              if (f < 1) requestAnimationFrame(passo); else ok();
+            };
+            requestAnimationFrame(passo);
+          });
+          await new Promise((ok) => setTimeout(ok, 400));
+          try { rec.stop(); } catch { /* já parou */ }
+          await Promise.race([parou, new Promise((ok) => setTimeout(ok, 4000))]); fluxo.getTracks().forEach((tr) => tr.stop());
+          const blob = new Blob(partes, { type: (tipo || 'video/webm').split(';')[0] });
+          if (blob.size > 2000) return { blob, ext: /mp4/.test(tipo) ? 'mp4' : 'webm' };
+          }
+          throw new Error('o navegador não conseguiu gerar o vídeo');
+        } finally {
+          gravando = false; cam.position.copy(guarda.pos); ctl.target.copy(guarda.alvo); estado.di = guarda.di; estado.hora = guarda.hora; usarTopo = guarda.topo;
+          mapas.forEach((m) => { m.visible = true; });
+          if (estado.cor !== guarda.cor) { estado.cor = guarda.cor; montar(); } posicionarSol(); tamanho();
+        }
       },
       destruir() { vivo = false; ro.disconnect(); ren.dispose(); container.innerHTML = ''; },
     };

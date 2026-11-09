@@ -320,6 +320,22 @@
         let lista = vagas.filter((s) => chaves.has(s.k)); if (!lista.length) lista = U.escolher(vagas, (proj.layout && proj.layout.qtd) || r3.placas || 0, proj.layout || {});
         v.cor('agora'); v.atualizar(lista);
         const ctl = document.getElementById('v3dCtl'); ctl.hidden = false; bt.remove();
+        // vídeo para o cliente guardar e mandar para a família (gira a casa com o sol do dia)
+        if (window.MediaRecorder && v.gravar) {
+          const bv = document.createElement('button'); bv.type = 'button'; bv.className = 'v3d-video'; bv.textContent = '🎬 Gerar vídeo para compartilhar'; ctl.appendChild(bv);
+          bv.addEventListener('click', async () => {
+            if (bv.disabled) return; bv.disabled = true;
+            try {
+              const pl = lista.length || r3.placas || 0, kwp = r3.kwp || 0, mes = r3.geracaoAnual ? r3.geracaoAnual / 12 : 0;
+              const { blob, ext } = await v.gravar({ textos: { logo: 'marca/logo-branco.webp', titulo: `Usina solar de ${kwp.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kWp`, sub: `${pl} placas${mes ? ' · ' + Math.round(mes).toLocaleString('pt-BR') + ' kWh por mês' : ''}`, rodape: 'Projeto feito sob medida para o seu telhado', fim: 'Assim vai ficar a sua usina', fim2: 'Chama Solar · energia solar' }, aoProgresso: (f) => { bv.textContent = `🎬 Gravando… ${Math.round(f * 100)}%`; } });
+              const arq = new File([blob], 'minha-usina-solar.' + ext, { type: blob.type });
+              let ok = false; if (navigator.canShare && navigator.canShare({ files: [arq] })) { try { await navigator.share({ files: [arq], title: 'Minha usina solar' }); ok = true; } catch { /* cancelou */ } }
+              if (!ok) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = arq.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
+              bv.textContent = '🎬 Vídeo pronto · gerar de novo';
+            } catch (err) { bv.textContent = '🎬 Não deu para gravar neste aparelho'; }
+            finally { bv.disabled = false; }
+          });
+        }
         let di = 6, hora = 9.5, anima = null;
         const hr = document.getElementById('v3dHora'), ho = document.getElementById('v3dHoraO'), play = document.getElementById('v3dPlay');
         const mover = () => { hr.value = hora; ho.textContent = hh(hora); v.sol(di, hora); };

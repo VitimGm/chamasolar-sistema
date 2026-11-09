@@ -180,7 +180,8 @@
   const parametrosDe = () => (raiz.Banco && raiz.Banco.parametros && raiz.Banco.parametros()) || {};
   function regrasDe(base, par) {
     const r = (base && base.regras) || {}, num = (v) => (v === '' || v == null || !isFinite(+v) ? null : +v);
-    return { overloadMin: num(r.overloadMin) ?? num(par.roboOverloadMin) ?? REGRAS.overloadMin, overloadMax: num(r.overloadMax) ?? num(par.roboOverloadMax) ?? REGRAS.overloadMax, modMinW: num(r.modMinW) ?? num(par.roboModMinW) ?? 0 };
+    // overloadMax 0 (ou vazio) = vale o limite do fabricante (datasheet: potência máxima de entrada ÷ potência do inversor)
+    return { overloadMin: num(r.overloadMin) ?? num(par.roboOverloadMin) ?? REGRAS.overloadMin, overloadMax: num(r.overloadMax) ?? num(par.roboOverloadMax) ?? 0, modMinW: num(r.modMinW) ?? num(par.roboModMinW) ?? 0 };
   }
   /* custo de estrutura por placa (preço de lista, R$), só para comparar placas grandes × pequenas.
      Medido no portal em 08/11/2026: colonial ≈ 98, metálica mini trilho ≈ 40; os outros são estimativas. */
@@ -204,15 +205,29 @@
     pool = [...pool].sort((a, b) => custo(a) - custo(b));
     return { mod: pool[0], motivo: 'menor custo por kWp instalado (placa + estrutura + mão de obra): ' + pool.slice(0, 3).map((m) => `${marcaDe(m)} ${m.potenciaW} W ≈ R$ ${Math.round(custo(m))}/kWp`).join(' · ') };
   }
-  /* Inversor: dentro da faixa de overload (Parâmetros), o MAIS BARATO; empate → overload mais perto de 15% */
-  function escolherInversor(lista, tipo, potKw, regras = REGRAS) {
+  /* Sobrecarga (overload) do inversor: o limite é o do FABRICANTE (datasheet: potência máxima de entrada CC).
+     Acima de ~20% o inversor começa a "cortar" o pico do meio-dia (clipping). Perda anual estimada para o Brasil
+     (sol forte, telhado fixo), pela razão CC/CA: conta conservadora, usada para escolher e para avisar. */
+  const CLIP = [[1.0, 0], [1.2, 0], [1.3, 0.005], [1.4, 0.015], [1.5, 0.03], [1.6, 0.05], [1.7, 0.075], [1.8, 0.1], [2.0, 0.15], [2.5, 0.25]];
+  function perdaClipping(overloadPct) {
+    const r = 1 + (Number(overloadPct) || 0) / 100; if (r <= CLIP[0][0]) return 0;
+    for (let i = 1; i < CLIP.length; i++) if (r <= CLIP[i][0]) { const [r0, p0] = CLIP[i - 1], [r1, p1] = CLIP[i]; return Math.round((p0 + ((p1 - p0) * (r - r0)) / (r1 - r0)) * 1000) / 1000; }
+    return CLIP[CLIP.length - 1][1];
+  }
+  const limiteFabricante = (v) => (v && v.maxEntradaKw > 0 && v.potenciaKw > 0 ? Math.round((v.maxEntradaKw / v.potenciaKw - 1) * 1000) / 10 : null);
+  const VALOR_WP = 3.0; // R$ por Wp de uma usina instalada: dá o valor da energia perdida no corte
+  /* Inversor: aceito até o limite do fabricante (ou o teto dos Parâmetros, se tiver); entre os aceitos, o de menor
+     custo TOTAL = preço do inversor + valor da geração perdida no corte. Assim um inversor pequeno só ganha quando compensa. */
+  function escolherInversor(lista, tipo, potKw, regras = REGRAS, kwp = 0) {
     if (!lista || !lista.length) return null;
     const unKw = (v) => v.potenciaUnKw || (v.potenciaKw || 0) / (v.qtd || 1);
     if (potKw) { const exato = lista.filter((v) => Math.abs(unKw(v) - potKw) < 0.01); if (exato.length) lista = exato; else return null; }
-    const barato = (l) => { const c = l.filter((v) => v.precoEst > 0); return c.length ? [...c].sort((a, b) => a.precoEst - b.precoEst || Math.abs(a.overload - 15) - Math.abs(b.overload - 15))[0] : l[0]; };
-    if (tipo === 'MICROINVERSOR') return barato(lista);
-    const dentro = lista.filter((v) => v.overload >= regras.overloadMin && v.overload <= regras.overloadMax);
-    return dentro.length ? barato(dentro) : [...lista].sort((a, b) => Math.abs(a.overload - 15) - Math.abs(b.overload - 15))[0];
+    const custo = (v) => v.precoEst * 0.85 + perdaClipping(v.overload) * (kwp || (v.potenciaKw || 0) * (1 + (v.overload || 0) / 100)) * 1000 * VALOR_WP;
+    const melhor = (l) => { const c = l.filter((v) => v.precoEst > 0); return c.length ? [...c].sort((a, b) => custo(a) - custo(b) || Math.abs(a.overload - 15) - Math.abs(b.overload - 15))[0] : l[0]; };
+    if (tipo === 'MICROINVERSOR') return melhor(lista);
+    const teto = (v) => (regras.overloadMax > 0 ? regras.overloadMax : limiteFabricante(v) ?? REGRAS.overloadMax);
+    const dentro = lista.filter((v) => v.overload >= regras.overloadMin && v.overload <= teto(v));
+    return dentro.length ? melhor(dentro) : [...lista].sort((a, b) => Math.abs(a.overload - 15) - Math.abs(b.overload - 15))[0];
   }
   async function cotarAuto(modo, base, aviso = () => {}) {
     const par = parametrosDe(), rg = regrasDe(base, par);
@@ -236,10 +251,11 @@
     const ten = tens.find((t) => /127\s*\/\s*220|^220/.test(t) && !/380/.test(t)) || tens[0];
     const fabs = base.fabInv ? [base.fabInv] : [];
     aviso('inversor'); await avancar(s, { filtrar: true, tipoInversor: base.tipoInversor, ligacao: lig, tensao: ten, fabricantes: fabs });
-    let inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0, rg);
+    const kwpSis = (s.escolhas.modulo.qtd * s.escolhas.modulo.potenciaW) / 1000;
+    let inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0, rg, kwpSis);
     // não achou: tenta a outra ligação possível (mono ↔ trifásico) antes de desistir
     const outra = lig === 'MONOFÁSICO' ? (base.ligacao === 'TRIFÁSICO' ? 'TRIFÁSICO' : null) : 'MONOFÁSICO';
-    if (!inv && outra && ligs.includes(outra)) { const t2 = ((s.opcoes.tensoes || {})[outra] || []).find((t) => /127\s*\/\s*220|^220/.test(t) && !/380/.test(t)) || '127/220V'; await avancar(s, { filtrar: true, tipoInversor: base.tipoInversor, ligacao: outra, tensao: t2, fabricantes: fabs }); inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0, rg); }
+    if (!inv && outra && ligs.includes(outra)) { const t2 = ((s.opcoes.tensoes || {})[outra] || []).find((t) => /127\s*\/\s*220|^220/.test(t) && !/380/.test(t)) || '127/220V'; await avancar(s, { filtrar: true, tipoInversor: base.tipoInversor, ligacao: outra, tensao: t2, fabricantes: fabs }); inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0, rg, kwpSis); }
     if (!inv) throw new Error(`O portal não tem ${base.tipoInversor.toLowerCase()}${base.fabInv ? ' ' + base.fabInv : ''}${base.potInv ? ' de ' + base.potInv + ' kW' : ''} para ${base.kwp} kWp nessa ligação.`);
     await avancar(s, { inversorSku: inv.sku });
     return fecharEstrutura(s, base, aviso);
@@ -286,17 +302,21 @@
     const e = s.escolhas, f = s.final, ficha = raiz.Catalogo ? raiz.Catalogo.fichaModulo(e.modulo.potenciaW) : {};
     const kwp = (e.modulo.qtd * e.modulo.potenciaW) / 1000, avisos = [...(f.avisos || [])];
     if (f.valorKit > 0 && kwp > 0) { const rsWp = f.valorKit / (kwp * 1000); if (rsWp < 0.6 || rsWp > 4.5) avisos.push(`R$ ${rsWp.toFixed(2)}/Wp está fora do normal: confira a cotação no portal.`); }
+    const pc = e.inversor && e.inversor.tipo !== 'micro' ? perdaClipping(e.inversor.overload) : 0;
+    if (pc >= 0.02) avisos.push(`Inversor com sobrecarga de ${String(e.inversor.overload).replace('.', ',')}%: corta ~${Math.round(pc * 100)}% da geração no pico (o fabricante aceita${limiteFabricante(e.inversor) ? ' até ' + limiteFabricante(e.inversor) + '%' : ''}).`);
     return {
       nivel, origem: s.modo, numeroBelenergy: f.numero, pdfBelenergy: f.pdf ? f.pdf.nome : null, nomeOrcamento: e.nome, segundos: s.tempos ? Math.round(s.tempos.reduce((a, t) => a + t.ms, 0) / 1000) : null, frete: e.frete, pagamento: e.pagamento, entrega: `${e.cidadeEntrega || ''}/${e.estadoEntrega || ''}`, cotadoEm: new Date().toISOString(),
       valorKit: f.valorKit, valorProdutos: f.valorProdutos, valorFrete: f.frete,
       // preço de cada item (lista do portal) e de onde veio o valor: 'api' = carrinho do portal; 'tela' = texto da tela
       itensPreco: f.itensPreco || null, descontoKit: f.descontoKit ?? null, fonte: f.fonte || (s.modo === 'conectado' ? 'tela' : 'simulado'), versaoRobo: f.versao || null, avisos, escolhaModulo: s.escolhaModulo || null, reaproveitada: !!s.reaproveitada,
       modulo: { sku: e.modulo.sku, nome: e.modulo.nome, marca: marcaDe(e.modulo), potenciaW: e.modulo.potenciaW, qtd: e.modulo.qtd, ...ficha },
-      inversor: { sku: e.inversor.sku, qtd: e.inversor.qtd || 1, potenciaUnKw: e.inversor.potenciaUnKw || (e.inversor.potenciaKw || 0) / (e.inversor.qtd || 1), nome: e.inversor.nome + (e.inversor.qtd > 1 ? ` (${e.inversor.qtd} un.)` : ''), potenciaKw: e.inversor.potenciaKw, tipo: e.inversor.tipo, fabricante: e.inversor.fabricante, overload: e.inversor.overload },
+      inversor: { sku: e.inversor.sku, qtd: e.inversor.qtd || 1, potenciaUnKw: e.inversor.potenciaUnKw || (e.inversor.potenciaKw || 0) / (e.inversor.qtd || 1), nome: e.inversor.nome + (e.inversor.qtd > 1 ? ` (${e.inversor.qtd} un.)` : ''), potenciaKw: e.inversor.potenciaKw, tipo: e.inversor.tipo, fabricante: e.inversor.fabricante, overload: e.inversor.overload,
+        // datasheet: até quanto o fabricante aceita de sobrecarga e quanto do pico o inversor corta (estimado)
+        overloadMaxFabricante: limiteFabricante(e.inversor), maxEntradaKw: e.inversor.maxEntradaKw || null, perdaClipping: e.inversor.tipo === 'micro' ? null : perdaClipping(e.inversor.overload) },
       estrutura: e.estrutura, itens: { estrutura: e.itensEstrutura, cc: (e.itensCC || []).filter((i) => i.qtd > 0), ca: (e.itensCA || []).filter((i) => i.qtd > 0) },
       descricao: { Inversor: 'Inversor string: o melhor custo por energia gerada.', Microinversor: 'Um microinversor para cada par de placas: ideal com sombra e mais seguro.' }[nivel] || 'Kit fechado Belenergy.',
     };
   }
 
-  raiz.Cotador = { ETAPAS, PORTAL, REGRAS, cotarAuto, recotarEstrutura, escolherModulo, escolherInversor, chaveTipo, acharTipo, regrasDe, fabModulo, marcaDe, detalhes, conectado, novaSessao, avancar, paraKit, URL_ROBO, ROBO_ESPERADO, roboDesatualizado, versaoRobo: () => versaoRobo };
+  raiz.Cotador = { ETAPAS, PORTAL, REGRAS, perdaClipping, limiteFabricante, cotarAuto, recotarEstrutura, escolherModulo, escolherInversor, chaveTipo, acharTipo, regrasDe, fabModulo, marcaDe, detalhes, conectado, novaSessao, avancar, paraKit, URL_ROBO, ROBO_ESPERADO, roboDesatualizado, versaoRobo: () => versaoRobo };
 })(window);

@@ -60,7 +60,7 @@
         <div class="t3-dir">
           <div class="t3-3d" id="t3Cena"><span class="mini t3-carr">carregando o 3D…</span></div>
           <div id="t3Lado"></div>
-          <div class="acoes-r"><button class="btn vidro pequeno" id="t3Topo">Vista de cima</button><button class="btn sol" id="t3Salvar">Salvar no orçamento</button></div>
+          <div class="acoes-r"><button class="btn vidro pequeno" id="t3Auto" title="Busca o telhado pelo endereço, põe as placas do kit nos melhores lugares e calcula a sombra do ano">⚡ Montar sozinho</button><button class="btn vidro pequeno" id="t3Video" title="Vídeo de 14 s girando a casa com o sol do dia, para mandar no WhatsApp">🎬 Vídeo</button><button class="btn vidro pequeno" id="t3Topo">Vista de cima</button><button class="btn sol" id="t3Salvar">Salvar no orçamento</button></div>
         </div>
       </div></div>`;
     document.body.appendChild(ov);
@@ -782,6 +782,44 @@
     }
     $('#t3Salvar', ov).onclick = () => salvar();
     $('#t3Topo', ov).onclick = (e) => { const t = e.target.dataset.on !== '1'; e.target.dataset.on = t ? '1' : ''; e.target.textContent = t ? 'Vista 3D' : 'Vista de cima'; if (viewer) viewer.topo(t); };
+    /* ⚡ Montar sozinho: endereço → telhado do Google → placas do kit nos melhores lugares → sombra do ano inteiro */
+    const esperarConta = async () => { while (st.ocupado) await new Promise((r) => setTimeout(r, 150)); };
+    $('#t3Auto', ov).onclick = async (e) => {
+      const bt = e.currentTarget; if (bt.disabled) return; bt.disabled = true;
+      try {
+        if (!proj.blocos.length) {
+          const end = enderecoOrc();
+          if (!end || !B.telhado) { msg('Para montar sozinho preciso do endereço do cliente (rua e número no contrato) ou de uma foto do drone: comece pelo passo 1.', true); return; }
+          await buscar({ endereco: end });
+          if (!proj.blocos.length) { msg('O Google não achou o telhado deste endereço: desenhe os telhados no passo 2 e toque de novo em ⚡.', true); return; }
+        }
+        irAba('placas'); await esperarConta(); if (!st.analisado) { await analisar(); await esperarConta(); }
+        if (!st.escolhidas.length) { msg('Não coube nenhuma placa: confira os telhados (passo 2).', true); return; }
+        irAba('sol');
+        const res = U.gerar(proj, st.escolhidas, { pvgis: proj.pvgis, hsp, pr });
+        msg(`⚡ Pronto: ${st.escolhidas.length} placa(s) nos melhores lugares do telhado e a sombra do ano inteiro calculada (${n(res.perdaSombra * 100, 1)}% de perda). Confira e toque em <b>Salvar no orçamento</b>.`);
+      } catch (err) { msg('Não consegui montar sozinho: ' + esc(err.message), true); }
+      finally { bt.disabled = false; }
+    };
+    /* 🎬 Vídeo para o WhatsApp (o vendedor manda; o cliente encaminha para a família) */
+    $('#t3Video', ov).onclick = async (e) => {
+      const bt = e.currentTarget; if (bt.disabled) return;
+      if (!viewer) return msg('O 3D ainda está carregando.', true);
+      if (!proj.blocos.length) return msg('Monte o telhado primeiro (ou toque em ⚡ Montar sozinho).', true);
+      bt.disabled = true; const t0 = bt.textContent;
+      try {
+        if (!st.analisado) { if (!st.ocupado) await analisar(); await esperarConta(); }
+        const pl = st.escolhidas.length, potW = proj.layout.modulo.potW, res = U.gerar(proj, st.escolhidas, { pvgis: proj.pvgis, hsp, pr });
+        const { blob, ext } = await viewer.gravar({ textos: { logo: 'marca/logo-branco.webp', titulo: `Usina solar de ${n((pl * potW) / 1000, 2)} kWp`, sub: `${pl} placas de ${potW} W · ${n(res.geracaoAnual / 12)} kWh por mês`, rodape: `Projeto para ${orc.nome || 'você'} · sombra calculada hora a hora`, fim: 'Assim vai ficar a sua usina', fim2: 'Chama Solar · energia solar' }, aoProgresso: (f) => { bt.textContent = `🎬 ${Math.round(f * 100)}%`; } });
+        const nome = `usina-solar-${String(orc.nome || 'cliente').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.${ext}`;
+        const arq = new File([blob], nome, { type: blob.type });
+        let compartilhou = false;
+        if (navigator.canShare && navigator.canShare({ files: [arq] })) { try { await navigator.share({ files: [arq], title: 'Sua usina solar', text: 'Veja como vai ficar a sua usina solar' }); compartilhou = true; } catch { /* cancelou: baixa */ } }
+        if (!compartilhou) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
+        msg(`🎬 Vídeo pronto (${n(blob.size / 1e6, 1)} MB, ${ext.toUpperCase()}). ${ext === 'mp4' ? 'Mande pelo WhatsApp.' : 'Este navegador gravou em WebM (abre no Android e no computador); para o iPhone, grave pelo Chrome atualizado, que gera MP4.'}`);
+      } catch (err) { msg('Não consegui gravar o vídeo: ' + esc(err.message), true); }
+      finally { bt.disabled = false; bt.textContent = t0; }
+    };
     function fechar() { parar(); if (viewer) viewer.destruir(); ro.disconnect(); ov.remove(); }
 
     /* ---------- iniciar ---------- */
