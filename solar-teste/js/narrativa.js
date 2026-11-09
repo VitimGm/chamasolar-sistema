@@ -98,19 +98,19 @@
     switch (seg) {
       case 'comercial': return {
         selo: 'Proposta para o seu negócio', titulo: `A conta de luz da ${nome} pode virar lucro.`,
-        sub: `São ${brl(eco.economiaMes1)} por mês que voltam para o caixa: ${brl(eco.economiaMes1 * 12)} no primeiro ano e ${brl(eco.economia25)} em 25 anos.`,
+        sub: `${brl(eco.economiaMes1)} por mês de volta para o caixa.`,
         destaque: { rot: 'Volta para o caixa por ano', val: brl(eco.economiaMes1 * 12) } };
       case 'grandes': return {
         selo: ga ? 'Proposta executiva · Grupo A' : 'Proposta executiva', titulo: `Energia solar para a ${nome}: um investimento que rende ${n(eco.tir * 100, 1)}% ao ano.`,
-        sub: `Retorno em ${eco.paybackAnos ? n(eco.paybackAnos, 1) + ' anos' : 'poucos anos'} e ${brl(eco.economia25)} de economia em 25 anos, já com o reajuste da tarifa${ga ? ' e a demanda contratada' : ''}.`,
+        sub: `Retorno em ${eco.paybackAnos ? n(eco.paybackAnos, 1) + ' anos' : 'poucos anos'}. ${brl(eco.economia25)} de economia em 25 anos.`,
         destaque: { rot: 'Rendimento (TIR)', val: `${n(eco.tir * 100, 1)}% a.a.` } };
       case 'rural': return {
         selo: 'Proposta para a propriedade', titulo: `${primeiro ? primeiro + ', o' : 'O'} sol da propriedade pode pagar a sua energia.`,
-        sub: `São ${brl(eco.economiaMes1 * 12)} por ano que ficam na produção, em vez de ir para a CPFL: ${brl(eco.economia25)} em 25 anos.`,
+        sub: `${brl(eco.economiaMes1 * 12)} por ano que ficam na produção.`,
         destaque: { rot: 'Fica na produção por ano', val: brl(eco.economiaMes1 * 12) } };
       default: return {
         selo: 'Proposta para a sua família', titulo: `${primeiro}, sua conta de luz pode cair de ${brl(eco.contaAtual)} para ${brl(eco.contaDepois)}.`,
-        sub: `São ${brl(eco.contaAtual - eco.contaDepois)} por mês de volta no seu bolso. Em 25 anos, ${brl(eco.economia25)} para realizar o que a família sonha.`,
+        sub: `${brl(eco.contaAtual - eco.contaDepois)} por mês de volta no seu bolso.`,
         destaque: { rot: 'Em 25 anos, no seu bolso', val: brl(eco.economia25) } };
     }
   }

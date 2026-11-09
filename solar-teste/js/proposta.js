@@ -215,39 +215,38 @@
     const R = N.ref(p);
     if (SEG === 'residencial') {
       const extra = est.sonho && est.sonho.valor > 0 ? { id: 'meu', icone: '⭐', titulo: est.sonho.titulo || 'O nosso sonho', valor: est.sonho.valor, meu: true } : null;
-      const lista = N.sonhos(eco, p, extra), poup = N.valorFuturo(eco.economiaMes1, 25, R.poupancaAnual);
-      return `<p class="apoio">Com <b style="color:var(--bom)">${brl(sobra)} por mês</b> que deixam de ir para a CPFL, a economia sozinha paga:</p>
-        <div class="sonhos">${lista.map((x) => `<div class="sonho${x.meu ? ' meu' : ''}"><i aria-hidden="true">${x.icone}</i><b>${esc(x.titulo)}</b><small>${brl(x.valor)}</small><span>pago ${x.quando}</span>${x.vezes > 1 ? `<em>${x.vezes} vezes em 25 anos</em>` : ''}</div>`).join('')}</div>
+      const lista = N.sonhos(eco, p, extra);
+      return `<p class="apoio">Só com a economia de <b style="color:var(--bom)">${brl(sobra)} por mês</b>:</p>
+        <div class="sonhos">${lista.map((x) => `<div class="sonho${x.meu ? ' meu' : ''}"><i aria-hidden="true">${x.icone}</i><b>${esc(x.titulo)}</b><small>${brl(x.valor)}</small><span>pago ${x.quando}</span></div>`).join('')}</div>
         <details class="meu-sonho"${est.sonho ? ' open' : ''}><summary>Qual é o sonho de vocês? Calcule aqui</summary>
           <div class="ms-campos"><label>Sonho<input type="text" id="msTit" placeholder="ex.: intercâmbio da filha" value="${esc((est.sonho && est.sonho.titulo) || '')}"></label>
           <label>Quanto custa (R$)<input type="number" id="msVal" inputmode="numeric" placeholder="ex.: 20000" value="${(est.sonho && est.sonho.valor) || ''}"></label></div>
           <button type="button" class="btn-g contorno" id="msOk">Ver em quanto tempo a economia paga</button></details>
-        <p class="frase" style="font-size:1rem">Ou guarde: se depositar a economia na poupança todo mês, em 25 anos a família tem <b class="destaque-bom">${brl(poup)}</b>.</p>`;
+`;
     }
     if (SEG === 'comercial') {
       const ng = N.negocio(eco, p), inv = N.investimento(eco, op.preco.precoFinal, p);
       const func = ng.funcionarios >= 1 ? `${n(Math.floor(ng.funcionarios))} ${Math.floor(ng.funcionarios) > 1 ? 'funcionários pagos' : 'funcionário pago'} o ano todo` : `${n(ng.funcionarios * 12)} meses de um funcionário`;
-      return `<p class="apoio">A conta de luz é custo fixo: todo mês sai do caixa, venda bem ou mal. Com a usina, <b style="color:var(--bom)">${brl(ng.ano)} por ano</b> voltam para o negócio. É o mesmo que:</p>
+      return `<p class="apoio"><b style="color:var(--bom)">${brl(ng.ano)} por ano</b> de volta para o caixa. É o mesmo que:</p>
         <div class="sonhos">
           <div class="sonho"><i aria-hidden="true">👥</i><b>${func}</b><small>salário + encargos de ${brl(ng.custoFuncionario)}/mês</small></div>
-          <div class="sonho"><i aria-hidden="true">🛒</i><b>Vender ${brl(ng.vendasEquivalentes)} a mais</b><small>por ano, com margem de ${n(ng.margem * 100)}%: o lucro que a economia já entrega</small></div>
-          <div class="sonho"><i aria-hidden="true">📈</i><b>${n(inv.tir * 100, 1)}% ao ano</b><small>de retorno, contra ${n(inv.cdiLiquido * 100, 1)}% do CDI (já com IR)</small></div>
+          <div class="sonho"><i aria-hidden="true">🛒</i><b>${brl(ng.vendasEquivalentes)}</b><small>em vendas por ano, para lucrar o mesmo</small></div>
+          <div class="sonho"><i aria-hidden="true">📈</i><b>${n(inv.tir * 100, 1)}% ao ano</b><small>de retorno (CDI: ${n(inv.cdiLiquido * 100, 1)}%)</small></div>
           <div class="sonho"><i aria-hidden="true">💰</i><b>${brl(eco.economia25)}</b><small>de caixa em 25 anos</small></div></div>`;
     }
     if (SEG === 'grandes') {
       const inv = N.investimento(eco, op.preco.precoFinal, p), amb = N.ambiental(op, p);
       const bar = (rot, v, cls) => `<div class="cmp"><span>${rot}</span><div class="trilho"><i class="${cls}" style="width:${Math.max(4, Math.min(v / Math.max(inv.tir, inv.cdiLiquido, 0.01), 1) * 100)}%"></i></div><b>${n(v * 100, 1)}% a.a.</b></div>`;
-      return `<p class="apoio">Rendimento ao ano de cada alternativa para o mesmo dinheiro:</p>
+      return `<p class="apoio">Rendimento ao ano, para o mesmo dinheiro:</p>
         ${bar('Usina solar (TIR)', inv.tir, 'bom')}${bar('CDI (líquido de IR)', inv.cdiLiquido, 'neutro')}${bar('Poupança', inv.poupanca, 'neutro')}
-        <p class="frase" style="font-size:1rem">Os ${brl(op.preco.precoFinal)} no CDI renderiam cerca de <b>${brl(inv.rendeCdiMes)} por mês</b>. Na usina, a empresa deixa de pagar <b class="destaque-bom">${brl(eco.economiaMes1)} por mês</b> já no primeiro ano, e essa economia cresce com cada reajuste da tarifa.</p>
         <div class="esg"><div><b>${n(amb.mwhAno, 1)} MWh</b><span>de energia limpa por ano</span></div><div><b>${n(amb.tco2_25, 1)} t</b><span>de CO₂ evitadas em 25 anos</span></div><div><b>ESG</b><span>energia renovável no relatório da empresa</span></div></div>`;
     }
     // rural
     const pr = N.producao(eco, p);
-    return `<p class="apoio">Por ano, a economia na conta vale o mesmo que:</p>
+    return `<p class="apoio">Por ano, a economia vale:</p>
       <div class="sonhos">${pr.map((x) => `<div class="sonho"><i aria-hidden="true">${x.icone}</i><b>${n(x.qtd)} ${x.titulo}</b><small>a ${brl(x.preco)} a ${x.un}</small></div>`).join('')}
         <div class="sonho"><i aria-hidden="true">💰</i><b>${brl(eco.economia25)}</b><small>em 25 anos que ficam na propriedade</small></div></div>
-      <p class="apoio" style="margin-top:10px">É produção que deixa de ir embora na conta de luz e pode virar adubo, ração, máquina ou reserva para a próxima safra.</p>`;
+`;
   }
 
   /* ---------- Partes que mudam com as escolhas ---------- */
