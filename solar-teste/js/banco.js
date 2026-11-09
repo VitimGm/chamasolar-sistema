@@ -44,6 +44,8 @@
     async indicacoes() { return ler('indicacoes', []); },
     async salvarIndicacao(id, campos) { gravar('indicacoes', ler('indicacoes', []).map((x) => (x.id === id ? { ...x, ...campos } : x))); },
     async roboStatus() { return null; },
+    async kitPrecos() { return ler('kit_precos', []); },
+    async registrarPrecoKit(k, m = {}) { const l = ler('kit_precos', []); const kwp = k.modulo ? (k.modulo.qtd * k.modulo.potenciaW) / 1000 : 0; l.unshift({ id: Date.now(), cotado_em: agora(), origem: m.origem || 'sistema', orc_codigo: m.orc || null, nivel: k.nivel, kwp, ligacao: m.ligacao || null, estrutura: k.estrutura && k.estrutura.tipo, detalhe: k.estrutura && k.estrutura.detalhe, modulo_sku: k.modulo && k.modulo.sku, modulo_marca: k.modulo && k.modulo.marca, modulo_w: k.modulo && k.modulo.potenciaW, modulo_qtd: k.modulo && k.modulo.qtd, inversor_sku: k.inversor && k.inversor.sku, inversor_marca: k.inversor && k.inversor.fabricante, valor_kit: k.valorKit, rs_wp: kwp ? k.valorKit / (kwp * 1000) : null }); gravar('kit_precos', l.slice(0, 500)); },
     async roboChave() { return 'teste-sem-chave'; },
     zerarParametros() { gravar('parametros', {}); },
 

@@ -8,7 +8,7 @@
 |---|---|---|
 | 1 | Módulo | Potência (kWp) do pré-dimensionamento → tabela em "Menor Preço Por Watt" (sem preço), quantidade e potência sugeridas |
 | 2 | Inversor | Tipo (string on-grid, micro, híbrido) → ligação → tensão → fabricantes (AUXSOL, DEYE, GROWATT, HUAWEI, SOLIS, SUNGROW) → Filtrar → lista com % de overload |
-| 3 | Estrutura | Com/sem estrutura; arranjos: tipo (Colonial, Telha Fibrocimento, Telha Metálico, Telha Shingle, Laje, Solo), detalhe, nº de linhas, módulos por linha, orientação (Retrato/Paisagem) → Calcular estrutura → itens com + / − / remover |
+| 3 | Estrutura | Com/sem estrutura; arranjos: tipo (Colonial, Telha Fibrocimento, **Telha Metálica**, Telha Shingle, Laje, Solo), detalhe, nº de linhas, módulos por linha, orientação (Retrato/Paisagem) → Calcular estrutura → itens com + / − / remover |
 | 4 | Componentes elétricos CC | Cabos e conectores sugeridos; string box, DPS, RSD, bateria opcionais |
 | 5 | Componentes elétricos CA | Opcional |
 | 6 | Confirmação | Nome da proposta, estado e cidade de entrega, frete (Cliente Retira / Transportadora escolhida pelo cliente / Belenus Entrega no Cliente), forma de pagamento → **Valor da proposta** |
@@ -25,9 +25,20 @@ No sistema: Novo orçamento → passo 4 "Kit Belenergy". Dá para montar até 3 
 | `cotador.mjs` | Robô que conduz o Personalize seu Gerador no seu PC e responde ao sistema em `http://127.0.0.1:8787`. |
 | `robo.mjs` | Leitura do catálogo avulso (estoque, preço por Wp). Serve só de referência; **não** é o preço do orçamento. |
 
-## Situação
-- Todas as telas mapeadas ao vivo. Falta o 1º teste do robô rodando no seu PC (ajustes finos de clique podem ser necessários).
-- Detalhes de estrutura dos tipos diferentes de Colonial: o robô lê na hora, do próprio portal.
+## Versão 2026-11-09a (mapeado de novo ao vivo em 08/11/2026)
+- **Preço pelo carrinho do portal**: além do texto da tela, o robô lê o JSON que o portal manda para a própria tela
+  (API `KitPersonalizado`): preço de lista de cada item, desconto do kit (~15%), frete e plano de pagamento.
+  Se a tela e o carrinho discordarem, o kit chega no sistema com aviso.
+- **Correção de preço**: o portal chama a estrutura de "Telha Metálica" (com A). O sistema procurava "Telha Metálico"
+  e o robô caía na 1ª opção (Colonial): telhado metálico saía com estrutura colonial (~10% a mais no kit).
+  Agora os nomes vêm da própria API e, se a estrutura pedida não existir, o robô PARA (nunca troca por outra).
+- **Escolha do módulo**: menor custo por kWp instalado (placa + estrutura + mão de obra por placa), não só o menor R$/W.
+- **Inversor**: dentro da faixa de overload (Parâmetros → Robô de cotação), o mais barato.
+- **Mais rápido**: espera a resposta da API em vez de esperar a tela "parar"; pré-propostas do mesmo tamanho
+  são cotadas juntas (só troca a estrutura, sem refazer módulo e inversor).
+- **Uma cotação por vez**: a do vendedor e a da fila não se misturam mais na mesma tela.
+- **Cupons**: 2× por dia o robô abre "Ver cupons" (só leitura) e o sistema mostra no Radar antes de vencer.
+- Pagamento: Pix e "Plano de Pagamento" dão o mesmo valor (conferido em 08/11/2026).
 
 ## Instalar e rodar (no PC do vendedor)
 ```bash

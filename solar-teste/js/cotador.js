@@ -15,12 +15,14 @@
   const r2 = (v) => Math.round(v * 100) / 100;
 
   async function chamar(rota, corpo) {
-    const r = await fetch(URL_ROBO + rota, { method: corpo ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json' }, body: corpo ? JSON.stringify(corpo) : undefined });
+    const cab = { 'Content-Type': 'application/json' };
+    if (raiz.__donoRobo) cab['X-Dono'] = raiz.__donoRobo; // só o próprio robô (fila) manda: o navegador não, para funcionar com robôs antigos
+    const r = await fetch(URL_ROBO + rota, { method: corpo ? 'POST' : 'GET', headers: cab, body: corpo ? JSON.stringify(corpo) : undefined });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) { const x = new Error(j.erro || `O robô respondeu ${r.status}`); x.diag = j.diag || null; throw x; }
     return j;
   }
-  const ROBO_ESPERADO = '2026-11-08a'; // versão do robô que acompanha este sistema
+  const ROBO_ESPERADO = '2026-11-09a'; // versão do robô que acompanha este sistema
   let versaoRobo = null;
   async function conectado() {
     try {
@@ -49,8 +51,10 @@
     potInversor: { 'INVERSOR STRING ON-GRID': [3, 4, 5, 6, 7.5, 8, 10, 12, 15], 'MICROINVERSOR': [1.6, 2.25], 'INVERSOR STRING HÍBRIDO': [3, 3.6, 5, 6, 8, 10, 12] },
     estruturas: {
       'Colonial': ['Modelo Belenergy em alumínio com ajuste vertical, indicado para telhas cerâmicas em geral', 'Modelo Belenergy em alumínio com ajuste horizontal, não indicado em telhas tégula e capa canal', 'Modelo SSM em alumínio com ajuste vertical, indicado para telhas cerâmicas em geral', 'Modelo Belenergy em aço galvanizado a fogo, com ajuste horizontal, não indicado para telhas do tipo tégula e capa canal'],
-      'Telha Fibrocimento': ['Parafuso estrutural (detalhe a confirmar no portal)'], 'Telha Metálico': ['Mini trilho (detalhe a confirmar no portal)'],
-      'Telha Shingle': ['(detalhe a confirmar no portal)'], 'Laje': ['(detalhe a confirmar no portal)'], 'Solo': ['(detalhe a confirmar no portal)'],
+      // nomes exatos do portal (API "TipoEstrutura", conferidos em 08/11/2026). Atenção: é "Telha Metálica" (com A)
+      'Telha Fibrocimento': ['Haste de aço inoxidável - Modelo com 200mm para Madeira', 'Haste de aço inoxidável - Modelo com 250mm para Madeira', 'Haste de aço inoxidável - Modelo com 300mm para Madeira', 'Haste de aço inoxidável - Modelo com 200mm para Madeira com sextavado interno', 'Haste de aço inoxidável - Modelo com 200mm para metal com rosca máquina', 'Haste galvanizada a fogo - Modelo com 200mm para Madeira', 'Haste galvanizada a fogo - Modelo com 250mm para Madeira', 'Haste galvanizada a fogo - Modelo com 300mm para Madeira'],
+      'Telha Metálica': ['Suporte Pé em L c/ Perfil', 'Mini Trilho 130mm', 'Mini Trilho 260mm', 'Mini Trilho 550mm', 'Mini Trilho Alto', 'Mini Trilho - Telha Zipada'],
+      'Telha Shingle': ['Suporte pé em L para telha Shingle'], 'Laje': ['Suporte para Laje Ajustável'], 'Solo': ['Isopleta de 45 m/s - Mesa de 8 até 64 módulos'],
     },
     orientacoes: ['Retrato', 'Paisagem'],
     fretes: ['Cliente Retira', 'Transportadora escolhida pelo cliente', 'Belenus Entrega no Cliente'],
@@ -113,6 +117,8 @@
       if (s.etapa === 2 && !(entrada && entrada.filtrar)) e.inversor = ant.inversores.find((x) => x.sku === e.inversorSku);
       if (s.etapa === 3) e.estrutura = { tipo: e.estruturaTipo, detalhe: e.estruturaDetalhe, linhas: +e.linhas, modulosPorLinha: +e.modulosPorLinha, orientacao: e.orientacao, semEstrutura: !!e.semEstrutura };
       const r = await chamar('/passo', { etapa: s.etapa, entrada });
+      // o que o portal REALMENTE usou (estrutura/fixação): é isso que vai para o kit e para a proposta
+      if (s.etapa === 3 && r.opcoes && e.estrutura) { if (r.opcoes.tipoUsado) e.estrutura.tipo = r.opcoes.tipoUsado; if (r.opcoes.detalheUsado) e.estrutura.detalhe = r.opcoes.detalheUsado; }
       s.tempos = s.tempos || []; if (r.ms) s.tempos.push({ etapa: s.etapa, ms: r.ms });
       s.etapa = r.etapa; s.opcoes = r.opcoes || {}; if (r.final) s.final = r.final;
       return s;
@@ -163,27 +169,64 @@
 
   /* ---------- Cotação automática de uma opção (mesmas telas, escolhas por regra) ---------- */
   const REGRAS = { overloadMin: 0, overloadMax: 35 };
-  const fabModulo = (nome) => (nome.match(/^(JA Solar|\S+)/) || [])[1];
-  function escolherInversor(lista, tipo, potKw) {
+  const semAcento = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  // o sistema e o portal escrevem diferente ("Telha Metálico" × "Telha Metálica"): compara sempre pela chave
+  const ALIAS_TIPO = { 'telha metalico': 'telha metalica', metalico: 'telha metalica', metalica: 'telha metalica', ceramico: 'colonial', ceramica: 'colonial', fibrocimento: 'telha fibrocimento', shingle: 'telha shingle' };
+  const chaveTipo = (t) => { const x = semAcento(t); return ALIAS_TIPO[x] || x; };
+  const acharTipo = (tipos, pedido) => (tipos || []).find((t) => chaveTipo(t) === chaveTipo(pedido)) || null;
+  // marca do módulo: o portal manda o fabricante; nos nomes antigos vem no fim ("... CABO 1.4M JA SOLAR")
+  const fabModulo = (nome) => (String(nome || '').match(/CABO\s+[\d.,]+\s*M\s+(.+)$/i) || [])[1] || (String(nome || '').match(/^(JA Solar|\S+)/) || [])[1];
+  const marcaDe = (m) => (m && (m.fabricante || fabModulo(m.nome))) || '';
+  const parametrosDe = () => (raiz.Banco && raiz.Banco.parametros && raiz.Banco.parametros()) || {};
+  function regrasDe(base, par) {
+    const r = (base && base.regras) || {}, num = (v) => (v === '' || v == null || !isFinite(+v) ? null : +v);
+    return { overloadMin: num(r.overloadMin) ?? num(par.roboOverloadMin) ?? REGRAS.overloadMin, overloadMax: num(r.overloadMax) ?? num(par.roboOverloadMax) ?? REGRAS.overloadMax, modMinW: num(r.modMinW) ?? num(par.roboModMinW) ?? 0 };
+  }
+  /* custo de estrutura por placa (preço de lista, R$), só para comparar placas grandes × pequenas.
+     Medido no portal em 08/11/2026: colonial ≈ 98, metálica mini trilho ≈ 40; os outros são estimativas. */
+  const EST_POR_PLACA = { colonial: 98, 'telha fibrocimento': 85, 'telha metalica': 40, 'telha shingle': 90, laje: 180, solo: 250 };
+  const DESCONTO_KIT = 0.85; // o portal dá ~15% no kit montado sobre o preço de lista de cada item
+  const qtdPara = (m, kwp) => Math.max(m.qtdSugerida || 0, Math.ceil((kwp * 1000) / m.potenciaW - 0.05));
+  /* Escolha do módulo: com preço do portal, o menor custo por kWp INSTALADO (placa + estrutura + mão de obra por placa).
+     Placa barata por watt mas pequena pede mais estrutura e mais mão de obra: isso também entra no preço da proposta. */
+  function escolherModulo(mods, base, par) {
+    const fab = semAcento(base.fabMod), pot = +base.potMod || 0, rg = regrasDe(base, par);
+    let cands = (mods || []).filter((m) => (!fab || semAcento(marcaDe(m)) === fab || semAcento(fabModulo(m.nome)) === fab) && (!pot || m.potenciaW === pot));
+    if (base.moduloSku) { const x = cands.find((m) => m.sku === base.moduloSku); if (x) return { mod: x, motivo: 'módulo pedido' }; }
+    if (!cands.length) return { mod: null, motivo: '' };
+    if (!fab && !pot && rg.modMinW) { const c2 = cands.filter((m) => m.potenciaW >= rg.modMinW); if (c2.length) cands = c2; }
+    const comPreco = cands.filter((m) => m.precoUnEst > 0 && m.potenciaW > 0);
+    if (comPreco.length < 2) return { mod: cands.find((m) => m.kwp + 0.001 >= base.kwp) || cands[0], motivo: 'menor preço por watt do portal' };
+    const est = EST_POR_PLACA[chaveTipo(base.estruturaTipo)] ?? 90, mao = +base.custoPorPlaca || +par.maoDeObraPorPlaca || 100;
+    const custo = (m) => { const q = qtdPara(m, base.kwp); return (q * ((m.precoUnEst + (base.semEstrutura ? 0 : est)) * DESCONTO_KIT + mao)) / ((q * m.potenciaW) / 1000); };
+    let pool = comPreco.filter((m) => (qtdPara(m, base.kwp) * m.potenciaW) / 1000 <= base.kwp * 1.12 + 0.001); // sem passar muito do tamanho pedido
+    if (!pool.length) pool = comPreco;
+    pool = [...pool].sort((a, b) => custo(a) - custo(b));
+    return { mod: pool[0], motivo: 'menor custo por kWp instalado (placa + estrutura + mão de obra): ' + pool.slice(0, 3).map((m) => `${marcaDe(m)} ${m.potenciaW} W ≈ R$ ${Math.round(custo(m))}/kWp`).join(' · ') };
+  }
+  /* Inversor: dentro da faixa de overload (Parâmetros), o MAIS BARATO; empate → overload mais perto de 15% */
+  function escolherInversor(lista, tipo, potKw, regras = REGRAS) {
     if (!lista || !lista.length) return null;
-    if (potKw) { const exato = lista.filter((v) => Math.abs(v.potenciaKw / (v.qtd || 1) - potKw) < 0.01); if (exato.length) lista = exato; else return null; }
-    if (tipo === 'MICROINVERSOR') return lista[0];
-    return lista.find((v) => v.overload >= REGRAS.overloadMin && v.overload <= REGRAS.overloadMax) || [...lista].sort((a, b) => Math.abs(a.overload - 15) - Math.abs(b.overload - 15))[0];
+    const unKw = (v) => v.potenciaUnKw || (v.potenciaKw || 0) / (v.qtd || 1);
+    if (potKw) { const exato = lista.filter((v) => Math.abs(unKw(v) - potKw) < 0.01); if (exato.length) lista = exato; else return null; }
+    const barato = (l) => { const c = l.filter((v) => v.precoEst > 0); return c.length ? [...c].sort((a, b) => a.precoEst - b.precoEst || Math.abs(a.overload - 15) - Math.abs(b.overload - 15))[0] : l[0]; };
+    if (tipo === 'MICROINVERSOR') return barato(lista);
+    const dentro = lista.filter((v) => v.overload >= regras.overloadMin && v.overload <= regras.overloadMax);
+    return dentro.length ? barato(dentro) : [...lista].sort((a, b) => Math.abs(a.overload - 15) - Math.abs(b.overload - 15))[0];
   }
   async function cotarAuto(modo, base, aviso = () => {}) {
+    const par = parametrosDe(), rg = regrasDe(base, par);
     const s = novaSessao(modo);
     Object.assign(s.escolhas, { kwp: base.kwp, ligacao: base.ligacao, nome: base.nome });
     aviso('potência'); await avancar(s, { kwp: base.kwp });
-    const mods = s.opcoes.modulos || [];
-    const daSel = mods.filter((m) => (!base.fabMod || (fabModulo(m.nome) || '').toLowerCase() === base.fabMod.toLowerCase()) && (!base.potMod || m.potenciaW === +base.potMod));
-    const mod = daSel.find((m) => m.sku === base.moduloSku) || daSel[0] || (!base.fabMod && !base.potMod ? (mods.find((m) => m.kwp + 0.001 >= base.kwp) || mods[0]) : null);
+    const { mod, motivo } = escolherModulo(s.opcoes.modulos || [], base, par);
     if (!mod && (base.fabMod || base.potMod)) throw new Error(`O portal não tem módulo ${base.fabMod || ''} ${base.potMod ? base.potMod + ' W' : ''} hoje.`);
     if (!mod) throw new Error('O portal não devolveu módulos.');
-    aviso('módulo'); await avancar(s, { moduloSku: mod.sku, moduloQtd: Math.max(mod.qtdSugerida, Math.ceil((base.kwp * 1000) / mod.potenciaW - 0.05)) });
+    s.escolhaModulo = motivo;
+    aviso('módulo'); await avancar(s, { moduloSku: mod.sku, moduloQtd: qtdPara(mod, base.kwp) });
     /* Ligação do INVERSOR (não é a do cliente): em rede 127/220 V o inversor monofásico 220 V liga entre 2 fases.
        Cliente bifásico → mono 220. Cliente trifásico → mono 220 até o limite em kW (Parâmetros), acima disso trifásico 220.
        Microinversor é sempre monofásico 220 V. */
-    const par = (window.Banco && window.Banco.parametros && window.Banco.parametros()) || {};
     const limite = Number(par.limiteMonoEmTriKw) || 10;
     const potEst = +base.potInv || (base.kwp / 1.2);
     let ligDesejada = base.tipoInversor === 'MICROINVERSOR' || base.ligacao !== 'TRIFÁSICO' ? 'MONOFÁSICO' : potEst <= limite ? 'MONOFÁSICO' : 'TRIFÁSICO';
@@ -193,25 +236,33 @@
     const ten = tens.find((t) => /127\s*\/\s*220|^220/.test(t) && !/380/.test(t)) || tens[0];
     const fabs = base.fabInv ? [base.fabInv] : [];
     aviso('inversor'); await avancar(s, { filtrar: true, tipoInversor: base.tipoInversor, ligacao: lig, tensao: ten, fabricantes: fabs });
-    let inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0);
+    let inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0, rg);
     // não achou: tenta a outra ligação possível (mono ↔ trifásico) antes de desistir
     const outra = lig === 'MONOFÁSICO' ? (base.ligacao === 'TRIFÁSICO' ? 'TRIFÁSICO' : null) : 'MONOFÁSICO';
-    if (!inv && outra && ligs.includes(outra)) { const t2 = ((s.opcoes.tensoes || {})[outra] || []).find((t) => /127\s*\/\s*220|^220/.test(t) && !/380/.test(t)) || '127/220V'; await avancar(s, { filtrar: true, tipoInversor: base.tipoInversor, ligacao: outra, tensao: t2, fabricantes: fabs }); inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0); }
+    if (!inv && outra && ligs.includes(outra)) { const t2 = ((s.opcoes.tensoes || {})[outra] || []).find((t) => /127\s*\/\s*220|^220/.test(t) && !/380/.test(t)) || '127/220V'; await avancar(s, { filtrar: true, tipoInversor: base.tipoInversor, ligacao: outra, tensao: t2, fabricantes: fabs }); inv = escolherInversor(s.opcoes.inversores, base.tipoInversor, +base.potInv || 0, rg); }
     if (!inv) throw new Error(`O portal não tem ${base.tipoInversor.toLowerCase()}${base.fabInv ? ' ' + base.fabInv : ''}${base.potInv ? ' de ' + base.potInv + ' kW' : ''} para ${base.kwp} kWp nessa ligação.`);
     await avancar(s, { inversorSku: inv.sku });
+    return fecharEstrutura(s, base, aviso);
+  }
+  // fixação pedida pelo vendedor (madeira/metal no fibrocimento; mini trilho, mini trilho alto ou suporte L na metálica; gancho no cerâmico)
+  const RX_FIX = { madeira200: /200\s*mm.*madeira(?!.*sextavado)/i, madeira250: /250\s*mm.*madeira/i, madeira300: /300\s*mm.*madeira/i, madeiraSext: /madeira.*sextavado/i, metal: /met[aá]l|perfil/i,
+    minitrilho130: /mini\s*trilho\s*130/i, minitrilho260: /mini\s*trilho\s*260/i, minitrilho550: /mini\s*trilho\s*550/i, minitrilhoAlto: /mini\s*trilho\s*alto/i, suporteL: /p[ée]\s*em\s*L/i, zipada: /zipada/i,
+    vertical: /Belenergy em alum[ií]nio com ajuste vertical/i, horizontal: /Belenergy em alum[ií]nio com ajuste horizontal/i, ssm: /SSM/i, galvanizado: /galvaniza/i };
+  const FIX_PADRAO = { colonial: 'vertical' }; // cerâmico: o gancho indicado para telhas cerâmicas em geral
+  /* Da estrutura até a confirmação (o mesmo para a cotação completa e para a "só troca a estrutura") */
+  async function fecharEstrutura(s, base, aviso) {
     const tipos = Object.keys(s.opcoes.estruturas || {});
-    const tipo = tipos.includes(base.estruturaTipo) ? base.estruturaTipo : tipos[0];
+    const tipo = acharTipo(tipos, base.estruturaTipo);
+    // nunca cota com outra estrutura no lugar da pedida (antes caía no 1º tipo da lista: colonial no lugar de metálica)
+    if (!tipo && !base.semEstrutura) throw new Error(`O portal não tem a estrutura "${base.estruturaTipo}" (tem: ${tipos.join(', ') || 'nenhuma'}).`);
     let det = (s.opcoes.estruturas || {})[tipo] || [];
-    if (!det.length) det = await detalhes(s, tipo);
-    // fixação pedida pelo vendedor (madeira/metal no fibrocimento; mini trilho, mini trilho alto ou suporte L na metálica)
-    const RX = { madeira200: /200\s*mm.*madeira(?!.*sextavado)/i, madeira250: /250\s*mm.*madeira/i, madeira300: /300\s*mm.*madeira/i, madeiraSext: /madeira.*sextavado/i, metal: /met[aá]l|perfil/i,
-      minitrilho130: /mini\s*trilho\s*130/i, minitrilho260: /mini\s*trilho\s*260/i, minitrilho550: /mini\s*trilho\s*550/i, minitrilhoAlto: /mini\s*trilho\s*alto/i, suporteL: /p[ée]\s*em\s*L/i, zipada: /zipada/i };
-    const pref = base.fixacao && RX[base.fixacao] ? det.find((d) => RX[base.fixacao].test(d)) : null;
+    if (!det.length && tipo && !base.semEstrutura) det = await detalhes(s, tipo);
+    const fx = base.fixacao || FIX_PADRAO[chaveTipo(tipo)];
+    const pref = fx && RX_FIX[fx] ? det.find((d) => RX_FIX[fx].test(d)) : null;
     if (pref) det = [pref, ...det.filter((d) => d !== pref)];
     const placas = s.escolhas.modulo.qtd, linhas = placas > 12 ? 2 : 1;
-    if (placas % linhas) { /* número ímpar em 2 linhas: usa 1 linha */ }
-    const lin = placas % linhas ? 1 : linhas;
-    aviso('estrutura'); await avancar(s, { semEstrutura: !!base.semEstrutura, estruturaTipo: tipo, estruturaDetalhe: det[0], linhas: lin, modulosPorLinha: placas / lin, orientacao: 'Retrato' });
+    const lin = placas % linhas ? 1 : linhas; // número ímpar em 2 linhas: usa 1 linha
+    aviso('estrutura'); await avancar(s, { semEstrutura: !!base.semEstrutura, estruturaTipo: tipo || base.estruturaTipo, estruturaDetalhe: det[0], linhas: lin, modulosPorLinha: placas / lin, orientacao: 'Retrato' });
     // automático: não mexe nas quantidades do portal (mandar a lista de volta podia zerar o MC4 lido antes da tela carregar)
     const manter = () => ({ itens: s.modo === 'conectado' ? [] : s.opcoes.itens });
     aviso('componentes'); await avancar(s, manter());
@@ -220,18 +271,32 @@
     aviso('confirmação'); await avancar(s, { nome: base.nome, estadoEntrega: 'SP', cidadeEntrega: base.cidade || 'Ribeirão Preto', frete: base.frete || 'Cliente Retira', pagamento: (s.opcoes.pagamentos || [])[0], salvar: base.salvar !== false });
     return s;
   }
+  /* Mesmo kit (módulo e inversor) com OUTRA estrutura: o robô volta da confirmação para a estrutura e só recalcula
+     (bem mais rápido: não refaz a lista de módulos, que leva ~10 s no portal). Usado nas pré-propostas. */
+  async function recotarEstrutura(anterior, base, aviso = () => {}) {
+    if (!anterior || anterior.modo !== 'conectado' || !anterior.final || !anterior.escolhas.modulo || !anterior.escolhas.inversor) throw new Error('sem cotação anterior para reaproveitar');
+    const s = novaSessao('conectado');
+    s.escolhas = JSON.parse(JSON.stringify(anterior.escolhas)); s.escolhas.nome = base.nome; s.escolhaModulo = anterior.escolhaModulo; s.reaproveitada = true;
+    s.etapa = 30; aviso('trocando só a estrutura');
+    await avancar(s, { moduloSku: s.escolhas.modulo.sku, moduloQtd: s.escolhas.modulo.qtd, inversorSku: s.escolhas.inversor.sku });
+    return fecharEstrutura(s, base, aviso);
+  }
 
   function paraKit(s, nivel) {
     const e = s.escolhas, f = s.final, ficha = raiz.Catalogo ? raiz.Catalogo.fichaModulo(e.modulo.potenciaW) : {};
+    const kwp = (e.modulo.qtd * e.modulo.potenciaW) / 1000, avisos = [...(f.avisos || [])];
+    if (f.valorKit > 0 && kwp > 0) { const rsWp = f.valorKit / (kwp * 1000); if (rsWp < 0.6 || rsWp > 4.5) avisos.push(`R$ ${rsWp.toFixed(2)}/Wp está fora do normal: confira a cotação no portal.`); }
     return {
       nivel, origem: s.modo, numeroBelenergy: f.numero, pdfBelenergy: f.pdf ? f.pdf.nome : null, nomeOrcamento: e.nome, segundos: s.tempos ? Math.round(s.tempos.reduce((a, t) => a + t.ms, 0) / 1000) : null, frete: e.frete, pagamento: e.pagamento, entrega: `${e.cidadeEntrega || ''}/${e.estadoEntrega || ''}`, cotadoEm: new Date().toISOString(),
       valorKit: f.valorKit, valorProdutos: f.valorProdutos, valorFrete: f.frete,
-      modulo: { sku: e.modulo.sku, nome: e.modulo.nome, marca: fabModulo(e.modulo.nome), potenciaW: e.modulo.potenciaW, qtd: e.modulo.qtd, ...ficha },
-      inversor: { sku: e.inversor.sku, qtd: e.inversor.qtd || 1, potenciaUnKw: (e.inversor.potenciaKw || 0) / (e.inversor.qtd || 1), nome: e.inversor.nome + (e.inversor.qtd > 1 ? ` (${e.inversor.qtd} un.)` : ''), potenciaKw: e.inversor.potenciaKw, tipo: e.inversor.tipo, fabricante: e.inversor.fabricante, overload: e.inversor.overload },
+      // preço de cada item (lista do portal) e de onde veio o valor: 'api' = carrinho do portal; 'tela' = texto da tela
+      itensPreco: f.itensPreco || null, descontoKit: f.descontoKit ?? null, fonte: f.fonte || (s.modo === 'conectado' ? 'tela' : 'simulado'), versaoRobo: f.versao || null, avisos, escolhaModulo: s.escolhaModulo || null, reaproveitada: !!s.reaproveitada,
+      modulo: { sku: e.modulo.sku, nome: e.modulo.nome, marca: marcaDe(e.modulo), potenciaW: e.modulo.potenciaW, qtd: e.modulo.qtd, ...ficha },
+      inversor: { sku: e.inversor.sku, qtd: e.inversor.qtd || 1, potenciaUnKw: e.inversor.potenciaUnKw || (e.inversor.potenciaKw || 0) / (e.inversor.qtd || 1), nome: e.inversor.nome + (e.inversor.qtd > 1 ? ` (${e.inversor.qtd} un.)` : ''), potenciaKw: e.inversor.potenciaKw, tipo: e.inversor.tipo, fabricante: e.inversor.fabricante, overload: e.inversor.overload },
       estrutura: e.estrutura, itens: { estrutura: e.itensEstrutura, cc: (e.itensCC || []).filter((i) => i.qtd > 0), ca: (e.itensCA || []).filter((i) => i.qtd > 0) },
       descricao: { Inversor: 'Inversor string: o melhor custo por energia gerada.', Microinversor: 'Um microinversor para cada par de placas: ideal com sombra e mais seguro.' }[nivel] || 'Kit fechado Belenergy.',
     };
   }
 
-  raiz.Cotador = { ETAPAS, PORTAL, REGRAS, cotarAuto, fabModulo, detalhes, conectado, novaSessao, avancar, paraKit, URL_ROBO, ROBO_ESPERADO, roboDesatualizado, versaoRobo: () => versaoRobo };
+  raiz.Cotador = { ETAPAS, PORTAL, REGRAS, cotarAuto, recotarEstrutura, escolherModulo, escolherInversor, chaveTipo, acharTipo, regrasDe, fabModulo, marcaDe, detalhes, conectado, novaSessao, avancar, paraKit, URL_ROBO, ROBO_ESPERADO, roboDesatualizado, versaoRobo: () => versaoRobo };
 })(window);

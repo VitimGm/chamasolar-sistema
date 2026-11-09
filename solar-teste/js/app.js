@@ -284,7 +284,7 @@
             <div class="linha-h" style="margin-top:8px"><select id="status" style="width:auto;padding:7px 10px;font-size:14px">${STATUS.map(([s, r]) => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${r}</option>`).join('')}</select>${o.status !== 'ganho' ? '<button class="btn sol pequeno" id="fGanho">✅ Fechou</button>' : ''}${o.status !== 'perdido' && o.status !== 'ganho' ? '<button class="btn vidro pequeno" id="fPerda">❌ Perdeu</button>' : ''}<button class="btn vidro pequeno" id="fNova" title="Outra proposta para o mesmo cliente (ex.: outro tamanho, bateria, outro endereço)">＋ Nova proposta</button><button class="btn vidro pequeno" id="fExcluir">🗑 Excluir</button>
             ${o.status === 'perdido' ? `<input type="text" id="motivo" placeholder="Motivo da perda" value="${esc(o.motivoPerda)}" style="flex:1;min-width:180px;padding:7px 10px;font-size:14px">` : ''}</div></div>
         </div>
-        <div class="proxima" style="margin-top:14px"><div class="ic">${acao.icone}</div><div><span class="rotulo" style="color:var(--sol)">Próxima melhor ação</span><div style="font-weight:600;margin-top:4px">${esc(acao.texto)}</div></div></div>
+        <div class="proxima" style="margin-top:14px"><div class="ic">${acao.icone}</div><div><span class="rotulo" style="color:var(--sol)">Próxima melhor ação</span><div style="font-weight:600;margin-top:4px">${esc(acao.texto)}</div></div></div>${alertasPrecoHtml(o)}
         <div class="linha-h" style="margin-top:10px;gap:6px;flex-wrap:wrap"><span class="mini">📌 Próximo contato:</span>${[['amanhã', 1], ['3 dias', 3], ['1 semana', 7], ['15 dias', 15]].map(([t, d]) => `<button class="chip" data-prox="${d}">${t}</button>`).join('')}${lembretes().filter((l) => l.ref === o.id).map((l) => `<span class="mini" style="color:var(--sol)">· ${esc(l.texto)} em ${new Date(l.quando).toLocaleDateString('pt-BR')}</span>`).join('')}</div>
         <div class="painel" style="margin-top:12px" id="resumoCv"><span class="rotulo">📝 Como ficou a conversa</span>
           <textarea id="rsTxt" rows="2" placeholder="Escreva do seu jeito: liguei, ela gostou, vai ver com o marido no fim de semana e pediu para simular no banco" style="width:100%;margin-top:8px"></textarea>
@@ -752,6 +752,31 @@
   }
   /* fixação: escolhida no passo 2 e passada ao robô para achar o "Detalhe da estrutura" certo no portal */
   // nomes iguais aos do "Detalhes da Estrutura" da Belenergy
+  /* nomes EXATOS do portal Belenergy (é "Telha Metálica", com A: com O o robô não achava e cotava colonial) */
+  const TIPO_ESTR = { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálica', laje: 'Laje', solo: 'Solo' };
+  /* Problemas de preço de um kit já cotado: preço de teste, estrutura errada, cotação velha e os avisos do robô */
+  function alertasKit(o, k) {
+    const out = []; if (!k || !(k.valorKit > 0)) return out;
+    const lim = +P().validadeKitDias || 7, dias = k.cotadoEm ? (Date.now() - new Date(k.cotadoEm)) / 864e5 : null;
+    if (k.origem === 'simulado') out.push({ grave: true, texto: 'Kit SIMULADO (valor de teste, não é preço da Belenergy): cote com o robô antes de enviar.' });
+    const esperado = TIPO_ESTR[o.telhado], tipoKit = k.estrutura && !k.estrutura.semEstrutura ? k.estrutura.tipo : '';
+    if (esperado && tipoKit && window.Cotador && Cotador.chaveTipo(tipoKit) !== Cotador.chaveTipo(esperado)) out.push({ grave: true, texto: `Estrutura do kit (${tipoKit}) não é a do telhado (${esperado}): o preço está errado. Refaça a cotação.` });
+    if (dias != null && dias > lim && k.origem !== 'simulado') out.push({ grave: false, texto: `Kit cotado há ${Math.floor(dias)} dias (validade de ${lim}): recote antes de fechar.` });
+    (k.avisos || []).forEach((t) => out.push({ grave: false, texto: t }));
+    return out;
+  }
+  const ABERTOS = ['novo', 'proposta', 'visualizou', 'negociando'];
+  function alertasPrecoHtml(o) {
+    if (!ABERTOS.includes(o.status || 'novo')) return '';
+    const itens = (o.kitsFechados || []).filter(Boolean).flatMap((k) => alertasKit(o, k).map((a) => ({ ...a, nivel: k.nivel })));
+    if (!itens.length) return '';
+    return `<div class="aviso ${itens.some((a) => a.grave) ? 'ruim' : ''}" style="margin-top:10px"><b>⚠ Preço do kit</b>${itens.map((a) => `<br>${esc(a.nivel || 'Kit')}: ${esc(a.texto)}`).join('')}</div>`;
+  }
+  /* guarda o preço de cada kit real cotado (histórico do Radar) */
+  function registrarKit(k, o, origem) {
+    if (!k || !(k.valorKit > 0) || k.origem === 'simulado' || !B.registrarPrecoKit) return;
+    B.registrarPrecoKit(k, { origem: origem || 'sistema', orc: (o && o.id) || null, ligacao: o ? ({ mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[o.ligacao] || o.ligacao || null) : null }).catch(() => {});
+  }
   const FIXACAO = { fibrocimento: [['madeira200', 'Madeira · haste 200 mm'], ['madeira250', 'Madeira · haste 250 mm'], ['madeira300', 'Madeira · haste 300 mm'], ['madeiraSext', 'Madeira · sextavado interno'], ['metal', 'Estrutura metálica']],
     metalico: [['minitrilho130', 'Mini trilho 130 mm'], ['minitrilho260', 'Mini trilho 260 mm'], ['minitrilho550', 'Mini trilho 550 mm'], ['minitrilhoAlto', 'Mini trilho alto'], ['suporteL', 'Suporte pé em L c/ perfil'], ['zipada', 'Mini trilho · telha zipada']] };
   /* todas as estruturas que a Belenergy cota (para as pré-propostas) */
@@ -854,8 +879,10 @@
           <span class="rotulo" style="color:var(--sol)">${i === PRINCIPAL ? 'Principal' : 'Opcional'}</span><h3 style="margin:4px 0">${nv}</h3>
           ${k ? `<div class="preco">${brl(k.valorKit, 2)}</div><span class="mini">valor do kit · ${k.origem === 'simulado' ? 'SIMULADO' : k.origem === 'manual' ? 'cotado por fora' + (k.numeroBelenergy ? ': ' + esc(k.numeroBelenergy) : '') : 'Belenergy ' + esc(k.numeroBelenergy)}</span>
             <ul><li><span>Módulos</span><span>${k.modulo.qtd} × ${esc(k.modulo.marca || k.modulo.nome)} ${k.modulo.potenciaW} W</span></li><li><span>${k.inversor.tipo === 'micro' ? 'Micro' : 'Inversor'}</span><span>${esc(C.equipamentos(M.opcaoKitFechado({ ...C.entrada(orc), kitsFechados: null }, k, p)).inversorCurto)}</span></li>
-            <li><span>Estrutura</span><span>${k.estrutura.semEstrutura ? 'sem estrutura' : esc(k.estrutura.tipo)}</span></li><li><span>Frete</span><span>${esc(k.frete)}</span></li>
+            <li><span>Estrutura</span><span title="${esc(k.estrutura.detalhe || '')}">${k.estrutura.semEstrutura ? 'sem estrutura' : esc(k.estrutura.tipo) + (k.estrutura.detalhe ? ' · ' + esc(String(k.estrutura.detalhe).slice(0, 34)) : '')}</span></li><li><span>Frete</span><span>${esc(k.frete)}</span></li>
             <li><span>R$/Wp do kit</span><span>R$ ${n(k.valorKit / (k.modulo.qtd * k.modulo.potenciaW), 2)}</span></li></ul>
+            ${k.escolhaModulo ? `<p class="mini" style="margin:6px 0 0">Módulo: ${esc(k.escolhaModulo)}</p>` : ''}
+            ${alertasKit(orc, k).map((a) => `<div class="aviso ${a.grave ? 'ruim' : ''}" style="margin-top:8px">${esc(a.texto)}</div>`).join('')}
             <div class="acoes-r" style="margin-top:10px"><button class="btn vidro pequeno" data-tirar="${i}">Refazer</button></div>`
           : kitDig === i ? formKitDigitado(i, kwpSug) : `<p class="sutil" style="margin:8px 0 12px">${DICA_OPCAO[i]}</p>${seletores(i)}
             <button class="link" data-montar="${i}" style="margin-top:10px">montar passo a passo</button> · <button class="link" data-digitar="${i}">digitar kit cotado por fora</button>`}
@@ -867,7 +894,7 @@
     el.querySelectorAll('[data-montar]').forEach((b) => b.onclick = async () => {
       cotSlot = +b.dataset.montar; cot = Cotador.novaSessao(cotModo || 'simulado'); cot.escolhas.kwp = +kwpSug.toFixed(2); cot.escolhas.tipoInversor = TIPO_POR_OPCAO[cotSlot];
       cot.escolhas.ligacao = { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[orc.ligacao];
-      cot.escolhas.estruturaTipo = { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' }[orc.telhado];
+      cot.escolhas.estruturaTipo = TIPO_ESTR[orc.telhado];
       cot.escolhas.nome = `${orc.id || 'NOVO'} ${orc.nome} ${NIVEIS_KIT[cotSlot]}`.trim();
       novo();
     });
@@ -883,7 +910,7 @@
       orc.kitsFechados[i] = { nivel: NIVEIS_KIT[i], origem: 'manual', numeroBelenergy: v('forn').slice(0, 60), frete: 'incluso no valor', cotadoEm: new Date().toISOString(), valorKit: valor, valorProdutos: valor,
         modulo: { sku: '', nome: modNome, marca: (modNome.match(/^(JA Solar|\S+)/) || [])[1] || '', potenciaW: modW, qtd: modQtd, ...ficha },
         inversor: { sku: '', qtd: invQtd, potenciaUnKw: invKw, potenciaKw: +(invKw * invQtd).toFixed(3), nome: invNome + (invQtd > 1 ? ` (${invQtd} un.)` : ''), tipo: i === 1 ? 'micro' : 'string', fabricante: (invNome.match(/^\S+/) || [''])[0].toUpperCase() },
-        estrutura: { tipo: { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' }[orc.telhado] || '', semEstrutura: false }, itens: { estrutura: [], cc: [], ca: [] }, descricao: 'Kit cotado com outro fornecedor.' };
+        estrutura: { tipo: TIPO_ESTR[orc.telhado] || '', semEstrutura: false }, itens: { estrutura: [], cc: [], ca: [] }, descricao: 'Kit cotado com outro fornecedor.' };
       kitDig = null; salvarR(); novo(); toast('Kit digitado: já entra no preço e na proposta');
     });
     el.querySelectorAll('[data-sel]').forEach((x) => x.onchange = () => { const sk = orc.selKits[+x.dataset.sel]; sk[x.dataset.k] = x.value; if (x.dataset.k === 'fabMod') sk.potMod = ''; salvarR(); novo(); });
@@ -894,7 +921,7 @@
       const prog = $('#a-prog'), modo = cotModo || 'simulado', inicio = Date.now(), erros = [];
       orc.salvarBel = !!($('#a-salvar') && $('#a-salvar').checked);
       const base = { salvar: orc.salvarBel, kwp: +kwpSug.toFixed(2), ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[orc.ligacao], cidade: orc.cidade, frete: $('#a-frete').value,
-        estruturaTipo: { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' }[orc.telhado], fixacao: FIXACAO[orc.telhado] ? orc.fixacao || FIXACAO[orc.telhado][0][0] : null };
+        estruturaTipo: TIPO_ESTR[orc.telhado], fixacao: FIXACAO[orc.telhado] ? orc.fixacao || FIXACAO[orc.telhado][0][0] : null };
       for (let i = 0; i < NIVEIS_KIT.length; i++) {
         if (orc.kitsFechados[i] || !vaiCotar(i)) continue; // já cotada (use "Refazer") ou fora da escolha "só um"
         try {
@@ -908,6 +935,7 @@
             (etapa) => { if (prog) prog.textContent = `${NIVEIS_KIT[i]} (${i + 1}/${NIVEIS_KIT.length}): ${etapa}… ${Math.round((Date.now() - inicio) / 1000)} s`; });
           orc.kitsFechados[i] = Cotador.paraKit(s, NIVEIS_KIT[i]);
           if (!(orc.kitsFechados[i].valorKit > 0)) { orc.kitsFechados[i] = null; throw new Error('o portal devolveu valor R$ 0,00; tente de novo'); }
+          if (modo === 'conectado') registrarKit(orc.kitsFechados[i], orc, 'sistema');
           if (s.final && s.final.pdf) PDFS_PENDENTES[NIVEIS_KIT[i]] = s.final.pdf;
           if (s.final && s.final.diagSalvar) B.registrarErroRobo({ orcamento: orc.id || null, opcao: NIVEIS_KIT[i], mensagem: 'Salvou na Belenergy, mas o robô não achou o número WEB na tela', diag: { etapa: 'salvar', nomeEtapa: 'número WEB', mensagem: 'sem número WEB', ...s.final.diagSalvar } }).catch(() => {});
           if (modo === 'conectado') { cache[chave] = { em: Date.now(), kit: orc.kitsFechados[i] }; Object.keys(cache).forEach((k) => { if (Date.now() - cache[k].em > 48 * 3600e3) delete cache[k]; }); try { localStorage.setItem('sol_cache_kits', JSON.stringify(cache)); } catch { /* */ } }
@@ -1049,7 +1077,7 @@
       if (et === 7) return passoCot({ nome: v('c-nome'), estadoEntrega: v('c-uf'), cidadeEntrega: v('c-cid'), frete: v('c-frete'), pagamento: v('c-pg'), salvar: $('#c-salvar').checked });
     };
     const usar = $('#c-usar');
-    if (usar) usar.onclick = () => { orc.kitsFechados[cotSlot] = Cotador.paraKit(cot, NIVEIS_KIT[cotSlot]); orc.opcaoEscolhida = orc.kitsFechados.filter(Boolean).findIndex((k) => k.nivel === NIVEIS_KIT[PRINCIPAL]); cot = null; salvarR(); toast('Kit fechado salvo na opção ' + NIVEIS_KIT[cotSlot]); novo(); };
+    if (usar) usar.onclick = () => { orc.kitsFechados[cotSlot] = Cotador.paraKit(cot, NIVEIS_KIT[cotSlot]); if (cot.modo === 'conectado') registrarKit(orc.kitsFechados[cotSlot], orc, 'sistema'); orc.opcaoEscolhida = orc.kitsFechados.filter(Boolean).findIndex((k) => k.nivel === NIVEIS_KIT[PRINCIPAL]); cot = null; salvarR(); toast('Kit fechado salvo na opção ' + NIVEIS_KIT[cotSlot]); novo(); };
   }
 
   function passo5(el) {
@@ -1058,8 +1086,9 @@
     const modo = orc.precoModo || 'chama', extras = Array.isArray(orc.custosExtras) ? orc.custosExtras : [], aj = orc.custosAjustados || {};
     const mg = pr.percentuais.margem, corMg = mg < 0 ? 'var(--vermelho)' : mg < 0.05 ? 'var(--amarelo)' : 'inherit';
     // o que sobra para a empresa com o preço da Groner (mesmos custos e impostos nossos)
-    const comG = M.precificar({ ...C.entrada(orc), kit: op.kit, placas: op.dim.placas, kwp: op.dim.kwpReal, precoAlvo: g.preco }, p);
-    const nossa = modo === 'chama' ? pr : M.precificar({ ...C.entrada(orc), precoModo: 'chama', kit: op.kit, placas: op.dim.placas, kwp: op.dim.kwpReal }, p); // a nossa fórmula, mesmo quando o preço foi fixado
+    const fNoKit = M.freteDentroDoKit ? M.freteDentroDoKit(op.kitFechado) : false;
+    const comG = M.precificar({ ...C.entrada(orc), kit: op.kit, placas: op.dim.placas, kwp: op.dim.kwpReal, precoAlvo: g.preco, freteNoKit: fNoKit }, p);
+    const nossa = modo === 'chama' ? pr : M.precificar({ ...C.entrada(orc), precoModo: 'chama', kit: op.kit, placas: op.dim.placas, kwp: op.dim.kwpReal, freteNoKit: fNoKit }, p); // a nossa fórmula, mesmo quando o preço foi fixado
     const AJUSTAVEIS = ['terceiro', 'projeto', 'art', 'materialCa', 'frete', 'deslocamento', 'padrao'];
     const linhasBase = pr.linhas.filter((l) => !l.extra);
     el.innerHTML = `<div class="lado"><div>
@@ -1141,6 +1170,7 @@
     ['Custos por obra', [['maoDeObraPorPlaca', 'Terceiro por placa (R$)', 1], ['art', 'ART (R$)', 1], ['materialCaBase', 'Material CA fixo (R$)', 1], ['materialCaPorKwp', 'Material CA/kWp (R$)', 1], ['custoKm', 'Custo por km (R$)', 1], ['visitasObra', 'Viagens por obra', 1], ['trocaPadrao', 'Troca de padrão (R$)', 1], ['reservaGarantia', 'Reserva garantia (% kit)', 100]]],
     ['Resposta rápida', [['kitRefWp', 'Kit de referência (R$/Wp)', 1], ['moduloRefW', 'Placa de referência (W)', 1]]],
     ['Regras técnicas', [['limiteMonoEmTriKw', 'Cliente trifásico: inversor mono 220 V até (kW)', 1]]],
+    ['Robô de cotação', [['roboOverloadMin', 'Overload mínimo do inversor (%)', 1], ['roboOverloadMax', 'Overload máximo do inversor (%)', 1], ['roboModMinW', 'Placa mínima (W) · 0 = qualquer', 1], ['validadeKitDias', 'Validade do preço do kit (dias)', 1]]],
     ['Meta', [['metaPropostasSemana', 'Propostas enviadas por semana (meta)', 1]]],
     ['Percentuais', [['impostoTotal', 'Imposto com kit (%)', 100], ['impostoServico', 'Imposto só serviço (%)', 100], ['reservaNegociacao', 'Reserva de negociação (%)', 100]]],
     ['Conversão e retorno', [['tarifaKwh', 'Tarifa padrão (R$/kWh)', 1], ['margemGeracao', 'Margem de geração (%)', 100], ['perdaOrientacao', 'Perda de segurança da orientação (%)', 100], ['reajusteAnual', 'Reajuste ao ano (%)', 100], ['simultaneidade', 'Simultaneidade (%)', 100], ['validadeDias', 'Validade da cotação (dias)', 1], ['manutencaoAnual', 'Manutenção/ano (R$)', 1], ['pr', 'PR (eficiência)', 1]]],
@@ -1446,14 +1476,14 @@
       if (!(await Cotador.conectado())) return toast('Ligue o robô e faça login na Belenergy antes do treino');
       const lote = new Date().toISOString().slice(0, 16), lst = (soFalhas || cenarios()).sort(() => Math.random() - 0.5); soFalhas = null; const pausa = Math.max(Number($('#trPausa').value) || 0, 5) * 1000;
       TREINO.rodando = true; TREINO.parar = false; $('#trIr').hidden = true; $('#trFalhas').hidden = true; $('#trParar').hidden = false;
-      const LIG = { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }, TEL = { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' };
+      const LIG = { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }, TEL = TIPO_ESTR;
       let feitos = 0, acertos = 0;
       for (const c of lst) {
         if (TREINO.parar) break;
         const ini = Date.now(), prog = (t) => { const el = $('#trProg'); if (el) el.textContent = `${feitos + 1}/${lst.length} · ${c.tipo} ${c.kwp} kWp ${c.ligacao} ${c.telhado}: ${t}… ${acertos} acertos`; };
         try {
           const s = await Cotador.cotarAuto('conectado', { kwp: c.kwp, ligacao: LIG[c.ligacao] || c.ligacao, cidade: 'Ribeirão Preto', frete: 'Cliente Retira', estruturaTipo: TEL[c.telhado] || c.telhado, tipoInversor: c.tipo === 'Microinversor' ? 'MICROINVERSOR' : 'INVERSOR STRING ON-GRID', nome: 'TREINO ' + c.tipo + ' ' + c.kwp, salvar: false }, prog);
-          const k = Cotador.paraKit(s, c.tipo), wp = k.modulo.qtd * k.modulo.potenciaW;
+          const k = Cotador.paraKit(s, c.tipo), wp = k.modulo.qtd * k.modulo.potenciaW; registrarKit(k, { ligacao: c.ligacao }, 'treino');
           if (!(k.valorKit > 0)) throw new Error('valor R$ 0,00');
           await B.treinoGravar({ lote, cenario: c, ok: true, segundos: Math.round((Date.now() - ini) / 1000), valor_kit: k.valorKit, rs_wp: Math.round(k.valorKit / wp * 1000) / 1000, kit: { modulo: k.modulo, inversor: k.inversor, estrutura: k.estrutura, tempos: s.tempos || [] } }).catch(() => {});
           acertos++;
@@ -1631,6 +1661,85 @@
         if (v && v !== +i.valor_sistema) { mud.valor_sistema = v; mud.comissao_valor = Math.round(v * pct * 100) / 100; } }
       if (Object.keys(mud).length) { Object.assign(i, mud); try { await B.salvarIndicacao(i.id, mud); } catch { /* segue */ } } }
   }
+  /* ======================= RADAR DE OPORTUNIDADES =======================
+     Tudo sai do histórico de preço (cada cotação real do robô vira uma linha em sol_kit_precos):
+     propostas com preço velho/errado, kit que caiu ou subiu, equipamento mais barato e cupons da Belenergy. */
+  const FAIXAS_KWP = [[0, 3], [3, 5], [5, 8], [8, 12], [12, 20], [20, 1e9]];
+  const faixaDe = (kwp) => FAIXAS_KWP.find(([a, b]) => kwp > a && kwp <= b) || FAIXAS_KWP[FAIXAS_KWP.length - 1];
+  const nomeFaixa = ([a, b]) => (b >= 1e9 ? `acima de ${a} kWp` : a ? `${a} a ${b} kWp` : `até ${b} kWp`);
+  const mediana = (l) => { const v = l.filter((x) => x > 0).sort((a, b) => a - b); if (!v.length) return null; const m = Math.floor(v.length / 2); return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2; };
+  const chaveT = (t) => (window.Cotador ? Cotador.chaveTipo(t) : String(t || '').toLowerCase());
+  async function radarPag() {
+    app.innerHTML = `${cabCelular()}<div class="cab"><div><h1>Radar de oportunidades</h1><p class="sutil">Preço do kit em tempo real, propostas que precisam de atenção e o que dá para ganhar agora.</p></div></div><p class="sutil">Carregando o histórico de preços…</p>`;
+    let precos = [], st = null;
+    try { [precos, st] = await Promise.all([B.kitPrecos(90), B.roboStatus().catch(() => null)]); } catch (e) { app.querySelector('p.sutil:last-child').textContent = 'Não consegui ler o histórico: ' + e.message; return; }
+    precos = (precos || []).filter((x) => +x.rs_wp > 0 && +x.kwp > 0).map((x) => ({ ...x, t: new Date(x.cotado_em).getTime(), kwp: +x.kwp, rs: +x.rs_wp }));
+    const agora = Date.now(), D7 = agora - 7 * 864e5, D37 = agora - 37 * 864e5;
+    const lim = +P().validadeKitDias || 7;
+    // referência de hoje: mediana do R$/Wp de kits parecidos (mesma faixa, estrutura e opção) nos últimos 7 dias
+    const referencia = (kwp, estrutura, nivel) => {
+      const f = faixaDe(kwp), base = precos.filter((x) => faixaDe(x.kwp) === f && (!estrutura || chaveT(x.estrutura) === chaveT(estrutura)) && (!nivel || x.nivel === nivel));
+      const r7 = base.filter((x) => x.t >= D7); return r7.length ? { rs: mediana(r7.map((x) => x.rs)), n: r7.length } : null;
+    };
+    // 1) propostas abertas que precisam de atenção no preço
+    const aten = [];
+    for (const o of B.orcamentos().filter((x) => ABERTOS.includes(x.status || 'novo'))) {
+      for (const k of (o.kitsFechados || []).filter(Boolean)) {
+        const al = alertasKit(o, k), kwp = k.modulo ? (k.modulo.qtd * k.modulo.potenciaW) / 1000 : 0;
+        const r = kwp && k.origem !== 'simulado' && k.valorKit > 0 ? referencia(kwp, k.estrutura && !k.estrutura.semEstrutura ? k.estrutura.tipo : '', k.nivel) : null;
+        if (r && k.cotadoEm && new Date(k.cotadoEm).getTime() < D7) {
+          const rsK = k.valorKit / (kwp * 1000), dif = (r.rs - rsK) / rsK;
+          if (dif <= -0.03) al.push({ oport: true, texto: `O kit está ${Math.round(-dif * 100)}% mais barato hoje (R$ ${n(r.rs, 2)}/Wp; na proposta R$ ${n(rsK, 2)}/Wp): recote e baixe o preço, ou ganhe margem.` });
+          if (dif >= 0.03) al.push({ grave: true, texto: `O kit subiu ${Math.round(dif * 100)}% desde a cotação (R$ ${n(rsK, 2)} → ${n(r.rs, 2)}/Wp): recote antes de fechar para não perder margem.` });
+        }
+        if (al.length) aten.push({ o, k, al });
+      }
+    }
+    // 2) preço do kit por tamanho e estrutura (opção Inversor): hoje × 8 a 37 dias atrás
+    const grupos = {};
+    precos.filter((x) => (x.nivel || 'Inversor') === 'Inversor').forEach((x) => { const f = faixaDe(x.kwp), k = nomeFaixa(f) + '|' + (x.estrutura || '—'); (grupos[k] = grupos[k] || { f, estrutura: x.estrutura || '—', hoje: [], antes: [] }); if (x.t >= D7) grupos[k].hoje.push(x.rs); else if (x.t >= D37) grupos[k].antes.push(x.rs); });
+    const linhasTab = Object.values(grupos).filter((g) => g.hoje.length || g.antes.length).sort((a, b) => a.f[0] - b.f[0] || String(a.estrutura).localeCompare(b.estrutura));
+    // 3) equipamentos: último preço de cada módulo (R$/W, com o desconto do kit) e de cada inversor
+    const ultimo = {}; precos.forEach((x) => { if (x.modulo_sku && +x.modulo_preco > 0 && +x.modulo_w > 0 && (!ultimo[x.modulo_sku] || ultimo[x.modulo_sku].t < x.t)) ultimo[x.modulo_sku] = x; });
+    const mods = Object.values(ultimo).map((x) => ({ x, rw: (+x.modulo_preco * (1 - (+x.desconto || 0))) / +x.modulo_w })).sort((a, b) => a.rw - b.rw).slice(0, 8);
+    const ultInv = {}; precos.forEach((x) => { if (x.inversor_sku && +x.inversor_preco > 0 && (!ultInv[x.inversor_sku] || ultInv[x.inversor_sku].t < x.t)) ultInv[x.inversor_sku] = x; });
+    const invs = Object.values(ultInv).map((x) => ({ x, un: (+x.inversor_preco * (1 - (+x.desconto || 0))) / (+x.inversor_qtd || 1), kw: (+x.inversor_kw || 0) / (+x.inversor_qtd || 1) })).sort((a, b) => a.kw - b.kw || a.un - b.un).slice(0, 10);
+    // 4) cupons da Belenergy (o robô confere 2× por dia)
+    const info = (st && st.info) || {}, hoje0 = new Date(new Date().toDateString());
+    const cup = Array.isArray(info.cupons) ? info.cupons : null;
+    const cupOk = (cup || []).filter((c) => !c.usado && c.habilitado !== false && (!c.validade || new Date(c.validade) >= hoje0));
+    const cupPerdidos = (cup || []).filter((c) => !c.usado && c.validade && new Date(c.validade) < hoje0 && new Date(c.validade) > new Date(agora - 120 * 864e5));
+    const graves = aten.filter((a) => a.al.some((x) => x.grave)).length, oport = aten.filter((a) => a.al.some((x) => x.oport)).length;
+    const r7 = precos.filter((x) => x.t >= D7), rsHoje = mediana(r7.map((x) => x.rs)), rsAntes = mediana(precos.filter((x) => x.t < D7 && x.t >= D37).map((x) => x.rs));
+    const varTxt = rsHoje && rsAntes ? `${rsHoje < rsAntes ? '▼' : '▲'} ${n(Math.abs((rsHoje - rsAntes) / rsAntes) * 100, 1)}% no mês` : 'sem base para comparar ainda';
+    const dataBR = (d) => (d ? new Date(d).toLocaleDateString('pt-BR') : '—');
+    app.innerHTML = `${cabCelular()}<div class="cab"><div><h1>Radar de oportunidades</h1><p class="sutil">Preço do kit em tempo real, propostas que precisam de atenção e o que dá para ganhar agora. Cada cotação do robô alimenta este painel.</p></div></div>
+      <div class="kpis"><div class="kpi ${graves ? '' : 'destaque'}"><span class="rotulo">Propostas com preço a revisar</span><b>${aten.length}</b><span class="sutil">${graves} urgente(s) · ${oport} oportunidade(s)</span></div>
+        <div class="kpi"><span class="rotulo">Kit hoje (mediana 7 dias)</span><b>${rsHoje ? 'R$ ' + n(rsHoje, 2) + '/Wp' : '—'}</b><span class="sutil">${r7.length} cotação(ões) · ${varTxt}</span></div>
+        <div class="kpi"><span class="rotulo">Cupons válidos na Belenergy</span><b>${cup ? cupOk.length : '—'}</b><span class="sutil">${cup ? (cupOk.length ? brl(cupOk.reduce((t, c) => t + c.valor, 0), 2) + ' para usar' : 'nenhum agora') : 'o robô novo confere 2× por dia'}</span></div>
+        <div class="kpi"><span class="rotulo">Cotações guardadas (90 dias)</span><b>${precos.length}</b><span class="sutil">robô, Jarvis e pré-propostas</span></div></div>
+      <div class="painel" style="margin-top:14px"><div class="entre"><span class="rotulo">⚠ Propostas abertas que precisam de atenção no preço</span>${aten.length ? '<button class="btn sol pequeno" id="rdTodas">Recotar todas pelo robô</button>' : ''}</div>
+        ${aten.length ? `<table style="margin-top:8px">${aten.map(({ o, k, al }) => `<tr><td><a class="link" href="#lead-${o.id}"><b>${esc(o.nome)}</b></a><div class="mini">${esc(o.id)} · ${esc(k.nivel || '')} · ${brl(k.valorKit, 2)} · cotado ${k.cotadoEm ? tempoRel(k.cotadoEm) : '—'}</div></td>
+          <td>${al.map((a) => `<div class="mini" style="color:${a.grave ? 'var(--laranja)' : a.oport ? 'var(--verde-claro)' : 'inherit'}">${a.grave ? '⛔' : a.oport ? '💰' : 'ℹ️'} ${esc(a.texto)}</div>`).join('')}</td>
+          <td class="v"><button class="btn vidro pequeno" data-recotar="${esc(o.id)}">Recotar</button></td></tr>`).join('')}</table>`
+          : '<p class="sutil" style="margin:8px 0 0">Nenhuma proposta aberta com preço velho, simulado ou com estrutura trocada. 👍</p>'}</div>
+      <div class="lado" style="margin-top:14px"><div class="painel"><span class="rotulo">📈 Preço do kit por tamanho (opção inversor)</span>
+        ${linhasTab.length ? `<table style="margin-top:8px"><tr><td class="mini">Tamanho · estrutura</td><td class="v mini">Últimos 7 dias</td><td class="v mini">8 a 37 dias</td><td class="v mini">Variação</td></tr>${linhasTab.map((g) => { const h = mediana(g.hoje), a = mediana(g.antes), d = h && a ? (h - a) / a : null; return `<tr><td>${nomeFaixa(g.f)} · ${esc(g.estrutura)}</td><td class="v">${h ? 'R$ ' + n(h, 2) : '—'} <span class="mini">(${g.hoje.length})</span></td><td class="v">${a ? 'R$ ' + n(a, 2) : '—'} <span class="mini">(${g.antes.length})</span></td><td class="v" style="color:${d == null ? 'inherit' : d < 0 ? 'var(--verde-claro)' : 'var(--laranja)'}">${d == null ? '—' : (d < 0 ? '▼ ' : '▲ ') + n(Math.abs(d) * 100, 1) + '%'}</td></tr>`; }).join('')}</table><p class="mini" style="margin:8px 0 0">R$ por Wp do kit da Belenergy (mediana). ▼ verde = ficou mais barato: hora de prospectar e de recotar propostas paradas.</p>`
+          : '<p class="sutil" style="margin:8px 0 0">Ainda sem cotações suficientes. O Radar enche sozinho a cada cotação do robô; com as <b>pré-propostas da manhã</b> (Parâmetros → Robô) ele ganha preço novo todo dia.</p>'}</div>
+        <div class="painel"><span class="rotulo">🎟 Cupons da Belenergy</span>
+          ${cup ? (cupOk.length ? cupOk.map((c) => `<div class="aviso" style="margin-top:8px"><b>${brl(c.valor, 2)}</b> · ${esc(c.nome)} · vence ${dataBR(c.validade)}${c.limitePct ? ` · até ${c.limitePct}% do pedido` : ''}</div>`).join('') : '<p class="sutil" style="margin:8px 0 0">Nenhum cupom válido agora.</p>')
+            + (cupPerdidos.length ? `<p class="mini" style="margin:10px 0 0;color:var(--laranja)">Venceram sem usar: ${cupPerdidos.map((c) => `${brl(c.valor, 2)} (${esc(c.nome)}, ${dataBR(c.validade)})`).join(' · ')}. Financiar pelos parceiros da Belenergy gera cupom para a próxima compra: vale usar antes de vencer.</p>` : '')
+            + `<p class="mini" style="margin:8px 0 0">Conferido pelo robô em ${info.cuponsEm ? new Date(info.cuponsEm).toLocaleString('pt-BR') : '—'}.</p>`
+            : '<p class="sutil" style="margin:8px 0 0">Com o robô novo ligado, ele confere os cupons da sua conta Belenergy duas vezes por dia e mostra aqui antes de vencer.</p>'}</div></div>
+      <div class="lado" style="margin-top:14px"><div class="painel"><span class="rotulo">🔆 Módulos mais baratos nas últimas cotações</span>
+        ${mods.length ? `<table style="margin-top:8px">${mods.map(({ x, rw }) => `<tr><td>${esc(x.modulo_marca || '')} ${esc(String(x.modulo_w))} W<div class="mini">${esc(x.modulo_sku)}</div></td><td class="v">R$ ${n(rw, 3)}/W<div class="mini">${dataBR(x.cotado_em)}</div></td></tr>`).join('')}</table><p class="mini" style="margin:8px 0 0">Preço do módulo dentro do kit (com o desconto de kit do portal).</p>` : '<p class="sutil" style="margin:8px 0 0">Aparece com as cotações do robô novo (ele traz o preço de cada item).</p>'}</div>
+        <div class="painel"><span class="rotulo">⚡ Inversores cotados</span>
+          ${invs.length ? `<table style="margin-top:8px">${invs.map(({ x, un, kw }) => `<tr><td>${esc(x.inversor_marca || '')} ${kw ? n(kw, 1) + ' kW' : ''}<div class="mini">${esc(x.inversor_sku)}</div></td><td class="v">${brl(un, 0)}<div class="mini">${dataBR(x.cotado_em)}</div></td></tr>`).join('')}</table>` : '<p class="sutil" style="margin:8px 0 0">Aparece com as cotações do robô novo.</p>'}</div></div>`;
+    const recotar = async (o) => { const ped = pedidoRobo(o); ped.base.salvar = false; try { await B.filaRobo({ orc_codigo: o.id, tipo: 'cotar', pedido: ped }); o.aguardandoRobo = new Date().toISOString(); B.salvar(o); return true; } catch (e) { toast('Não consegui mandar para o robô: ' + e.message); return false; } };
+    app.querySelectorAll('[data-recotar]').forEach((b) => b.onclick = async () => { const o = B.obter(b.dataset.recotar); if (!o) return; b.disabled = true; if (await recotar(o)) { b.textContent = 'Na fila ✓'; toast('Pedido no robô: o preço novo entra sozinho na proposta.'); } else b.disabled = false; });
+    const todas = $('#rdTodas'); if (todas) todas.onclick = async () => { todas.disabled = true; let k = 0; const vistos = new Set(); for (const { o } of aten) { if (vistos.has(o.id)) continue; vistos.add(o.id); if (await recotar(o)) k++; } toast(`${k} proposta(s) na fila do robô`); todas.textContent = 'Na fila ✓'; };
+  }
+
   async function parceirosPag() {
     app.innerHTML = `${cabCelular()}<p class="sutil">Carregando parceiros…</p>`;
     let ps = [], inds = []; try { [ps, inds] = await Promise.all([B.parceiros(), B.indicacoes()]); } catch (e) { app.innerHTML = `${cabCelular()}<p class="sutil">Não consegui abrir os parceiros: ${esc(e.message)}</p>`; return; }
@@ -1925,7 +2034,9 @@
   function pedidoRobo(o) {
     let est = null; try { est = C.opcoes(o, P())[0]; } catch { /* sem consumo */ } const kwp = est ? +est.dim.kwpNecessario.toFixed(2) : 0, quais = o.cotarQuais || 'ambos';
     const base = { salvar: true, kwp, ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[o.ligacao] || 'BIFÁSICO', cidade: o.cidade || 'Ribeirão Preto', frete: P().freteRobo || 'Cliente Retira',
-      estruturaTipo: { ceramico: 'Colonial', fibrocimento: 'Telha Fibrocimento', metalico: 'Telha Metálico', laje: 'Laje', solo: 'Solo' }[o.telhado], fixacao: FIXACAO[o.telhado] ? o.fixacao || FIXACAO[o.telhado][0][0] : null };
+      estruturaTipo: TIPO_ESTR[o.telhado], fixacao: FIXACAO[o.telhado] ? o.fixacao || FIXACAO[o.telhado][0][0] : null,
+      // o robô do escritório não lê os Parâmetros: vão junto no pedido (escolha do módulo e do inversor)
+      custoPorPlaca: +P().maoDeObraPorPlaca || 0, regras: { overloadMin: P().roboOverloadMin, overloadMax: P().roboOverloadMax, modMinW: P().roboModMinW } };
     return { base, opcoes: NIVEIS_KIT.map((nivel, i) => ({ nivel, tipoInversor: TIPO_POR_OPCAO[i], nome: `${o.id} ${o.nome} ${nivel}` })).filter((x, i) => quais === 'ambos' || (quais === 'inversor' ? i === 0 : i === 1)) };
   }
   /* pré-proposta: o mesmo pedido, com o tamanho fixo */
@@ -2028,7 +2139,7 @@
     document.querySelectorAll('[data-rota]').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === (rota === 'lead' ? 'painel' : rota === 'servico' ? 'servicos' : rota)));
     try { const at = document.querySelector('.nav a.ativo'); if (at && innerWidth < 900) at.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch { /* */ }
     if (rota !== 'novo') { document.body.classList.remove('com-barra'); $('#barra').hidden = true; }
-    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') { diaPag(); setTimeout(avisoEspaco, 1200); } else if (rota === 'servicos') servicosPag(); else if (rota === 'clientes') clientesPag(); else if (rota === 'parceiros') parceirosPag(); else if (rota === 'arquivo') arquivoPag(); else if (rota === 'servico') servicoEd(arg); else if (rota === 'parametros') parametrosPag(); else painel(); };
+    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') { diaPag(); setTimeout(avisoEspaco, 1200); } else if (rota === 'servicos') servicosPag(); else if (rota === 'clientes') clientesPag(); else if (rota === 'parceiros') parceirosPag(); else if (rota === 'radar') radarPag(); else if (rota === 'arquivo') arquivoPag(); else if (rota === 'servico') servicoEd(arg); else if (rota === 'parametros') parametrosPag(); else painel(); };
     if (document.startViewTransition) {
       const t = document.startViewTransition(ir);
       [t.ready, t.finished, t.updateCallbackDone].forEach((pr) => pr && pr.catch(() => {})); // navegação rápida cancela a animação, sem problema

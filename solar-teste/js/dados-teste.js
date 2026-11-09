@@ -36,6 +36,10 @@
     // Custo fixo rateado
     custoFixoMes: 6000,                 // TESTE — aguardando custos reais
     obrasPrevistasMes: 4,
+    roboOverloadMin: 0,                  // robô: faixa de overload aceita no inversor (%): dentro dela, o mais barato
+    roboOverloadMax: 35,
+    roboModMinW: 0,                      // robô: placa mínima em W (0 = qualquer; ex.: 550 para evitar placa pequena)
+    validadeKitDias: 7,                  // preço do kit vale X dias: depois o sistema pede para recotar
     limiteMonoEmTriKw: 10,               // cliente trifásico: até X kW de inversor usa mono 220 V (entre 2 fases). CONFIRMAR com o engenheiro / GED-15303 CPFL
     kitRefWp: 1.35,                     // resposta rápida: kit médio por Wp (ajustar com as cotações)
     moduloRefW: 685,

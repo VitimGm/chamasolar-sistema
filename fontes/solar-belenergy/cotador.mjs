@@ -12,6 +12,10 @@
 //  /energy/componentesCC, /energy/componentesCA   tabelas com + / − / delete
 //  /energy/confirmar   Nome da proposta, Estado, Cidade, Dados de frete, Forma de pagamento,
 //                      "Valor da proposta" · botões Baixar PDF / Salvar / Comprar Agora (NUNCA clicado)
+// 08/11/2026: o robô também LÊ o JSON que o portal manda para a própria tela (API KitPersonalizado):
+//  Modulos/Inversor → lista com índice de preço · TipoEstrutura → nomes exatos ("Telha Metálica", com A)
+//  Confirmar/AlterarCarrinho → carrinho com o preço de cada item · BuscarCupons → cupons da conta.
+//  Só leitura: nada é enviado ao portal além dos cliques normais da tela.
 // Uso:  node cotador.mjs
 // =====================================================================
 import { chromium } from 'playwright';
@@ -43,7 +47,7 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
-const VERSAO = '2026-11-08a'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+const VERSAO = '2026-11-09a'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
 /* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
    Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
 const voando = new Map(); let ultimoFim = Date.now();
@@ -232,8 +236,84 @@ async function ajustarQtd(skuAlvo, alvo) { // usa + / − da própria linha (o A
 }
 async function ajustarItens(itens) { for (const it of itens || []) if (it.sku) await ajustarQtd(it.sku, Math.max(+it.qtd || 0, 0)); }
 
+/* ---------- O que o próprio portal responde (o JSON que a tela usa): preços e listas exatas ----------
+   Só leitura das respostas que o navegador já recebe. Nada é enviado ao portal além dos cliques da tela. */
+const API = {}; // nome → { t, json, req }
+const RX_API = /\/api\/(?:catalogo|carrinho)\/KitPersonalizado\/(Modulos|InversorFiltro|Inversor|TipoEstrutura|Estrutura|OutrosAC|Outros|Confirmar|AlterarCarrinho|BuscarCupons)\b/i;
+pg.on('response', async (r) => {
+  const m = r.url().match(RX_API); if (!m || r.request().method() === 'OPTIONS') return;
+  let req = null; try { req = r.request().postDataJSON(); } catch { /* GET */ }
+  let nome = m[1].toLowerCase(); if (nome === 'alterarcarrinho') nome = 'confirmar'; // os dois devolvem o carrinho inteiro
+  if (/^(estrutura|outros|outrosac)$/.test(nome) && req && req.sugestao === 1) nome += ':sug';
+  try { const json = await r.json(); if (json && json.isSucceed !== false) API[nome] = { t: Date.now(), json, req }; } catch { /* sem corpo */ }
+});
+let apiFunciona = true; // se a 1ª leitura (módulos) falhar, o portal mudou: as outras esperas ficam curtas e vale a tela
+async function esperarApi(nome, desde, ms = 60000) { const fim = Date.now() + (apiFunciona ? ms : Math.min(ms, 2500)); while (Date.now() < fim) { const a = API[nome]; if (a && a.t >= desde) return a; await pausa(100); } return null; }
+/* espera a resposta da API OU a tabela da tela (o que vier primeiro); com a tabela pronta, dá mais 3 s para a API */
+async function apiOuTela(nome, desde, filtro, ms) {
+  const pelaTela = (async () => { const n = await esperarLinhas(filtro, ms); return n ? esperarApi(nome, desde, 3000) : null; })();
+  return Promise.race([esperarApi(nome, desde, ms), pelaTela]);
+}
+const dadosApi = (nome) => (API[nome] && API[nome].json && API[nome].json.data) || null;
+const r2 = (v) => Math.round(v * 100) / 100;
+/* "índice" das listas do portal = preço de lista × fator (≈ 3,33 em 08/11/2026). O fator é conferido a cada
+   confirmação (índice ÷ preço do inversor no carrinho), então o preço estimado das listas acompanha o portal. */
+let FATOR = 3.3307;
+let ESTR = null; // tipos de estrutura e detalhes exatos (API TipoEstrutura) da cotação em andamento
+let AVISOS = []; // avisos desta cotação (vão para o sistema junto com o kit)
+let CUPONS = { em: 0, lista: [] };
+const semAcento = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+const ALIAS_TIPO = { 'telha metalico': 'telha metalica', metalico: 'telha metalica', metalica: 'telha metalica', ceramico: 'colonial', ceramica: 'colonial', fibrocimento: 'telha fibrocimento', shingle: 'telha shingle' };
+const chaveTipo = (t) => { const x = semAcento(t); return ALIAS_TIPO[x] || x; };
+function estruturasDaApi() {
+  const d = dadosApi('tipoestrutura'); if (!d || !Array.isArray(d.listTipos) || !d.listTipos.length) return null;
+  const est = {};
+  for (const t of [...d.listTipos].sort((a, b) => (a.ordem || 0) - (b.ordem || 0))) {
+    est[String(t.grupo || '').replace(/\s+/g, ' ').trim()] = [...(t.subGrupo || [])].sort((a, b) => (a.ordem || 0) - (b.ordem || 0)).map((x) => String(x.subGrupo || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  }
+  return est;
+}
+/* Listas da tela de estrutura (componente "combo" do portal): abre, escolhe pelo texto (sem acento/caixa) e confere */
+async function combo(seletor, alvo, igual = (a, b) => a === b) {
+  const caixa = pg.locator(seletor).first(); if (!(await caixa.count())) return null;
+  const campo = caixa.locator('.form-control').first();
+  for (let t = 0; t < 3; t++) {
+    const ops = caixa.locator('.combo-option');
+    if (!(await ops.first().isVisible().catch(() => false))) { await campo.click({ timeout: 5000 }).catch(() => {}); await ops.first().waitFor({ state: 'visible', timeout: 3000 }).catch(() => {}); }
+    const textos = (await ops.allInnerTexts().catch(() => [])).map((x) => x.replace(/\s+/g, ' ').trim());
+    if (!textos.length) continue;
+    let i = textos.findIndex((x) => igual(semAcento(x), semAcento(alvo)));
+    if (i < 0) i = textos.findIndex((x) => semAcento(x).startsWith(semAcento(alvo)));
+    if (i < 0) { await pg.keyboard.press('Escape').catch(() => {}); return { achou: false, opcoes: textos }; }
+    await ops.nth(i).click({ timeout: 4000 }).catch(() => {}); await pausa(350);
+    const agora = (await campo.innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+    if (semAcento(agora) === semAcento(textos[i])) return { achou: true, texto: textos[i], opcoes: textos };
+  }
+  return { achou: false, opcoes: [] };
+}
+async function fecharModal() {
+  const x = pg.locator('mat-dialog-container button, mat-dialog-container mat-icon').filter({ hasText: /^\s*close\s*$/i }).first();
+  if (await x.count()) await x.click({ timeout: 2000 }).catch(() => {});
+  await pg.keyboard.press('Escape').catch(() => {}); await pausa(300);
+}
+/* Cupons da conta (2× por dia): lê a lista do botão "Ver cupons" da confirmação e fecha. Não aplica nada. */
+async function conferirCupons() {
+  if (Date.now() - CUPONS.em < 12 * 3600e3) return;
+  try {
+    const b = botao(/^\s*Ver cupons/i); if (!(await b.count())) return;
+    const t0 = Date.now(); await b.click({ timeout: 4000 });
+    const a = await esperarApi('buscarcupons', t0, 8000);
+    if (a) CUPONS = { em: Date.now(), lista: (a.json.data || []).map((c) => ({ nome: String(c.nome || c.descricao || 'Cupom').slice(0, 60), valor: +c.valor || 0, validade: c.validade || null, usado: !!c.cupomUtilizado, habilitado: c.habilitado !== false, limitePct: +c.descontoLimite || null, primeiraCompra: !!c.primeiraCompra })) };
+    await fecharModal();
+    const validos = CUPONS.lista.filter((c) => !c.usado && c.habilitado && (!c.validade || new Date(c.validade) >= new Date(new Date().toDateString())));
+    if (validos.length) console.log(`Cupons válidos na Belenergy: ${validos.map((c) => `${c.nome} R$ ${c.valor.toFixed(2)} até ${String(c.validade || '').slice(0, 10)}`).join(' · ')}`);
+  } catch (err) { console.log('Não consegui ler os cupons: ' + String(err.message || err).slice(0, 100)); await fecharModal(); }
+}
+const cuponsValidos = () => CUPONS.lista.filter((c) => !c.usado && c.habilitado && (!c.validade || new Date(c.validade) >= new Date(new Date().toDateString())));
+
 /* ---------- etapas (mesma numeração do sistema) ---------- */
 const NOMES = ['potência', 'módulo', 'inversor', 'estrutura', 'itens da estrutura', 'elétricos CC', 'elétricos CA', 'confirmação'];
+NOMES[30] = 'voltar para a estrutura';
 async function passo(etapa, e = {}) {
   ultimoAviso = ''; const t0 = Date.now();
   try { const r = await passoInterno(etapa, e); const ms = Date.now() - t0; console.log(`Etapa ${etapa} pronta em ${(ms / 1000).toFixed(1)} s`); return { ...r, ms }; }
@@ -255,31 +335,52 @@ async function diagnostico(etapa, entrada, msg) {
   try { d.linhas = (await linhas('Código:')).slice(0, 40).map((r) => ({ sku: r.sku, nome: r.nome.slice(0, 80), qtd: r.qtd, sugerida: r.qtdSugerida })); } catch { /* */ }
   try { d.botoes = (await pg.locator('button:visible').allInnerTexts()).map((x) => x.trim()).filter(Boolean).slice(0, 30); } catch { /* */ }
   try { d.tela = (await pg.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ').slice(0, 2500); } catch { /* */ }
+  try { d.api = Object.fromEntries(Object.entries(API).map(([k, v]) => [k, new Date(v.t).toISOString()])); } catch { /* */ }
   try { d.print = (await pg.screenshot({ type: 'jpeg', quality: 45 })).toString('base64'); } catch { /* */ }
   try { const fs = await import('node:fs'); fs.mkdirSync(path.resolve('erros'), { recursive: true }); fs.writeFileSync(path.resolve('erros', 'ultimo-erro.json'), JSON.stringify({ ...d, print: undefined }, null, 2)); } catch { /* */ }
   return d;
 }
+const nomeInversor = (n) => String(n || '').replace(/^INVERSOR DE CORRENTE\s*/i, 'Inversor ');
+const tipoInv = (n) => (/H[IÍ]BRID/i.test(n) ? 'hibrido' : /MICRO/i.test(n) ? 'micro' : 'string');
 async function passoInterno(etapa, e = {}) {
   if (!(await logado())) throw new Error('A sessão da Belenergy expirou: faça login na janela do robô e tente de novo.');
   if (etapa === 0) {
+    AVISOS = []; ESTR = null;
     await pg.goto(BASE + '/energy/escolha-metodo'); await aguardarPortal(10000);
-    // "ESCOLHER" do Convencional não é <button>: clica pelo texto (o 1º é o Convencional)
     await semCookies();
+    // "ESCOLHER" do Convencional (o 1º da tela)
     await pg.locator('button:visible').filter({ hasText: /^\s*escolher\s*$/i }).first().click();
     await pg.locator('#inputPotencia').waitFor({ timeout: 30000 });
     await pg.locator('#inputPotencia').fill(String(e.kwp).replace(',', '.'));
+    const t0 = Date.now();
     await pg.locator('button:enabled').filter({ hasText: 'navigate_next' }).first().click();
+    const a = await apiOuTela('modulos', t0, 'MODULO', 90000); // o portal leva ~10 s para montar a lista
+    apiFunciona = !!a; if (!a) console.log('Não li a resposta da API de módulos: seguindo pela tela.');
+    const d = a && a.json.data;
+    if (d && Array.isArray(d.modulos) && d.modulos.length) {
+      await esperarLinhas('MODULO', 20000); // a tabela precisa estar na tela para marcar o módulo depois
+      const mods = d.modulos.map((m) => { const w = +m.potencia || 0, q = +m.numeroModulos || 0; return { sku: m.item, nome: String(m.descricaoItem || '').replace(/^MODULO\s*/i, ''), fabricante: m.fabricante || '', potenciaW: w, qtdSugerida: q, kwp: r2((q * w) / 1000), indice: +m.index || null, precoUnEst: m.index && w ? r2((m.index * w) / FATOR) : null, tipoCelula: m.tipoCelula || '', eficiencia: +m.eficiencia || null }; })
+        .filter((m) => m.sku && m.potenciaW > 0).sort((x, y) => (x.indice ?? 9e9) - (y.indice ?? 9e9)); // = "Menor Preço Por Watt"
+      return { etapa: 1, opcoes: { modulos: mods, fonte: 'api' } };
+    }
+    // sem a resposta da API: jeito antigo, pela tabela da tela
     if (!(await esperarLinhas('MODULO'))) throw new Error('o portal não listou módulos para ' + e.kwp + ' kWp');
     await pg.locator('select').filter({ hasText: 'Menor Preço Por Watt' }).first().selectOption({ label: 'Menor Preço Por Watt' }).catch(() => {});
     await aguardarPortal(8000); await esperarLinhas('MODULO', 15000);
     const mods = (await linhas('MODULO')).map((m) => ({ sku: m.sku, nome: m.nome.replace(/^MODULO\s*/i, ''), potenciaW: num(m.potencia) || num((m.nome.match(/(\d{3,4})W/) || [])[1]), qtdSugerida: m.qtdSugerida || m.qtd }));
-    return { etapa: 1, opcoes: { modulos: mods.map((m) => ({ ...m, kwp: Math.round(m.qtdSugerida * m.potenciaW / 10) / 100 })) } };
+    return { etapa: 1, opcoes: { modulos: mods.map((m) => ({ ...m, kwp: Math.round(m.qtdSugerida * m.potenciaW / 10) / 100 })), fonte: 'tela' } };
   }
   if (etapa === 1) {
     const linha = pg.locator('tr').filter({ hasText: 'Código: ' + e.moduloSku }).first();
     if (e.moduloQtd) await ajustarQtd(e.moduloSku, +e.moduloQtd);
-    await linha.locator('input[type=radio]').first().check({ force: true }); await pausa(600);
-    await proximo();
+    await linha.locator('input[type=radio]').first().check({ force: true }); await pausa(400);
+    const t1 = Date.now(); await proximo();
+    const f = await esperarApi('inversorfiltro', t1, 20000);
+    const d = f && f.json.data;
+    if (d && Array.isArray(d.listTipoInversor) && d.listTipoInversor.length) {
+      const tipos = [...d.listTipoInversor].sort((a, b) => (a.ordem || 0) - (b.ordem || 0)).map((x) => String(x.tipoInversor || '').toUpperCase()).filter(Boolean);
+      return { etapa: 2, opcoes: { tipos, ligacoes: ['MONOFÁSICO', 'BIFÁSICO', 'TRIFÁSICO'], tensoes: {}, fabricantes: (d.listFabricante || []).map((x) => x.fabricante).filter(Boolean), inversores: null } };
+    }
     const opcoes = async (fc) => { await pg.locator(`mat-select[formcontrolname="${fc}"]`).click(); await pg.locator('mat-option').first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {}); const t = await pg.locator('mat-option').allInnerTexts(); await pg.keyboard.press('Escape'); await pausa(200); return t.map((x) => x.trim()); };
     return { etapa: 2, opcoes: { tipos: await opcoes('tipoInversor'), ligacoes: ['MONOFÁSICO', 'BIFÁSICO', 'TRIFÁSICO'], tensoes: {}, fabricantes: (await pg.locator('ng-multiselect-dropdown li').allInnerTexts()).map((x) => x.trim()).filter((x) => x && !/Marcar Todos/i.test(x)), inversores: null } };
   }
@@ -297,30 +398,70 @@ async function passoInterno(etapa, e = {}) {
       await pg.locator('body').click({ position: { x: 5, y: 5 } }); await pausa(400);
     }
     await aguardarPortal(15000);
-    await botao(/FILTRAR/i).click({ timeout: 15000 });
-    // sistemas grandes demoram para listar ("Carregando..."): espera até 90 s e, se vier vazio, filtra de novo uma vez
-    if (!(await esperarLinhas('INVERSOR|MICRO', 90000).catch(() => 0))) {
-      await aguardarPortal(20000); await botao(/FILTRAR/i).click({ timeout: 15000 }).catch(() => {}); await esperarLinhas('INVERSOR|MICRO', 90000);
+    let tf = Date.now(); await botao(/FILTRAR/i).click({ timeout: 15000 });
+    let a = await apiOuTela('inversor', tf, 'INVERSOR|MICRO', 90000);
+    if (!a && !(await esperarLinhas('INVERSOR|MICRO', 5000).catch(() => 0))) { // sistemas grandes demoram: filtra de novo uma vez
+      await aguardarPortal(20000); tf = Date.now(); await botao(/FILTRAR/i).click({ timeout: 15000 }).catch(() => {}); a = await apiOuTela('inversor', tf, 'INVERSOR|MICRO', 90000);
     }
-    const invs = (await linhas('INVERSOR|MICRO')).map((v) => ({ sku: v.sku, nome: v.nome.replace(/^INVERSOR DE CORRENTE\s*/i, 'Inversor '), potenciaKw: parseFloat(String((v.nome.match(/(\d+(?:[.,]\d+)?)\s*KW/i) || [])[1] || '0').replace(',', '.')) || 0, qtd: v.qtdSugerida || 1, overload: num(v.overload), tipo: /H[IÍ]BRID/i.test(v.nome) ? 'hibrido' : /MICRO/i.test(v.nome) ? 'micro' : 'string', fabricante: (v.nome.match(/(AUXSOL|DEYE|GROWATT|HUAWEI|SOLIS|SUNGROW|HOYMILES|TSUNESS|ENPHASE)/i) || [])[1] || '' }));
+    await esperarLinhas('INVERSOR|MICRO', a ? 15000 : 90000).catch(() => 0);
+    let invs;
+    const d = a && a.json.data, kwpSis = +(a && a.req && a.req.potenciaProjeto) || 0;
+    if (d && Array.isArray(d.inversores) && d.inversores.length) {
+      invs = d.inversores.map((v) => { const n = +v.numInversores || 1, kwU = +v.potenciaNominalSaida || 0, kwT = kwU * n; return { sku: v.item, nome: nomeInversor(v.descricaoItem), potenciaKw: r2(kwT), potenciaUnKw: kwU, qtd: n, overload: kwT && kwpSis ? r2((kwpSis / kwT - 1) * 100) : 0, indice: +v.index || null, precoEst: v.index ? r2(v.index / FATOR) : null, tipo: tipoInv(v.descricaoItem || v.tipoInversor), fabricante: v.fabricante || '', maxEntradaKw: r2((+v.maxPotenciaEntrada || 0) * n), mppts: +v.numMPPTs || null }; });
+      // a % de overload da tela é a referência (se a conta divergir, fica a da tela)
+      const tela = await linhas('INVERSOR|MICRO').catch(() => []);
+      for (const v of invs) { const t = tela.find((x) => x.sku === v.sku); if (t && t.overload != null && t.overload !== undefined && String(t.overload).trim() !== '') v.overload = num(t.overload); }
+    } else {
+      invs = (await linhas('INVERSOR|MICRO')).map((v) => { const kwU = parseFloat(String((v.nome.match(/(\d+(?:[.,]\d+)?)\s*KW/i) || [])[1] || '0').replace(',', '.')) || 0, n = v.qtdSugerida || 1; return { sku: v.sku, nome: nomeInversor(v.nome), potenciaKw: r2(kwU * n), potenciaUnKw: kwU, qtd: n, overload: num(v.overload), tipo: tipoInv(v.nome), fabricante: (v.nome.match(/(AUXSOL|DEYE|GROWATT|HUAWEI|SOLIS|SUNGROW|HOYMILES|TSUNESS|ENPHASE|FOX ?ESS|SAJ)/i) || [])[1] || '' }; });
+    }
     return { etapa: 2, opcoes: { tipos: [e.tipoInversor], ligacoes: [e.ligacao], tensoes: { [e.ligacao]: tensoes }, fabricantes: [], inversores: invs } };
   }
   if (etapa === 2) {
-    await pg.locator('tr').filter({ hasText: 'Código: ' + e.inversorSku }).first().locator('input[type=checkbox]').check({ force: true }); await pausa(600);
-    await proximo();
-    const tipos = []; // lê as opções reais de tipo de estrutura
-    await pg.getByText(exato('Tipo de estrutura')).locator('xpath=following-sibling::*[1]').click().catch(() => {}); await pausa(600);
-    for (const t of ['Colonial', 'Telha Fibrocimento', 'Telha Metálico', 'Telha Shingle', 'Laje', 'Solo']) if (await pg.getByText(exato(t)).count()) tipos.push(t);
-    await pg.keyboard.press('Escape');
-    const estruturas = Object.fromEntries(tipos.map((t) => [t, []]));
-    return { etapa: 3, opcoes: { estruturas, orientacoes: ['Retrato', 'Paisagem'], sugestao: { linhas: 1, modulosPorLinha: 0 }, detalhesSobDemanda: true } };
+    await pg.locator('tr').filter({ hasText: 'Código: ' + e.inversorSku }).first().locator('input[type=checkbox]').check({ force: true }); await pausa(400);
+    const t2 = Date.now(); await proximo();
+    await esperarApi('tipoestrutura', t2, 20000);
+    ESTR = estruturasDaApi();
+    if (!ESTR) { // jeito antigo: abre a lista de tipos e lê os nomes
+      const tipos = [];
+      await pg.locator('app-tipo-de-estrutura .form-control').first().click().catch(() => {}); await pausa(600);
+      for (const t of await pg.locator('app-tipo-de-estrutura .combo-option').allInnerTexts().catch(() => [])) if (t.trim()) tipos.push(t.replace(/\s+/g, ' ').trim());
+      await pg.keyboard.press('Escape').catch(() => {});
+      return { etapa: 3, opcoes: { estruturas: Object.fromEntries(tipos.map((t) => [t, []])), orientacoes: ['Retrato', 'Paisagem'], sugestao: { linhas: 1, modulosPorLinha: 0 }, detalhesSobDemanda: true } };
+    }
+    return { etapa: 3, opcoes: { estruturas: ESTR, orientacoes: ['Retrato', 'Paisagem'], sugestao: { linhas: 1, modulosPorLinha: 0 }, detalhesSobDemanda: false } };
+  }
+  if (etapa === 30) { // mesmo módulo e inversor, outra estrutura: volta da confirmação até a estrutura
+    if (!/\/energy\/confirmar/.test(pg.url())) throw new Error('não estou na confirmação de uma cotação para reaproveitar');
+    const comps = ((((dadosApi('confirmar') || {}).itens || [])[0] || {}).componentes) || [];
+    const mod = comps.find((c) => c.tipoKitMontado === 'modulo');
+    if (e.moduloSku && (!mod || mod.sku !== e.moduloSku || (+e.moduloQtd && +mod.quantidade !== +e.moduloQtd))) throw new Error('o kit da tela não é o mesmo da cotação anterior');
+    if (e.inversorSku && !comps.some((c) => c.tipoKitMontado === 'inversor' && c.sku === e.inversorSku)) throw new Error('o inversor da tela não é o mesmo da cotação anterior');
+    AVISOS = [];
+    for (let k = 0; k < 4 && !/\/energy\/estrutura/.test(pg.url()); k++) {
+      const antes = pg.url(); await aguardarPortal(6000);
+      await botao(/^\s*voltar\s*$/i).click({ timeout: 8000 });
+      await pg.waitForURL((u) => u.toString() !== antes, { timeout: 10000 }).catch(() => {});
+    }
+    if (!/\/energy\/estrutura/.test(pg.url())) throw new Error('não consegui voltar para a tela de estrutura');
+    await aguardarPortal(6000);
+    return { etapa: 3, opcoes: { estruturas: ESTR || {}, orientacoes: ['Retrato', 'Paisagem'], sugestao: { linhas: 1, modulosPorLinha: 0 }, detalhesSobDemanda: !ESTR } };
   }
   if (etapa === 3) {
+    // voltou da confirmação: o arranjo fica travado até "MODIFICAR LAYOUT"
+    const mod = botao(/MODIFICAR LAYOUT/i); if (await mod.count()) { await mod.click(); await aguardarPortal(5000); }
     if (e.semEstrutura) { await pg.getByText(exato('Sem Estrutura')).click(); await pausa(800); return { etapa: 4, opcoes: { itens: [] } }; }
-    await listaCustom('Tipo de estrutura', e.estruturaTipo); await aguardarPortal(8000);
-    // Fibrocimento e laje pedem "Detalhes da Estrutura" (tipo de fixação/terça). Sem detalhe escolhido o CALCULAR fica travado:
-    // usa o detalhe pedido (Parâmetros) ou a primeira opção do portal; se o botão não liberar, tenta as próximas.
-    const detalhes = await listarDetalhes();
+    const tipos = Object.keys(ESTR || {});
+    const tipoPortal = tipos.find((t) => chaveTipo(t) === chaveTipo(e.estruturaTipo)) || e.estruturaTipo;
+    if (tipos.length && !tipos.some((t) => chaveTipo(t) === chaveTipo(e.estruturaTipo))) throw new Error(`o portal não tem a estrutura "${e.estruturaTipo}" (tem: ${tipos.join(', ')})`);
+    const rt = await combo('app-tipo-de-estrutura', tipoPortal, (a, b) => chaveTipo(a) === chaveTipo(b));
+    let tipoUsado = rt && rt.achou ? rt.texto : null;
+    if (!tipoUsado) { // tela diferente da mapeada: jeito antigo
+      if (!(await listaCustom('Tipo de estrutura', tipoPortal))) throw new Error(`não consegui escolher a estrutura "${e.estruturaTipo}"${rt && rt.opcoes && rt.opcoes.length ? ' (a tela tem: ' + rt.opcoes.join(', ') + ')' : ''}`);
+      tipoUsado = tipoPortal;
+    }
+    await aguardarPortal(6000);
+    const detalhes = ESTR && ESTR[tipoPortal] && ESTR[tipoPortal].length ? ESTR[tipoPortal] : await listarDetalhes();
+    // fixação pedida primeiro; se o "Calcular" não liberar, tenta as próximas (e avisa: muda o preço)
     const fila = [...new Set([e.estruturaDetalhe, ...detalhes].filter(Boolean))].slice(0, 4);
     const preencher = async () => {
       await pg.locator('#numero-linhas').first().fill(String(e.linhas)); await pg.locator('#modulos-linha').first().fill(String(e.modulosPorLinha));
@@ -328,41 +469,51 @@ async function passoInterno(etapa, e = {}) {
     };
     const calc = botao(/CALCULAR ESTRUTURA/i), liberou = async (ms) => { for (let k = 0; k < ms / 250 && (await calc.isDisabled().catch(() => false)); k++) await pausa(250); return !(await calc.isDisabled().catch(() => false)); };
     let detalheUsado = null;
-    if (!fila.length) { await preencher(); }
+    if (!fila.length) await preencher();
     for (const d of fila) {
-      if (await listaCustom('Detalhes da Estrutura', d)) detalheUsado = d;
+      const rd = await combo('app-detalhes-estrutura', d);
+      if (rd && rd.achou) detalheUsado = rd.texto; else if (await listaCustom('Detalhes da Estrutura', d)) detalheUsado = d;
       await preencher();
       if (await liberou(4000)) break;
       console.log(`"Calcular estrutura" não liberou com "${d}": tentando outra opção.`); detalheUsado = null;
     }
-    if (detalheUsado) console.log('Detalhe da estrutura: ' + detalheUsado);
+    if (detalheUsado) console.log('Estrutura: ' + tipoUsado + ' · ' + detalheUsado);
+    if (e.estruturaDetalhe && detalheUsado && semAcento(detalheUsado) !== semAcento(e.estruturaDetalhe)) AVISOS.push(`A fixação pedida (${e.estruturaDetalhe}) não liberou no portal: foi cotado com "${detalheUsado}".`);
     if (!(await liberou(3000))) {
       const x = new Error(`o portal não liberou "Calcular estrutura" para ${e.estruturaTipo}${detalhes.length ? ` (detalhes do portal: ${detalhes.join(' / ')})` : ' (não achei a lista de detalhes)'} com ${e.linhas} linha(s) de ${e.modulosPorLinha}`);
       x.html = await htmlDaTela('Tipo de estrutura', 'Módulos por linha'); throw x;
     }
-    await calc.click({ timeout: 10000 }); await esperarLinhas('.', 45000);
-    return { etapa: 4, opcoes: { detalhes, detalheUsado, itens: (await linhas('Código:')).map((x) => ({ sku: x.sku, nome: x.nome, qtd: x.qtd })) } };
+    const tc = Date.now(); await calc.click({ timeout: 10000 });
+    const a = await apiOuTela('estrutura:sug', tc, '.', 45000);
+    await esperarLinhas('.', a ? 10000 : 45000);
+    return { etapa: 4, opcoes: { detalhes, detalheUsado, tipoUsado, itens: (await linhas('Código:')).map((x) => ({ sku: x.sku, nome: x.nome, qtd: x.qtd })) } };
   }
   if (etapa === 4 || etapa === 5) {
-    await aguardarPortal(); await ajustarItens(e.itens); await proximo();
-    await esperarLinhas('.', 20000).catch(() => {});
+    await aguardarPortal(); await ajustarItens(e.itens);
+    const tp = Date.now(); await proximo();
+    const a = await esperarApi(etapa === 4 ? 'outros:sug' : 'outrosac:sug', tp, 20000);
+    await esperarLinhas('.', a ? 6000 : 20000).catch(() => {});
     return { etapa: etapa + 1, opcoes: { itens: (await linhas('Código:')).map((x) => ({ sku: x.sku, nome: x.nome, qtd: x.qtd })) } };
   }
   if (etapa === 6) {
-    await aguardarPortal(); await ajustarItens(e.itens); await proximo();
-    await aguardarPortal();
+    await aguardarPortal(); await ajustarItens(e.itens);
+    let tp = Date.now(); await proximo();
+    let a = await esperarApi('confirmar', tp, 25000);
     // garantia: se ainda estiver nos componentes CA (portal não trocou de tela), avança mais uma vez
-    if (!/Valor d[ao]s? (?:proposta|produtos)|Nome da proposta/i.test(await pg.evaluate(() => document.body.innerText))) { console.log('Ainda nos componentes CA: tentando avançar de novo.'); await pausa(2000); await proximo(); await aguardarPortal(); }
+    if (!/Valor d[ao]s? (?:proposta|produtos)|Nome da proposta/i.test(await pg.evaluate(() => document.body.innerText))) { console.log('Ainda nos componentes CA: tentando avançar de novo.'); await pausa(2000); tp = Date.now(); await proximo(); a = await esperarApi('confirmar', tp, 25000); }
+    await aguardarPortal(8000);
     const t = await pg.evaluate(() => document.body.innerText);
-    return { etapa: 7, opcoes: { fretes: ['Cliente Retira', 'Transportadora escolhida pelo cliente', 'Belenus Entrega no Cliente'], pagamentos: ['Plano de Pagamento', 'Outras Formas de Pagamento'], valorProdutos: num((t.match(/Valor dos produtos:\s*R\$\s*([\d.,]+)/) || [])[1]) } };
+    const cart = a && a.json.data;
+    return { etapa: 7, opcoes: { fretes: ['Cliente Retira', 'Transportadora escolhida pelo cliente', 'Belenus Entrega no Cliente'], pagamentos: ['Plano de Pagamento', 'Outras Formas de Pagamento'], valorProdutos: (cart && +cart.totalProdutos) || num((t.match(/Valor dos produtos:\s*R\$\s*([\d.,]+)/) || [])[1]) } };
   }
   if (etapa === 7) {
-    // cada campo com espera curta: o que não existir na tela é pulado na hora (antes esperava 30 s por campo)
+    // cada campo com espera curta: o que não existir na tela é pulado na hora
     const escolher = async (texto) => {
       if (!texto) return;
       const sel = pg.locator('select').filter({ has: pg.locator('option', { hasText: rx(texto) }) }).first();
       if (!(await sel.count())) { console.log('Sem a opção "' + texto + '" na confirmação: mantido o padrão do portal.'); return; }
       const rot = (await sel.locator('option', { hasText: rx(texto) }).first().textContent({ timeout: 3000 }) || '').trim();
+      if ((await sel.evaluate((s) => (s.options[s.selectedIndex] || {}).text || '').catch(() => '')).trim() === rot) return; // já está escolhido
       await sel.selectOption({ label: rot }, { timeout: 5000 }).catch(() => {}); await aguardarPortal(6000);
     };
     const nome = pg.getByText('Nome da proposta:', { exact: false }).locator('xpath=following::input[1]');
@@ -370,10 +521,26 @@ async function passoInterno(etapa, e = {}) {
     await escolher(e.estadoEntrega); await escolher(e.cidadeEntrega); await escolher(e.frete);
     await aguardarPortal(10000);
     if (e.pagamento && /Outras/.test(e.pagamento)) await pg.getByText('Outras Formas de Pagamento').first().click({ timeout: 3000 }).catch(() => {});
-    await pausa(800);
+    await pausa(500);
+    await conferirCupons();
     let t = await pg.evaluate(() => document.body.innerText);
-    const valor = num((t.match(/Valor da proposta:\s*R\$\s*([\d.,]+)/) || t.match(/(?:Valor total|Total da proposta|Total geral)[^R]{0,20}R\$\s*([\d.,]+)/i) || [])[1]);
-    const produtos = num((t.match(/Valor dos produtos:\s*R\$\s*([\d.,]+)/) || [])[1]);
+    const valorTela = num((t.match(/Valor da proposta:\s*R\$\s*([\d.,]+)/) || t.match(/(?:Valor total|Total da proposta|Total geral)[^R]{0,20}R\$\s*([\d.,]+)/i) || [])[1]);
+    const produtosTela = num((t.match(/Valor dos produtos:\s*R\$\s*([\d.,]+)/) || [])[1]);
+    // carrinho do portal (mesmo JSON da tela): preço de cada item, desconto do kit, frete
+    const cart = dadosApi('confirmar');
+    const kit = cart && Array.isArray(cart.itens) ? cart.itens[0] || {} : {};
+    const comps = Array.isArray(kit.componentes) ? kit.componentes : [];
+    const itensPreco = comps.map((c) => ({ sku: c.sku, nome: String(c.descricaoProduto || '').slice(0, 120), tipo: c.tipoKitMontado || '', qtd: +c.quantidade || 0, precoBruto: +c.precoBruto || 0 })).filter((c) => c.sku);
+    const bruto = +kit.precoBruto || itensPreco.reduce((s2, c) => s2 + c.precoBruto * c.qtd, 0);
+    const descontoKit = bruto && +kit.totalItem ? Math.round((1 - kit.totalItem / bruto) * 10000) / 10000 : null;
+    const produtosApi = cart ? +(cart.totalProdutos ?? cart.totalSemFrete) || 0 : 0;
+    let freteApi = 0; try { const fr = cart && (typeof cart.frete === 'string' ? JSON.parse(cart.frete) : cart.frete); freteApi = +(fr && fr.valorFrete) || 0; } catch { /* */ }
+    const iv = comps.find((c) => c.tipoKitMontado === 'inversor' && +c.index > 0 && +c.precoBruto > 0);
+    if (iv) { const f = iv.index / iv.precoBruto; if (f > 1 && f < 10) FATOR = f; }
+    const produtos = produtosTela || produtosApi;
+    const valor = valorTela || (produtosApi ? produtosApi + freteApi : 0);
+    if (valorTela && produtosApi && Math.abs(valorTela - (produtosApi + freteApi)) > Math.max(2, valorTela * 0.01)) AVISOS.push(`Valor da tela (R$ ${valorTela.toFixed(2)}) diferente do carrinho do portal (R$ ${(produtosApi + freteApi).toFixed(2)}): confira no portal.`);
+    if (cart && (+cart.acrescimoPlanoDePagamento > 0)) AVISOS.push(`O plano de pagamento do portal tem acréscimo de R$ ${(+cart.acrescimoPlanoDePagamento).toFixed(2)}.`);
     let numero = 'não salvo', pdf = null, diagSalvar = null;
     const fs = await import('node:fs');
     const guardarPdf = async (acao, nomeArq) => {
@@ -384,7 +551,7 @@ async function passoInterno(etapa, e = {}) {
       return buf.length < 4e6 ? { nome: nomeArq, base64: buf.toString('base64') } : null;
     };
     if (e.salvar) { // só com a caixa "Salvar na Belenergy" marcada pelo vendedor
-      // 1) forma de pagamento: sem ela o portal não deixa salvar. Abre "Formas de pagamento" e escolhe Pix.
+      // 1) forma de pagamento: sem ela o portal não deixa salvar. Abre "Formas de pagamento" e escolhe Pix (mesmo preço, conferido em 08/11/2026).
       const pagTxt = async () => pg.evaluate(() => document.body.innerText);
       if (!/Forma de pagamento:\s*\n?\s*(Pix|Boleto|Financiamento|Cart)/i.test(await pagTxt())) {
         const abrir = pg.getByText(/Outras formas de pagamento|Forma de pagamento/i).last();
@@ -428,21 +595,39 @@ async function passoInterno(etapa, e = {}) {
     }
     // "Comprar Agora" NUNCA é clicado por este robô.
     if (!(valor || produtos)) { const f = await printErro('confirmacao'); throw new Error('Não achei o valor do kit na tela de confirmação' + (f ? ' · print salvo em ' + f : '')); }
-    return { etapa: 8, final: { valorKit: valor || produtos, valorProdutos: produtos, frete: Math.max((valor || produtos) - produtos, 0), numero, pdf, diagSalvar } };
+    if (AVISOS.length) console.log('Avisos desta cotação: ' + AVISOS.join(' | '));
+    return { etapa: 8, final: { valorKit: valor || produtos, valorProdutos: produtos, frete: Math.max((valor || produtos) - produtos, 0), numero, pdf, diagSalvar, itensPreco: itensPreco.length ? itensPreco : null, descontoKit, fonte: cart ? 'api' : 'tela', avisos: AVISOS, cupons: cuponsValidos(), pagamento: (cart && cart.descricaoPagamento) || null, versao: VERSAO } };
   }
   throw new Error('Etapa desconhecida: ' + etapa);
 }
 
-/* Detalhes da estrutura dependem do tipo: rota extra para o sistema buscar */
+/* Detalhes da estrutura dependem do tipo: rota extra para o sistema buscar (com a lista da API é na hora) */
 async function detalhes(tipo) {
+  if (ESTR) { const t = Object.keys(ESTR).find((x) => chaveTipo(x) === chaveTipo(tipo)); if (t && ESTR[t].length) return ESTR[t]; }
   try { return await detalhesInterno(tipo); } catch (err) { console.error(err); await printErro('detalhes'); return []; }
 }
 async function detalhesInterno(tipo) {
-  await listaCustom('Tipo de estrutura', tipo);
-  await pg.getByText(rx('Detalhes da Estrutura')).first().locator('xpath=following-sibling::*[1]').click({ timeout: 4000 }).catch(() => {}); await pausa(700);
-  const t = await pg.evaluate(() => [...document.querySelectorAll('*')].filter((e) => e.children.length === 0 && /^Modelo /.test((e.innerText || '').trim())).map((e) => e.innerText.trim()));
+  const rt = await combo('app-tipo-de-estrutura', tipo, (a, b) => chaveTipo(a) === chaveTipo(b));
+  if (!rt || !rt.achou) await listaCustom('Tipo de estrutura', tipo);
+  await pg.locator('app-detalhes-estrutura .form-control').first().click({ timeout: 4000 }).catch(() => {}); await pausa(700);
+  let t = (await pg.locator('app-detalhes-estrutura .combo-option').allInnerTexts().catch(() => [])).map((x) => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (!t.length) t = await pg.evaluate(() => [...document.querySelectorAll('*')].filter((e) => e.children.length === 0 && /^Modelo /.test((e.innerText || '').trim())).map((e) => e.innerText.trim()));
   await pg.keyboard.press('Escape'); return [...new Set(t)];
 }
+
+/* ---------- vez de usar o navegador: uma cotação por vez ----------
+   A cotação do sistema (vendedor) e a da fila (Jarvis/pré-propostas) não podem se misturar na mesma tela. */
+let dono = null, donoUltimo = 0, sessaoDono = null;
+const LIVRE_APOS = { sistema: 10 * 60e3, fila: 3 * 60e3 }; // sem uso por esse tempo, a vez fica livre
+const ocupadoPor = (quem) => dono && dono !== quem && Date.now() - donoUltimo < LIVRE_APOS[dono];
+async function esperarVez(quem, etapa) {
+  const fim = Date.now() + 5 * 60e3;
+  while (ocupadoPor(quem) && Date.now() < fim) await pausa(1000);
+  if (ocupadoPor(quem)) throw Object.assign(new Error('O robô está ocupado com outra cotação. Tente de novo em 1 minuto.'), { ocupado: true });
+  if (etapa !== 0 && etapa !== 30 && sessaoDono && sessaoDono !== quem) throw new Error('O robô foi usado por outra cotação no meio desta: comece a cotação de novo.');
+  dono = quem; donoUltimo = Date.now(); if (etapa === 0 || etapa === 30) sessaoDono = quem;
+}
+const liberar = (quem) => { if (dono === quem) dono = null; };
 
 /* ---------- servidor local ---------- */
 let fila = Promise.resolve();
@@ -450,26 +635,35 @@ http.createServer((req, res) => {
   const origem = req.headers.origin || 'null';
   const ok = ORIGENS_OK.some((re) => re.test(origem));
   res.setHeader('Access-Control-Allow-Origin', ok ? origem : 'null');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Dono');
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
   res.setHeader('Content-Type', 'application/json');
   if (req.method === 'OPTIONS') return res.end();
   if (!ok) { res.statusCode = 403; return res.end(JSON.stringify({ erro: 'Origem não autorizada' })); }
+  const quem = /fila/i.test(String(req.headers['x-dono'] || '')) ? 'fila' : 'sistema';
   let corpo = ''; req.on('data', (c) => { corpo += c; if (corpo.length > 2e5) req.destroy(); });
   req.on('end', () => {
-    if (req.url === '/status') return logado().then((l) => res.end(JSON.stringify({ ok: true, logado: l, versao: VERSAO })));
+    if (req.url === '/status') return logado().catch(() => false).then((l) => res.end(JSON.stringify({ ok: true, logado: l, versao: VERSAO, ocupado: ocupadoPor('ninguém') ? dono : null })));
     const rodar = (fn) => { fila = fila.then(async () => { try { res.end(JSON.stringify(await fn())); } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ erro: String(e.message || e), diag: e.diag || null })); } }); };
-    if (req.url === '/passo' && req.method === 'POST') { const { etapa, entrada } = JSON.parse(corpo || '{}'); return rodar(() => passo(+etapa, entrada)); }
-    if (req.url === '/detalhes' && req.method === 'POST') { const { tipo } = JSON.parse(corpo || '{}'); return rodar(async () => ({ detalhes: await detalhes(tipo) })); }
+    if (req.url === '/passo' && req.method === 'POST') {
+      let pedido = {}; try { pedido = JSON.parse(corpo || '{}'); } catch { /* */ }
+      const etapa = +pedido.etapa;
+      return esperarVez(quem, etapa).then(() => rodar(async () => {
+        try { const r = await passo(etapa, pedido.entrada); if (r.final) liberar(quem); else donoUltimo = Date.now(); return r; }
+        catch (e) { liberar(quem); throw e; }
+      })).catch((e) => { res.statusCode = e.ocupado ? 409 : 500; res.end(JSON.stringify({ erro: String(e.message || e) })); });
+    }
+    if (req.url === '/detalhes' && req.method === 'POST') { let tipo = ''; try { tipo = JSON.parse(corpo || '{}').tipo; } catch { /* */ } return rodar(async () => ({ detalhes: await detalhes(tipo) })); }
     res.statusCode = 404; res.end('{}');
   });
-}).listen(PORTA, '127.0.0.1', () => console.log(`Cotador pronto em http://127.0.0.1:${PORTA}. Faça login na janela, se pedir.`));
+}).listen(PORTA, '127.0.0.1', () => console.log(`Cotador ${VERSAO} pronto em http://127.0.0.1:${PORTA}. Faça login na janela, se pedir.`));
 
 // =====================================================================
 // FILA DO JARVIS: com o arquivo robo-config.json ({ "chave": "..." }) nesta pasta,
 // o robô olha a fila do sistema a cada minuto, cota o que foi pedido (do celular,
-// pelo Jarvis) e devolve o kit real. Usa o mesmo passo a passo do sistema
-// (cotador-sistema.js), falando com este próprio robô em 127.0.0.1.
+// pelo Jarvis, e as pré-propostas da manhã) e devolve o kit real. Usa o mesmo passo
+// a passo do sistema (cotador-sistema.js), falando com este próprio robô em 127.0.0.1.
+// Pré-propostas do mesmo tamanho são cotadas juntas: só a estrutura muda (bem mais rápido).
 // =====================================================================
 const SB_URL = 'https://jmpvmyyokikpwphwylob.supabase.co';
 const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImptcHZteXlva2lrcHdwaHd5bG9iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIyMTc1MzEsImV4cCI6MjEwNzc5MzUzMX0.e5XT2R7eOj3x-ZYcRFkY4OFg0QEr3_guxT6-W0xpnfY';
@@ -482,29 +676,53 @@ async function orquestrador() {
   if (Cot) return Cot;
   const fs = await import('node:fs'), vm = await import('node:vm');
   globalThis.window = globalThis;
+  globalThis.__donoRobo = 'fila'; // as chamadas da fila se identificam (não se misturam com a do vendedor)
   vm.runInThisContext(fs.readFileSync(path.resolve('cotador-sistema.js'), 'utf8'), { filename: 'cotador-sistema.js' });
   Cot = globalThis.Cotador; return Cot;
+}
+const erroDeVerdade = (m) => /não tem|sessão|expirou|chave/i.test(m); // não adianta repetir
+async function cotarComNovaTentativa(C, base, log) {
+  try { return await C.cotarAuto('conectado', base, log); }
+  catch (e) { const m = String(e.message || e); if (erroDeVerdade(m)) throw e; console.log('  falhou (' + m.slice(0, 120) + '): tentando de novo do começo'); await pausa(3000); return C.cotarAuto('conectado', base, log); }
 }
 async function filaVez(chave) {
   if (filaOcupada) return; filaOcupada = true;
   try {
-    try { let lg = null; try { lg = await logado(); } catch { /* navegador fechado */ } await filaRpc('sol_robo_ping', { p_segredo: chave, p_versao: VERSAO, p_logado: lg, p_maquina: os.hostname(), p_info: { pasta: process.cwd(), node: process.version } }); } catch (e) { console.log('Fila: não consegui avisar o sistema que estou ligado: ' + String(e.message || e).slice(0, 120)); }
+    try { let lg = null; try { lg = await logado(); } catch { /* navegador fechado */ } await filaRpc('sol_robo_ping', { p_segredo: chave, p_versao: VERSAO, p_logado: lg, p_maquina: os.hostname(), p_info: { pasta: process.cwd(), node: process.version, ocupado: dono, cupons: CUPONS.lista, cuponsEm: CUPONS.em ? new Date(CUPONS.em).toISOString() : null, fatorIndice: Math.round(FATOR * 10000) / 10000 } }); } catch (e) { console.log('Fila: não consegui avisar o sistema que estou ligado: ' + String(e.message || e).slice(0, 120)); }
+    if (ocupadoPor('fila')) return; // o vendedor está cotando agora: a fila espera
     try { const n = await filaRpc('sol_robo_pre_agendar', { p_segredo: chave }); if (n) console.log(`Fila: ${n} pré-proposta(s) do dia agendada(s)`); } catch (e) { /* sem pré-propostas */ }
     const j = await filaRpc('sol_robo_proximo', { p_segredo: chave }); if (!j) return;
-    console.log(`Fila: ${j.tipo === 'pre' ? 'pré-proposta ' + (j.pedido.rotulo || '') : 'pedido ' + (j.orc_codigo || j.id)} (${(j.pedido.opcoes || []).map((x) => x.nivel).join(' + ')})`);
-    const C = await orquestrador(), kits = [], erros = [];
+    let grupo = [j];
+    if (j.tipo === 'pre') { try { const extra = await filaRpc('sol_robo_mesmo_kit', { p_segredo: chave, p_id: j.id }); if (Array.isArray(extra) && extra.length) grupo = grupo.concat(extra); } catch { /* sozinha */ } }
+    console.log(`Fila: ${grupo.map((g) => (g.tipo === 'pre' ? 'pré-proposta ' + (g.pedido.rotulo || g.pedido.base.kwp + ' kWp') : 'pedido ' + (g.orc_codigo || g.id))).join(' + ')} (${(j.pedido.opcoes || []).map((x) => x.nivel).join(' + ')})`);
+    const C = await orquestrador(), t0 = Date.now();
+    const res = new Map(grupo.map((g) => [g.id, { kits: [], erros: [] }]));
     for (const op of j.pedido.opcoes || []) {
-      try { const s = await C.cotarAuto('conectado', { ...j.pedido.base, tipoInversor: op.tipoInversor, nome: op.nome }, (et) => console.log(`  ${op.nivel}: ${et}`)); const k = C.paraKit(s, op.nivel); if (k.valorKit > 0) kits.push(k); else erros.push(op.nivel + ': valor R$ 0'); }
-      catch (e) { erros.push(op.nivel + ': ' + String(e.message || e).slice(0, 160)); }
+      let anterior = null;
+      for (const g of grupo) {
+        const base = { ...g.pedido.base, tipoInversor: op.tipoInversor, nome: ((g.pedido.opcoes || []).find((o) => o.nivel === op.nivel) || op).nome };
+        const log = (et) => console.log(`  ${g.pedido.rotulo || base.kwp + ' kWp'} · ${op.nivel}: ${et}`);
+        try {
+          let s = null;
+          if (anterior) { try { s = await C.recotarEstrutura(anterior, base, log); } catch (e) { console.log('  não deu para só trocar a estrutura (' + String(e.message || e).slice(0, 100) + '): cotação completa'); s = null; } }
+          if (!s) s = await cotarComNovaTentativa(C, base, log);
+          const k = C.paraKit(s, op.nivel);
+          if (k.valorKit > 0) { res.get(g.id).kits.push(k); anterior = s; } else { res.get(g.id).erros.push(op.nivel + ': valor R$ 0'); anterior = null; }
+        } catch (e) { res.get(g.id).erros.push(op.nivel + ': ' + String(e.message || e).slice(0, 160)); anterior = null; }
+      }
     }
-    await filaRpc('sol_robo_entregar', { p_segredo: chave, p_id: j.id, p_ok: kits.length > 0, p_resultado: { kits, erros, versao: VERSAO, em: new Date().toISOString() }, p_erro: erros.join(' | ') || null });
-    console.log(`Fila: ${kits.length} kit(s) devolvido(s) ao sistema${erros.length ? ' · ' + erros.join(' | ') : ''}`);
+    for (const g of grupo) {
+      const r = res.get(g.id);
+      await filaRpc('sol_robo_entregar', { p_segredo: chave, p_id: g.id, p_ok: r.kits.length > 0, p_resultado: { kits: r.kits, erros: r.erros, versao: VERSAO, em: new Date().toISOString(), cupons: cuponsValidos() }, p_erro: r.erros.join(' | ') || null }).catch((e) => console.log('Fila: não consegui entregar ' + g.id + ': ' + String(e.message || e).slice(0, 120)));
+      console.log(`Fila: ${r.kits.length} kit(s) devolvido(s) (${g.pedido.rotulo || g.orc_codigo || g.id})${r.erros.length ? ' · ' + r.erros.join(' | ') : ''}`);
+    }
+    console.log(`Fila: pronto em ${Math.round((Date.now() - t0) / 1000)} s`);
   } catch (e) { console.log('Fila: ' + String(e.message || e).slice(0, 160)); }
   finally { filaOcupada = false; }
 }
 (async () => {
   const fs = await import('node:fs'); const arq = path.resolve('robo-config.json');
-  if (!fs.existsSync(arq)) { console.log('Fila do Jarvis desligada (sem robo-config.json). Pegue a chave em Parâmetros → Robô do escritório.'); return; }
+  if (!fs.existsSync(arq)) { console.log('Fila do Jarvis desligada (sem robo-config.json nesta pasta). Pegue o arquivo em Parâmetros → Robô do escritório.'); return; }
   let chave = ''; try { chave = JSON.parse(fs.readFileSync(arq, 'utf8')).chave || ''; } catch { console.log('robo-config.json inválido.'); return; }
   console.log('Fila do Jarvis ligada: olhando a cada 60 s.');
   setTimeout(() => filaVez(chave), 15000); setInterval(() => filaVez(chave), 60000);

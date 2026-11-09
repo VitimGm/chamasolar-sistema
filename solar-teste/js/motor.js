@@ -89,14 +89,14 @@
     return tabela.find((f) => valor <= f.ate) || tabela[tabela.length - 1];
   }
 
-  function custosDiretos({ kit, placas, kwp, distanciaKm, trocaPadrao, custosAjustados, custosExtras }, p) {
+  function custosDiretos({ kit, placas, kwp, distanciaKm, trocaPadrao, custosAjustados, custosExtras, freteNoKit }, p) {
     const linhas = [
       { id: 'kit', nome: 'Kit solar (valor final Belenergy)', valor: kit },
       { id: 'terceiro', nome: `Instalação terceirizada (${placas} placas)`, valor: placas * p.maoDeObraPorPlaca },
       { id: 'projeto', nome: 'Projeto e homologação', valor: faixaDe(p.engenharia, kwp).valor },
       { id: 'art', nome: 'ART', valor: p.art },
       { id: 'materialCa', nome: 'Material CA (cabos, proteção, quadro)', valor: p.materialCaBase + p.materialCaPorKwp * kwp },
-      { id: 'frete', nome: 'Frete', valor: p.freteIncluso ? 0 : p.fretePadrao },
+      { id: 'frete', nome: freteNoKit ? 'Frete (já está no valor do kit)' : 'Frete', valor: p.freteIncluso || freteNoKit ? 0 : p.fretePadrao },
       { id: 'deslocamento', nome: `Deslocamento (${distanciaKm} km ida e volta × visitas)`, valor: distanciaKm * 2 * p.visitasObra * p.custoKm },
       { id: 'padrao', nome: 'Troca de padrão de entrada', valor: trocaPadrao ? p.trocaPadrao : 0 },
       { id: 'garantia', nome: 'Reserva de garantia', valor: kit * p.reservaGarantia },
@@ -259,6 +259,7 @@
 
   /* Opção a partir de um KIT FECHADO cotado no "Personalize seu Gerador" da Belenergy.
      O valor final do kit (já com estrutura e componentes) é o custo do kit. */
+  const freteDentroDoKit = (k) => !!k && ((+k.valorFrete || 0) > 0 || /incluso|entrega no cliente/i.test(String(k.frete || '')));
   function opcaoKitFechado(orc, k, p) {
     const modulo = { id: k.modulo.sku, nome: k.modulo.nome, marca: k.modulo.marca || (k.modulo.nome.match(/^(JA Solar|\S+)/) || [])[1], potenciaW: k.modulo.potenciaW, preco: 0, areaM2: k.modulo.areaM2 || k.modulo.potenciaW / 222, voc: k.modulo.voc, vmp: k.modulo.vmp, isc: k.modulo.isc };
     const placas = k.modulo.qtd;
@@ -270,7 +271,9 @@
     const dim = { disponibilidade: disp, descontado, hspEfetivo: arred(hspEf, 2), alvoKwh: arred(alvoKwh, 0), kwpNecessario: arred((alvoKwh * (1 + (p.margemGeracao ?? 0))) / (hspEf * 30 * p.pr), 2), placas, kwpReal: arred(kwpReal, 2), geracaoMes: arred(geracaoMes, 0), cobertura: alvoKwh ? arred(geracaoMes / alvoKwh, 3) : 0 };
     const inversor = { id: k.inversor.sku, nome: k.inversor.nome, fabricante: k.inversor.fabricante || '', qtd: k.inversor.qtd || 1, potenciaUnKw: k.inversor.potenciaUnKw || k.inversor.potenciaKw, tipo: k.inversor.tipo, potenciaKw: k.inversor.potenciaKw, hibrido: k.inversor.tipo === 'hibrido', vMaxDc: k.inversor.vMaxDc || 0 };
     const relacao = inversor.potenciaKw ? kwpReal / inversor.potenciaKw : 0;
-    const ent = { ...orc, kit: k.valorKit, placas, kwp: kwpReal }, groner = precoGroner(ent, p);
+    // frete que já veio dentro do valor do kit (entrega da Belenergy ou kit digitado com frete incluso) não entra de novo
+    const freteNoKit = freteDentroDoKit(k);
+    const ent = { ...orc, kit: k.valorKit, placas, kwp: kwpReal, freteNoKit }, groner = precoGroner(ent, p);
     const preco = precificar({ ...ent, precoAlvo: precoAlvoDe(orc, k.nivel, groner) }, p);
     const eco = economia({ ...orc, geracaoMes, investimento: preco.precoFinal, anoInicio: p.anoBase }, p);
     const areaM2 = arred(placas * modulo.areaM2, 1);
@@ -303,7 +306,7 @@
     return res;
   }
 
-  const Motor = { DISPONIBILIDADE, FATOR_ORIENTACAO, dimensionar, escolherInversor, conferirStrings, custosDiretos, precificar, precoGroner, parcelaPrice, economia, fioBPct, tir, vpl, montarOpcoes, opcaoKitFechado };
+  const Motor = { DISPONIBILIDADE, FATOR_ORIENTACAO, dimensionar, escolherInversor, conferirStrings, custosDiretos, precificar, precoGroner, parcelaPrice, economia, fioBPct, tir, vpl, montarOpcoes, opcaoKitFechado, freteDentroDoKit };
   if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
   else raiz.Motor = Motor;
 })(typeof window !== 'undefined' ? window : globalThis);
