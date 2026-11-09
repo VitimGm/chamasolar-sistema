@@ -29,7 +29,7 @@
     for (let tent = 0; tent < 2; tent++) {
       try {
         const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 4000);
-        const r = await fetch(URL_ROBO + '/status', { signal: ctl.signal, targetAddressSpace: 'local' }); clearTimeout(t);
+        const r = await fetch(URL_ROBO + '/status', { signal: ctl.signal }); clearTimeout(t);
         const j = await r.json(); versaoRobo = j.versao || '0';
         motivoRobo = !j.ok ? 'erro' : (!j.logado ? 'sem-login' : '');
         return !!j.ok && !!j.logado;
