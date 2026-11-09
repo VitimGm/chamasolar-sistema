@@ -294,7 +294,7 @@
           <div class="acoes-r" style="margin-top:6px"><button class="btn vidro pequeno" id="cvOk">O que eu respondo?</button></div><div id="cvRes"></div></div>
         <div class="acoes-r" style="margin-top:14px">
           <a class="btn sol pequeno" href="${linkProposta(o, true)}" id="abrirPV">Abrir Proposta Viva</a>
-          <a class="btn zap pequeno" id="fZapProp" href="https://wa.me/55${String(o.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(msgZap)}" target="_blank" rel="noopener" id="enviarZap">Enviar no WhatsApp</a>
+          <a class="btn zap pequeno" href="https://wa.me/55${String(o.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(msgZap)}" target="_blank" rel="noopener" id="enviarZap">Enviar no WhatsApp</a>
           <button class="btn vidro pequeno" id="copiarLink">Copiar link</button>
           <button class="btn vidro pequeno" id="editar">Editar orçamento</button>
         </div>
@@ -376,7 +376,7 @@
     B.anexos(o.id).then((l) => { const el = $('#anexosBel'); if (!el || !l || !l.length) return; el.innerHTML = l.map((a) => `<button class="btn vidro pequeno" data-anexo="${a.id}">📎 ${esc(a.nome)}</button>`).join(' ');
       el.querySelectorAll('[data-anexo]').forEach((b) => b.onclick = async () => { const a = await B.anexo(b.dataset.anexo); if (!a) return toast('Anexo não encontrado'); const bin = atob(a.conteudo_b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); window.open(URL.createObjectURL(new Blob([u8], { type: a.tipo })), '_blank'); }); }).catch(() => {});
     $('#docPdf').onclick = () => { if (!podeEnviar(o)) return; Documentos.proposta(o, p, o.status !== 'novo' ? link : null); B.interacao(o.id, 'nota', 'Gerou a proposta em PDF'); };
-    if ($('#fZapProp')) $('#fZapProp').addEventListener('click', (e) => { if (!podeEnviar(o)) e.preventDefault(); });
+    if ($('#enviarZap')) $('#enviarZap').addEventListener('click', (e) => { if (!podeEnviar(o)) e.preventDefault(); });
     if ($('#docLaudo')) $('#docLaudo').onclick = () => { Documentos.laudo(o, p); B.interacao(o.id, 'nota', 'Gerou o laudo técnico do 3D'); };
     $('#docVideo').onclick = () => { if (!window.Apresentacao) return toast('Recarregue a página para usar o vídeo.'); if (!podeEnviar(o)) return; Apresentacao.abrir(o, { aoSalvar: (x) => { B.salvar(x); B.interacao(o.id, 'nota', 'Colocou o vídeo de apresentação na proposta'); toast('Vídeo na proposta ✓'); } }); };
     $('#docContrato').onclick = () => Documentos.contrato(o, p);
@@ -384,7 +384,7 @@
     if ($('#virarUsina')) $('#virarUsina').onclick = () => { location.hash = '#usinas'; setTimeout(() => formUsina({ cliente_nome: o.nome, whatsapp: o.whatsapp, cidade: o.cidade, kwp: a.op.dim.kwpReal, marca: (C.equipamentos(a.op).fabInv || '').toLowerCase().replace(/^./, (x) => x.toUpperCase()), esperado_mes: a.op.dim.geracaoMes, tarifa_kwh: o.tarifaKwh }), 200); };
     $('#ctSalvar').onclick = () => { o.contrato = { ...(o.contrato || {}) }; app.querySelectorAll('[data-ct]').forEach((x) => { o.contrato[x.dataset.ct] = x.value.trim(); }); B.salvar(o); toast('Dados do contrato salvos'); ficha(o.id); };
     $('#abrirPV').onclick = () => { try { sessionStorage.setItem('sol2_abrir', JSON.stringify({ t: o.token, v: 1 })); } catch { /* sem armazenamento */ } };
-    $('#enviarZap').onclick = () => { if (o.status === 'novo') { o.status = 'proposta'; o.enviadoEm = new Date().toISOString(); B.salvar(o); } B.interacao(o.id, 'whatsapp', 'Proposta enviada'); };
+    if ($('#enviarZap')) $('#enviarZap').onclick = () => { if (o.status === 'novo') { o.status = 'proposta'; o.enviadoEm = new Date().toISOString(); B.salvar(o); } B.interacao(o.id, 'whatsapp', 'Proposta enviada'); };
     $('#editar').onclick = () => { B.rascunho.gravar(o); B.rascunho.gravarEtapa(0); location.hash = '#novo'; };
     /* simulador de conversa: entende a resposta do cliente, sugere o caminho e aprende com o que você usa */
     const rep = () => P().repertorio || [];
@@ -2170,7 +2170,8 @@
     if (rota !== 'novo') { document.body.classList.remove('com-barra'); $('#barra').hidden = true; }
     const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') { diaPag(); setTimeout(avisoEspaco, 1200); } else if (rota === 'servicos') servicosPag(); else if (rota === 'clientes') clientesPag(); else if (rota === 'parceiros') parceirosPag(); else if (rota === 'radar') radarPag(); else if (rota === 'arquivo') arquivoPag(); else if (rota === 'servico') servicoEd(arg); else if (rota === 'parametros') parametrosPag(); else painel(); };
     if (document.startViewTransition) {
-      const t = document.startViewTransition(ir);
+      // erro dentro da animação some calado: mostra para o vendedor e deixa no console
+      const t = document.startViewTransition(() => { try { ir(); } catch (e) { console.error(e); toast('Algo falhou nesta tela: ' + e.message); } });
       [t.ready, t.finished, t.updateCallbackDone].forEach((pr) => pr && pr.catch(() => {})); // navegação rápida cancela a animação, sem problema
     } else ir();
     scrollTo(0, 0);
