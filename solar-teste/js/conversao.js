@@ -132,7 +132,7 @@
   }
 
   /* ---------- Temperatura do lead (comportamento na Proposta Viva) ---------- */
-  const PONTOS = { abriu: 10, reabriu: 8, viu: 2, simulou: 7, escolheu: 6, compartilhou: 18, whatsapp: 15, duvida: 6, sonho: 14, aceite: 100 };
+  const PONTOS = { abriu: 10, reabriu: 8, viu: 2, simulou: 7, escolheu: 6, compartilhou: 18, whatsapp: 15, duvida: 6, aceite: 100 };
   function temperatura(o, eventos, agora = Date.now()) {
     if (o.status === 'ganho') return { pontos: 100, nivel: 'ganho', rotulo: 'Fechado' };
     if (o.status === 'perdido') return { pontos: 0, nivel: 'perdido', rotulo: 'Perdido' };
