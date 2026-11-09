@@ -263,7 +263,8 @@
   // fixação pedida pelo vendedor (madeira/metal no fibrocimento; mini trilho, mini trilho alto ou suporte L na metálica; gancho no cerâmico)
   const RX_FIX = { madeira200: /200\s*mm.*madeira(?!.*sextavado)/i, madeira250: /250\s*mm.*madeira/i, madeira300: /300\s*mm.*madeira/i, madeiraSext: /madeira.*sextavado/i, metal: /met[aá]l|perfil/i,
     minitrilho130: /mini\s*trilho\s*130/i, minitrilho260: /mini\s*trilho\s*260/i, minitrilho550: /mini\s*trilho\s*550/i, minitrilhoAlto: /mini\s*trilho\s*alto/i, suporteL: /p[ée]\s*em\s*L/i, zipada: /zipada/i,
-    vertical: /Belenergy em alum[ií]nio com ajuste vertical/i, horizontal: /Belenergy em alum[ií]nio com ajuste horizontal/i, ssm: /SSM/i, galvanizado: /galvaniza/i };
+    vertical: /Belenergy em alum[ií]nio com ajuste vertical/i, horizontal: /Belenergy em alum[ií]nio com ajuste horizontal/i, ssm: /SSM/i, galvanizado: /galvaniza/i,
+    galv200: /galvaniza.*200\s*mm.*madeira/i, galv250: /galvaniza.*250\s*mm.*madeira/i, galv300: /galvaniza.*300\s*mm.*madeira/i };
   const FIX_PADRAO = { colonial: 'vertical' }; // cerâmico: o gancho indicado para telhas cerâmicas em geral
   /* Da estrutura até a confirmação (o mesmo para a cotação completa e para a "só troca a estrutura") */
   async function fecharEstrutura(s, base, aviso) {

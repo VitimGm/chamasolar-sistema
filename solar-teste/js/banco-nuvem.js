@@ -167,6 +167,8 @@
     async salvarIndicacao(id, campos) { return api('sol_indicacoes?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ ...campos, atualizado: agora() }) }); },
     async roboStatus() { const r = await api('sol_robo_status?select=visto,versao,logado,maquina,info&id=eq.1'); return (r || [])[0] || null; },
     /* histórico de preço dos kits (Radar): cada cotação real da Belenergy vira uma linha */
+    /* vídeo de apresentação da proposta: link temporário (2 h) pelo token público da proposta */
+    async videoProposta(token) { const r = await fetch(SB + '/functions/v1/sol-proposta-video', { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) }); if (!r.ok) throw new Error('vídeo indisponível'); return r.json(); },
     async kitPrecos(dias = 90) { return api('sol_kit_precos?select=id,cotado_em,origem,orc_codigo,nivel,kwp,ligacao,estrutura,detalhe,modulo_sku,modulo_marca,modulo_w,modulo_qtd,modulo_preco,inversor_sku,inversor_marca,inversor_qtd,inversor_kw,inversor_preco,valor_kit,rs_wp,estrutura_valor,desconto&cotado_em=gte.' + new Date(Date.now() - dias * 864e5).toISOString() + '&order=cotado_em.desc&limit=2000'); },
     async registrarPrecoKit(k, m = {}) { return api('rpc/sol_kit_preco_registrar', { method: 'POST', body: JSON.stringify({ p_kit: k, p_origem: m.origem || 'sistema', p_orc: m.orc || null, p_ligacao: m.ligacao || null }) }); },
     async roboChave() { return api('rpc/sol_robo_chave', { method: 'POST', body: '{}' }); },

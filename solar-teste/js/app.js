@@ -294,7 +294,7 @@
           <div class="acoes-r" style="margin-top:6px"><button class="btn vidro pequeno" id="cvOk">O que eu respondo?</button></div><div id="cvRes"></div></div>
         <div class="acoes-r" style="margin-top:14px">
           <a class="btn sol pequeno" href="${linkProposta(o, true)}" id="abrirPV">Abrir Proposta Viva</a>
-          <a class="btn zap pequeno" href="https://wa.me/55${String(o.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(msgZap)}" target="_blank" rel="noopener" id="enviarZap">Enviar no WhatsApp</a>
+          <a class="btn zap pequeno" id="fZapProp" href="https://wa.me/55${String(o.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(msgZap)}" target="_blank" rel="noopener" id="enviarZap">Enviar no WhatsApp</a>
           <button class="btn vidro pequeno" id="copiarLink">Copiar link</button>
           <button class="btn vidro pequeno" id="editar">Editar orçamento</button>
         </div>
@@ -309,6 +309,8 @@
           <button class="btn sol pequeno" id="docPdf">${Icone('documento')} Proposta em PDF</button>
           <button class="btn vidro pequeno" id="docContrato">Contrato</button>
           <button class="btn vidro pequeno" id="docProc">Procuração CPFL</button>
+          ${o.projeto3d && o.projeto3d.resultado ? '<button class="btn vidro pequeno" id="docLaudo">📐 Laudo técnico (sombra e geração)</button>' : ''}
+          <button class="btn vidro pequeno" id="docVideo">🎥 Vídeo da proposta${o.videoApresentacao ? ' ✓' : ''}</button>
           <span id="anexosBel"></span>
           ${(o.kitsFechados || []).filter((k) => k && /WEB/.test(k.numeroBelenergy || '')).map((k) => `<span class="chip">${esc(k.nivel)}: ${esc(k.numeroBelenergy)}</span>`).join(' ')}
           ${o.status === 'ganho' ? '<button class="btn vidro pequeno" id="virarUsina">Cadastrar usina</button>' : ''}
@@ -373,7 +375,10 @@
     app.querySelectorAll('[data-pv-zap]').forEach((b) => b.onclick = () => { const e = POS_VENDA.find((x) => x[0] === b.dataset.pvZap); window.open('https://wa.me/55' + String(o.whatsapp).replace(/\D/g, '').replace(/^55/, '') + '?text=' + encodeURIComponent(e[3].replace('{nome}', String(o.nome).split(' ')[0])), '_blank', 'noopener'); B.interacao(o.id, 'whatsapp', 'Pós-venda · avisou: ' + e[1]); });
     B.anexos(o.id).then((l) => { const el = $('#anexosBel'); if (!el || !l || !l.length) return; el.innerHTML = l.map((a) => `<button class="btn vidro pequeno" data-anexo="${a.id}">📎 ${esc(a.nome)}</button>`).join(' ');
       el.querySelectorAll('[data-anexo]').forEach((b) => b.onclick = async () => { const a = await B.anexo(b.dataset.anexo); if (!a) return toast('Anexo não encontrado'); const bin = atob(a.conteudo_b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); window.open(URL.createObjectURL(new Blob([u8], { type: a.tipo })), '_blank'); }); }).catch(() => {});
-    $('#docPdf').onclick = () => { Documentos.proposta(o, p, o.status !== 'novo' ? link : null); B.interacao(o.id, 'nota', 'Gerou a proposta em PDF'); };
+    $('#docPdf').onclick = () => { if (!podeEnviar(o)) return; Documentos.proposta(o, p, o.status !== 'novo' ? link : null); B.interacao(o.id, 'nota', 'Gerou a proposta em PDF'); };
+    if ($('#fZapProp')) $('#fZapProp').addEventListener('click', (e) => { if (!podeEnviar(o)) e.preventDefault(); });
+    if ($('#docLaudo')) $('#docLaudo').onclick = () => { Documentos.laudo(o, p); B.interacao(o.id, 'nota', 'Gerou o laudo técnico do 3D'); };
+    $('#docVideo').onclick = () => { if (!window.Apresentacao) return toast('Recarregue a página para usar o vídeo.'); if (!podeEnviar(o)) return; Apresentacao.abrir(o, { aoSalvar: (x) => { B.salvar(x); B.interacao(o.id, 'nota', 'Colocou o vídeo de apresentação na proposta'); toast('Vídeo na proposta ✓'); } }); };
     $('#docContrato').onclick = () => Documentos.contrato(o, p);
     $('#docProc').onclick = () => Documentos.procuracao(o, p);
     if ($('#virarUsina')) $('#virarUsina').onclick = () => { location.hash = '#usinas'; setTimeout(() => formUsina({ cliente_nome: o.nome, whatsapp: o.whatsapp, cidade: o.cidade, kwp: a.op.dim.kwpReal, marca: (C.equipamentos(a.op).fabInv || '').toLowerCase().replace(/^./, (x) => x.toUpperCase()), esperado_mes: a.op.dim.geracaoMes, tarifa_kwh: o.tarifaKwh }), 200); };
@@ -693,11 +698,11 @@
 
   /* ---------- projeto 3D: mesmo editor no passo 2 (telhado) e no passo 4 (com a placa e a quantidade do kit) ---------- */
   const resumo3d = () => { const p3 = orc.projeto3d; return p3 && p3.versao === 2 && p3.resultado ? p3 : null; };
-  function abrir3D(aba) {
+  function abrir3D(aba, auto) {
     const p = P(), kits = (orc.kitsFechados || []).filter(Boolean), k = (orc.kitsFechados || [])[PRINCIPAL] || kits[0];
     let modulo = k && k.modulo ? k.modulo : null, qtd = modulo ? modulo.qtd : 0;
     if (!modulo) { const ops = C.opcoes(orc, p), op = ops[orc.opcaoEscolhida ?? 0] || ops[0]; if (op) { modulo = { nome: op.modulo.nome, potenciaW: op.modulo.potenciaW }; qtd = op.dim.placas; } }
-    Telhado.abrir({ orc, modulo, qtd, aba, kits, tipoTelhado: orc.telhado, aoSalvar: (proj) => { orc.projeto3d = proj; salvarR(); novo(); toast('Projeto 3D salvo no orçamento'); } });
+    Telhado.abrir({ orc, modulo, qtd, aba, kits, auto: !!auto, tipoTelhado: orc.telhado, aoSalvar: (proj) => { orc.projeto3d = proj; salvarR(); novo(); toast(auto ? '⚡ 3D montado e salvo sozinho: confira na proposta' : 'Projeto 3D salvo no orçamento'); } });
   }
   function cartao3d(p3) {
     const r = p3.resultado, M = (p3.layout && p3.layout.modulo) || {};
@@ -710,6 +715,7 @@
   }
   function ligar3d(el) {
     el.querySelectorAll('[data-abrir3d]').forEach((b) => b.onclick = () => abrir3D(b.dataset.abrir3d || undefined));
+    el.querySelectorAll('[data-auto3d]').forEach((b) => b.onclick = () => abrir3D(undefined, true));
     el.querySelectorAll('[data-tirar3d]').forEach((b) => b.onclick = () => { if (!confirm('Tirar o projeto 3D deste orçamento? A geração volta a usar a perda de segurança.')) return; delete orc.projeto3d; salvarR(); novo(); });
   }
 
@@ -720,7 +726,7 @@
         <div class="entre"><span class="rotulo">Telhado e projeto 3D</span></div>
         ${p3 ? cartao3d(p3)
         : `<p class="sutil" style="margin:6px 0 10px">${antigo ? '<b>Este 3D foi feito na versão anterior:</b> abra e salve de novo para medir com a placa real, as alturas e as platibandas. ' : ''}Pelo endereço, o Google traz a foto de satélite; com a foto do drone fica no detalhe. Você desenha cada parte do telhado com a altura e a platibanda, marca caixa d'água e árvores, e a sombra medida entra na geração. <b>Melhor fazer depois do kit (passo 4)</b>, com a placa e a quantidade certas.</p>
-          <div class="acoes-r" style="justify-content:flex-start"><button class="btn sol" data-abrir3d>🛰️ ${antigo ? 'Refazer' : 'Montar'} o telhado em 3D</button>${antigo ? '<button class="link" data-tirar3d>tirar o 3D antigo</button>' : ''}</div>`}
+          <div class="acoes-r" style="justify-content:flex-start"><button class="btn sol" data-auto3d title="Busca o telhado pelo endereço, põe as placas e calcula a sombra sozinho">⚡ 3D automático</button><button class="btn vidro" data-abrir3d>🛰️ ${antigo ? 'Refazer' : 'Montar'} o telhado em 3D</button>${antigo ? '<button class="link" data-tirar3d>tirar o 3D antigo</button>' : ''}</div>`}
       </div>
       <div class="lado"><div class="painel grade">
       <div class="campo"><span>Tipo de telhado</span><div class="chips">${[['ceramico', 'Cerâmico'], ['fibrocimento', 'Fibrocimento'], ['metalico', 'Metálico'], ['laje', 'Laje'], ['solo', 'Solo']].map(([v, t]) => `<button class="chip ${orc.telhado === v ? 'sel' : ''}" data-tel="${v}">${t}<small>${brl(D.catalogo.estrutura[v])}/pl</small></button>`).join('')}</div></div>
@@ -766,6 +772,11 @@
     return out;
   }
   const ABERTOS = ['novo', 'proposta', 'visualizou', 'negociando'];
+  function podeEnviar(o) {
+    const graves = (o.kitsFechados || []).filter(Boolean).flatMap((k) => alertasKit(o, k)).filter((a) => a.grave);
+    if (!graves.length) return true;
+    return confirm('Atenção ao preço do kit:\n\n' + graves.map((a) => '• ' + a.texto).join('\n') + '\n\nRecomendo recotar antes. Continuar mesmo assim?');
+  }
   function alertasPrecoHtml(o) {
     if (!ABERTOS.includes(o.status || 'novo')) return '';
     const itens = (o.kitsFechados || []).filter(Boolean).flatMap((k) => alertasKit(o, k).map((a) => ({ ...a, nivel: k.nivel })));
@@ -777,10 +788,11 @@
     if (!k || !(k.valorKit > 0) || k.origem === 'simulado' || !B.registrarPrecoKit) return;
     B.registrarPrecoKit(k, { origem: origem || 'sistema', orc: (o && o.id) || null, ligacao: o ? ({ mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[o.ligacao] || o.ligacao || null) : null }).catch(() => {});
   }
-  const FIXACAO = { fibrocimento: [['madeira200', 'Madeira · haste 200 mm'], ['madeira250', 'Madeira · haste 250 mm'], ['madeira300', 'Madeira · haste 300 mm'], ['madeiraSext', 'Madeira · sextavado interno'], ['metal', 'Estrutura metálica']],
+  const FIXACAO = { ceramico: [['vertical', 'Gancho alumínio · ajuste vertical (padrão)'], ['horizontal', 'Gancho alumínio · ajuste horizontal (não serve em tégula/capa-canal)'], ['ssm', 'Gancho SSM · ajuste vertical'], ['galvanizado', 'Gancho aço galvanizado · ajuste horizontal']],
+    fibrocimento: [['madeira200', 'Madeira · haste inox 200 mm'], ['madeira250', 'Madeira · haste inox 250 mm'], ['madeira300', 'Madeira · haste inox 300 mm'], ['madeiraSext', 'Madeira · sextavado interno'], ['metal', 'Estrutura metálica'], ['galv200', 'Madeira · haste galvanizada 200 mm'], ['galv250', 'Madeira · haste galvanizada 250 mm'], ['galv300', 'Madeira · haste galvanizada 300 mm']],
     metalico: [['minitrilho130', 'Mini trilho 130 mm'], ['minitrilho260', 'Mini trilho 260 mm'], ['minitrilho550', 'Mini trilho 550 mm'], ['minitrilhoAlto', 'Mini trilho alto'], ['suporteL', 'Suporte pé em L c/ perfil'], ['zipada', 'Mini trilho · telha zipada']] };
   /* todas as estruturas que a Belenergy cota (para as pré-propostas) */
-  const ESTRUTURAS = [{ k: 'ceramico', telhado: 'ceramico', fixacao: null, r: 'Cerâmico' }]
+  const ESTRUTURAS = [{ k: 'ceramico', telhado: 'ceramico', fixacao: 'vertical', r: 'Cerâmico' }]
     .concat(FIXACAO.fibrocimento.map(([f, t]) => ({ k: 'fibrocimento:' + f, telhado: 'fibrocimento', fixacao: f, r: 'Fibrocimento · ' + t })))
     .concat(FIXACAO.metalico.map(([f, t]) => ({ k: 'metalico:' + f, telhado: 'metalico', fixacao: f, r: 'Metálico · ' + t })))
     .concat([{ k: 'laje', telhado: 'laje', fixacao: null, r: 'Laje' }, { k: 'solo', telhado: 'solo', fixacao: null, r: 'Solo' }]);
@@ -847,7 +859,7 @@
     return `<div class="painel" style="margin-top:14px">
       <div class="entre"><span class="rotulo">Projeto 3D com as placas do kit</span><span class="mini">${esc(k.nivel)}: ${qtd} × ${k.modulo.potenciaW} W</span></div>
       ${p3 ? cartao3d(p3) : `<p class="sutil" style="margin:6px 0 10px">Com o kit fechado, o 3D usa a medida real da placa${med ? ` (${n(med.c * 1000)} × ${n(med.l * 1000)} mm, confira na ficha)` : ''} e as ${qtd} placas: testa todas as posições no telhado, evita a sombra das platibandas, da caixa d'água e das árvores, e calcula a geração com a irradiação do local (PVGIS). É a base para a geração que vai no contrato.</p>
-        <div class="acoes-r" style="justify-content:flex-start"><button class="btn sol" data-abrir3d>🏠 Montar o 3D com as ${qtd} placas do kit</button></div>`}
+        <div class="acoes-r" style="justify-content:flex-start"><button class="btn sol" data-auto3d title="Busca o telhado pelo endereço, põe as placas e calcula a sombra sozinho">⚡ 3D automático</button><button class="btn vidro" data-abrir3d>🏠 Montar o 3D com as ${qtd} placas do kit</button></div>`}
       ${avisos.map((a) => `<div class="aviso ruim" style="margin-top:8px">${a}</div>`).join('')}
       ${r && r.cabos ? r.cabos.map((c) => c.tipo === 'string' ? (c.erro ? `<p class="mini" style="margin-top:6px">Cabos (${esc(c.nivel || 'inversor')}): marque onde fica o inversor no passo 6 do 3D.</p>` : `<p class="mini" style="margin-top:6px">Cabo solar (${esc(c.nivel || 'inversor')}, ${c.porString.join(' + ')} placas por string): frog ${n(c.frog.vermelho, 1)} + ${n(c.frog.preto, 1)} m · seguro ${n(c.seguro.vermelho, 1)} + ${n(c.seguro.preto, 1)} m (vermelho + preto)${c.conf && !c.conf.semDados ? ` · no kit ${n(c.conf.kitVermelho, 1)} + ${n(c.conf.kitPreto, 1)} m${c.conf.faltaVermelho || c.conf.faltaPreto ? ` · <b style="color:var(--laranja)">faltam ${n(c.conf.faltaVermelho, 1)} + ${n(c.conf.faltaPreto, 1)} m no cálculo ${c.modo === 'frog' ? 'frog' : 'seguro'}</b>` : ' · <b>basta</b>'}` : ''}.</p>`)
         : `<p class="mini" style="margin-top:6px">Micro (${esc(c.nivel || '')}): cabo tronco ≈ ${n(c.troncoM, 1)} m (${c.conexoes} conexões)${c.caM != null ? `, CA até o quadro ≈ ${n(c.caM, 1)} m por condutor` : ' · marque o quadro no passo 6 do 3D'}${c.conf && c.conf.faltaTronco ? ` · <b style="color:var(--laranja)">faltam ${c.conf.faltaTronco} cabo(s) tronco</b>` : ''}.</p>`).join('') : ''}
@@ -1717,7 +1729,7 @@
     const dataBR = (d) => (d ? new Date(d).toLocaleDateString('pt-BR') : '—');
     app.innerHTML = `${cabCelular()}<div class="cab"><div><h1>Radar de oportunidades</h1><p class="sutil">Preço do kit em tempo real, propostas que precisam de atenção e o que dá para ganhar agora. Cada cotação do robô alimenta este painel.</p></div></div>
       <div class="kpis"><div class="kpi ${graves ? '' : 'destaque'}"><span class="rotulo">Propostas com preço a revisar</span><b>${aten.length}</b><span class="sutil">${graves} urgente(s) · ${oport} oportunidade(s)</span></div>
-        <div class="kpi"><span class="rotulo">Kit hoje · opção inversor (7 dias)</span><b>${rsHoje ? 'R$ ' + n(rsHoje, 2) + '/Wp' : '—'}</b><span class="sutil">${r7.length} cotação(ões) · ${varTxt}</span></div>
+        <div class="kpi"><span class="rotulo">Kit hoje · opção inversor (7 dias)</span><b>${rsHoje ? 'R$ ' + n(rsHoje, 2) + '/Wp' : '—'}</b><span class="sutil">${r7.length} cotação(ões) · ${varTxt}</span>${rsHoje && r7.length >= 3 && Math.abs(rsHoje - (+P().kitRefWp || 0)) >= 0.02 ? `<button class="btn vidro pequeno" id="rdRef" style="margin-top:6px">Usar como kit de referência (hoje R$ ${n(+P().kitRefWp || 0, 2)})</button>` : ''}</div>
         <div class="kpi"><span class="rotulo">Cupons válidos na Belenergy</span><b>${cup ? cupOk.length : '—'}</b><span class="sutil">${cup ? (cupOk.length ? brl(cupOk.reduce((t, c) => t + c.valor, 0), 2) + ' para usar' : 'nenhum agora') : 'o robô novo confere 2× por dia'}</span></div>
         <div class="kpi"><span class="rotulo">Cotações guardadas (90 dias)</span><b>${precos.length}</b><span class="sutil">robô, Jarvis e pré-propostas</span></div></div>
       <div class="painel" style="margin-top:14px"><div class="entre"><span class="rotulo">⚠ Propostas abertas que precisam de atenção no preço</span>${aten.length ? '<button class="btn sol pequeno" id="rdTodas">Recotar todas pelo robô</button>' : ''}</div>
@@ -1739,6 +1751,7 @@
           ${invs.length ? `<table style="margin-top:8px">${invs.map(({ x, un, kw }) => `<tr><td>${esc(x.inversor_marca || '')} ${kw ? n(kw, 1) + ' kW' : ''}<div class="mini">${esc(x.inversor_sku)}</div></td><td class="v">${brl(un, 0)}<div class="mini">${dataBR(x.cotado_em)}</div></td></tr>`).join('')}</table>` : '<p class="sutil" style="margin:8px 0 0">Aparece com as cotações do robô novo.</p>'}</div></div>`;
     const recotar = async (o) => { const ped = pedidoRobo(o); ped.base.salvar = false; try { await B.filaRobo({ orc_codigo: o.id, tipo: 'cotar', pedido: ped }); o.aguardandoRobo = new Date().toISOString(); B.salvar(o); return true; } catch (e) { toast('Não consegui mandar para o robô: ' + e.message); return false; } };
     app.querySelectorAll('[data-recotar]').forEach((b) => b.onclick = async () => { const o = B.obter(b.dataset.recotar); if (!o) return; b.disabled = true; if (await recotar(o)) { b.textContent = 'Na fila ✓'; toast('Pedido no robô: o preço novo entra sozinho na proposta.'); } else b.disabled = false; });
+    const ref = $('#rdRef'); if (ref) ref.onclick = () => { B.salvarParametros({ kitRefWp: Math.round(rsHoje * 100) / 100 }); toast(`Kit de referência agora é R$ ${n(rsHoje, 2)}/Wp (resposta rápida e estimativas)`); ref.remove(); };
     const todas = $('#rdTodas'); if (todas) todas.onclick = async () => { todas.disabled = true; let k = 0; const vistos = new Set(); for (const { o } of aten) { if (vistos.has(o.id)) continue; vistos.add(o.id); if (await recotar(o)) k++; } toast(`${k} proposta(s) na fila do robô`); todas.textContent = 'Na fila ✓'; };
   }
 
@@ -2044,7 +2057,7 @@
   /* pré-proposta: o mesmo pedido, com o tamanho fixo */
   function pedidoPre(x) {
     const o = { id: 'PRE', nome: `${x.kwp} kWp`, telhado: x.telhado, fixacao: x.fixacao || undefined, ligacao: x.ligacao, cidade: 'Ribeirão Preto', cotarQuais: 'ambos' };
-    const ped = pedidoRobo(Object.assign(o, { _kwp: x.kwp })); ped.base.kwp = +x.kwp; ped.opcoes.forEach((op) => { op.nome = `PRE ${x.kwp} kWp ${x.telhado}${x.fixacao ? ' ' + x.fixacao : ''} ${op.nivel}`; }); return ped;
+    const ped = pedidoRobo(Object.assign(o, { _kwp: x.kwp })); ped.base.kwp = +x.kwp; ped.base.salvar = false; ped.opcoes.forEach((op) => { op.nome = `PRE ${x.kwp} kWp ${x.telhado}${x.fixacao ? ' ' + x.fixacao : ''} ${op.nivel}`; }); return ped;
   }
   /* tamanhos mais vendidos (orçamentos ganhos), arredondados de 0,5 em 0,5 kWp */
   function maisVendidas() {
@@ -2086,8 +2099,22 @@
   /* o que o robô devolveu entra no orçamento sozinho (preço real, WEB) e vira lembrete para revisar e enviar */
   let filaLida = 0;
   let avisouRobo = false;
+  async function recotarVencidas() {
+    const hoje = new Date().toISOString().slice(0, 10); let ult = ''; try { ult = localStorage.getItem('sol_recotou') || ''; } catch { /* */ }
+    if (ult === hoje || !B.nuvem) return; try { localStorage.setItem('sol_recotou', hoje); } catch { /* */ }
+    let st = null; try { st = await B.roboStatus(); } catch { return; } if (!st || !st.visto || Date.now() - new Date(st.visto) > 3 * 864e5) return; // robô parado há dias: não enche a fila
+    const lim = +P().validadeKitDias || 7; let n0 = 0;
+    for (const o of B.orcamentos().filter((x) => ABERTOS.includes(x.status || 'novo') && !x.aguardandoRobo)) {
+      const ks = (o.kitsFechados || []).filter(Boolean); if (!ks.length || n0 >= 10) continue;
+      if (!ks.some((k) => k.origem === 'conectado' && k.cotadoEm && (Date.now() - new Date(k.cotadoEm)) / 864e5 > lim)) continue;
+      const ped = pedidoRobo(o); if (!(ped.base.kwp > 0)) continue; ped.base.salvar = false;
+      try { await B.filaRobo({ orc_codigo: o.id, tipo: 'cotar', pedido: ped }); o.aguardandoRobo = new Date().toISOString(); B.salvar(o); n0++; } catch { break; }
+    }
+    if (n0) toast(`${n0} proposta(s) com preço vencido foram para o robô recotar`);
+  }
   async function aplicarFila(forcar) {
     if (!forcar && Date.now() - filaLida < 60000) return; filaLida = Date.now();
+    recotarVencidas().catch(() => {});
     let fila = []; try { fila = (await B.filaRoboLer()) || []; } catch { return; }
     if (!avisouRobo && fila.some((x) => x.status === 'pendente' && x.tipo !== 'pre' && Date.now() - new Date(x.criado) > 15 * 60000)) roboEstado().then((st) => { if (!st.ok && /desligado|nunca/.test(st.html)) { avisouRobo = true; toast('O robô do escritório está desligado: tem pedido do Jarvis esperando. Veja em Parâmetros → Robô do escritório.'); } });
     let mudou = 0;

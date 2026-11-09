@@ -19,7 +19,7 @@
   const ICONE = { caixa: '💧', ar: '❄️', respiro: '🔩', antena: '📡', boiler: '🛢️', coletor: '♨️', arvore: '🌳', predio: '🏢', area: '🚫' };
   const hhmm = (h) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
 
-  function abrir({ orc, modulo, qtd, tipoTelhado, aba, aoSalvar, kits = [] }) {
+  function abrir({ orc, modulo, qtd, tipoTelhado, aba, aoSalvar, kits = [], auto = false }) {
     const U = raiz.Usina3D, B = raiz.Banco, P = (B.parametros && B.parametros()) || {};
     const proj = U.migrar(orc.projeto3d ? JSON.parse(JSON.stringify(orc.projeto3d)) : null) || { versao: 2, lat: -21.1775, lng: -47.8103, blocos: [], obst: [] };
     proj.versao = 2; proj.blocos = proj.blocos || []; proj.obst = proj.obst || []; proj.tipoTelhado = tipoTelhado || proj.tipoTelhado || 'metalico';
@@ -761,6 +761,8 @@
         }
         const res = U.gerar(proj, st.escolhidas, { pvgis: proj.pvgis, hsp, pr });
         const fotos = viewer ? { d3: viewer.foto(false, 960, 720, { cor: 'normal' }), topo: viewer.foto(true, 960, 720, { cor: 'tsrf' }) } : {};
+        // antes e depois para a proposta: a foto do telhado sozinha e com as placas por cima (mesmo enquadramento)
+        if (viewer && (proj.fundo || proj.drone)) { try { fotos.antes = viewer.foto(true, 800, 600, { cor: 'normal', so: 'chao', q: 0.72 }); fotos.depois = viewer.foto(true, 800, 600, { cor: 'normal', so: 'placas', q: 0.72 }); } catch { /* sem antes e depois */ } }
         await guardar(res, fotos);
       } finally { bt.disabled = false; bt.textContent = 'Salvar no orçamento'; }
     }
@@ -784,8 +786,9 @@
     $('#t3Topo', ov).onclick = (e) => { const t = e.target.dataset.on !== '1'; e.target.dataset.on = t ? '1' : ''; e.target.textContent = t ? 'Vista 3D' : 'Vista de cima'; if (viewer) viewer.topo(t); };
     /* ⚡ Montar sozinho: endereço → telhado do Google → placas do kit nos melhores lugares → sombra do ano inteiro */
     const esperarConta = async () => { while (st.ocupado) await new Promise((r) => setTimeout(r, 150)); };
-    $('#t3Auto', ov).onclick = async (e) => {
-      const bt = e.currentTarget; if (bt.disabled) return; bt.disabled = true;
+    $('#t3Auto', ov).onclick = (e) => montarSozinho(e.currentTarget);
+    async function montarSozinho(bt) {
+      if (bt.disabled) return false; bt.disabled = true;
       try {
         if (!proj.blocos.length) {
           const end = enderecoOrc();
@@ -798,9 +801,10 @@
         irAba('sol');
         const res = U.gerar(proj, st.escolhidas, { pvgis: proj.pvgis, hsp, pr });
         msg(`⚡ Pronto: ${st.escolhidas.length} placa(s) nos melhores lugares do telhado e a sombra do ano inteiro calculada (${n(res.perdaSombra * 100, 1)}% de perda). Confira e toque em <b>Salvar no orçamento</b>.`);
-      } catch (err) { msg('Não consegui montar sozinho: ' + esc(err.message), true); }
+        return true;
+      } catch (err) { msg('Não consegui montar sozinho: ' + esc(err.message), true); return false; }
       finally { bt.disabled = false; }
-    };
+    }
     /* 🎬 Vídeo para o WhatsApp (o vendedor manda; o cliente encaminha para a família) */
     $('#t3Video', ov).onclick = async (e) => {
       const bt = e.currentTarget; if (bt.disabled) return;
@@ -831,7 +835,9 @@
       viewer.sol(st.di, st.hora); refazer();
     }).catch((e) => { $('#t3Cena', ov).innerHTML = `<p class="mini" style="padding:20px">${esc(e.message)}. Confira a internet.</p>`; });
     irAba(st.aba);
-    if (!proj.blocos.length && !proj.fundo && !proj.drone && B.telhado && orc.contrato && orc.contrato.rua && orc.contrato.numero) buscar({ endereco: enderecoOrc() }); // já tem o endereço: busca sozinho
+    if (auto) { // ⚡ 3D automático (1 clique no orçamento): monta, salva e fecha; se faltar algo, fica aberto e explica
+      (async () => { for (let i = 0; i < 60 && !viewer; i++) await new Promise((r) => setTimeout(r, 250)); if (await montarSozinho($('#t3Auto', ov))) await salvar(); })();
+    } else if (!proj.blocos.length && !proj.fundo && !proj.drone && B.telhado && orc.contrato && orc.contrato.rua && orc.contrato.numero) buscar({ endereco: enderecoOrc() }); // já tem o endereço: busca sozinho
   }
 
   raiz.Telhado = { abrir };

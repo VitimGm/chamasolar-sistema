@@ -766,13 +766,20 @@
       mostrarMapas(lista) { mapas.forEach((m) => grupo && grupo.remove(m)); mapas = (lista || []).map((mp) => { const t = new T.CanvasTexture(mp.canvas); t.encoding = T.sRGBEncoding; const b = mp.bloco, I = internoDe(b), tri = triangular(I), pos = [], uv = []; tri.forEach((tt) => tt.forEach((k) => { const p = I[k]; pos.push(p[0], alturaEm(b, p) + 0.05, p[1]); uv.push((p[0] - mp.x0) / (mp.x1 - mp.x0), 1 - (p[1] - mp.z0) / (mp.z1 - mp.z0)); })); const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2)); g.computeVertexNormals(); return new T.Mesh(g, new T.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, side: T.DoubleSide })); }); montar(); },
       topo(v) { usarTopo = v; ctl.enabled = !v; },
       /* foto para a proposta: enquadramento padrão e sol de meia manhã no equinócio (sombra bonita e honesta) */
-      foto(topo, w = 1200, h = 900, { padrao = true, cor = null } = {}) {
+      foto(topo, w = 1200, h = 900, { padrao = true, cor = null, so = null, q = 0.8 } = {}) {
         const guarda = { pos: cam.position.clone(), alvo: ctl.target.clone(), di: estado.di, hora: estado.hora, cor: estado.cor };
         if (cor && cor !== estado.cor) { estado.cor = cor; montar(); }
         if (padrao) { const pts = (proj.blocos || []).flatMap((b) => b.pts), c = pts.length ? centroide(pts) : [0, 0], r = pts.length ? Math.max(8, ...pts.map((p) => Math.hypot(p[0] - c[0], p[1] - c[1]))) : 12; ctl.target.set(c[0], 3, c[1]); cam.position.set(c[0] + r * 1.15 + 4, r * 1.25 + 8, c[1] + r * 1.45 + 6); cam.lookAt(ctl.target); estado.di = 3; estado.hora = 10; posicionarSol(); }
         ren.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); const r = camTopo.userData.r || 14; camTopo.left = -r * w / h; camTopo.right = r * w / h; camTopo.top = r; camTopo.bottom = -r; camTopo.updateProjectionMatrix();
         solBola.visible = false; if (arco) arco.visible = false; mapas.forEach((m) => { m.visible = false; }); // a foto da proposta sai limpa, sem o mapa de sombra
-        ren.render(cena, topo ? camTopo : cam); const url = ren.domElement.toDataURL('image/jpeg', 0.8); if (arco) arco.visible = true; mapas.forEach((m) => { m.visible = true; });
+        // "antes e depois": só a foto do telhado (so = 'chao') ou a foto com as placas por cima (so = 'placas')
+        const vis = [];
+        if (so && grupo) {
+          if (so === 'chao') { vis.push([grupo, grupo.visible]); grupo.visible = false; }
+          else grupo.children.forEach((ch) => { const temPlaca = placasMesh.some((pl) => { for (let x = pl; x; x = x.parent) if (x === ch) return true; return false; }); vis.push([ch, ch.visible]); ch.visible = temPlaca; });
+        }
+        ren.render(cena, topo ? camTopo : cam); const url = ren.domElement.toDataURL('image/jpeg', q); if (arco) arco.visible = true; mapas.forEach((m) => { m.visible = true; });
+        vis.forEach(([ob, v]) => { ob.visible = v; });
         cam.position.copy(guarda.pos); ctl.target.copy(guarda.alvo); estado.di = guarda.di; estado.hora = guarda.hora;
         if (estado.cor !== guarda.cor) { estado.cor = guarda.cor; montar(); } else posicionarSol();
         tamanho(); return url;

@@ -154,6 +154,37 @@
         <tr><td><b>Total</b></td><td></td><td class="v"><b>${r.placas}</b></td><td class="v"><b>${n((r.tsrfMedio || 0) * 100)}%</b></td><td class="v"><b>${n(r.geracaoAnual)} kWh</b></td></tr></table>` : ''}
       <p class="mini">Sombra medida: ${n((r.perdaSombra || 0) * 100, 1)}% da geração do ano · irradiação: ${/PVGIS/i.test(r.fonte || '') ? 'PVGIS (Comissão Europeia), base de satélite SARAH-3, no local da usina' : 'média da cidade'} · já considerados na geração abaixo.</p>`;
   }
+  /* LAUDO TÉCNICO do projeto 3D: sombra placa a placa, geração mês a mês, arranjo elétrico e premissas.
+     Documento de engenharia para o cliente, o financiamento e o arquivo da obra. */
+  function laudo(o, p) {
+    const p3 = o.projeto3d || {}, r = p3.resultado || {}, M = (p3.layout && p3.layout.modulo) || {}, e = empresaDe(p);
+    if (!r.placas) { alert('Salve o projeto 3D do orçamento antes de gerar o laudo.'); return; }
+    const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'], gm = (r.geracaoMes || []).map(Number), maxM = Math.max(1, ...gm);
+    const barras = gm.length ? `<svg viewBox="0 0 640 200" role="img" aria-label="Geração mês a mês" style="width:100%;height:auto">${gm.map((v, i) => { const h = (v / maxM) * 150, x = 12 + i * 52; return `<rect x="${x}" y="${170 - h}" width="38" height="${h}" rx="4" fill="#ff8a3d"/><text x="${x + 19}" y="188" font-size="12" text-anchor="middle" fill="#555">${MESES[i]}</text><text x="${x + 19}" y="${164 - h}" font-size="11" text-anchor="middle" fill="#333">${n(v)}</text>`; }).join('')}</svg>` : '';
+    const fonteFoto = p3.drone ? 'foto de drone' : p3.fonte === 'google' ? 'foto de satélite (Imagens © Google)' : 'foto aérea';
+    const mp = r.mppt, cab = Array.isArray(r.cabos) ? r.cabos : [];
+    const mpptHtml = mp && mp.mppts && mp.mppts.length ? `<h2>Arranjo elétrico (entradas MPPT)</h2><table><tr><th>MPPT</th><th>Água</th><th class="v">Placas</th><th class="v">Strings</th><th class="v">Placas por string</th><th class="v">Tensão no frio</th></tr>${mp.mppts.map((m) => `<tr><td>${m.n}</td><td>${esc(m.agua || '')}</td><td class="v">${m.placas}</td><td class="v">${m.strings}</td><td class="v">${esc(Array.isArray(m.porString) ? m.porString.join(' + ') : m.porString || '')}</td><td class="v">${m.vFrio ? n(m.vFrio) + ' V' : '—'}</td></tr>`).join('')}</table>
+      <p class="mini">Conferido com a ficha do inversor${mp.conferida ? ' (cadastrada a partir do datasheet)' : ' (valores típicos: conferir no datasheet antes do projeto executivo)'}.${(mp.avisos || []).length ? ' Avisos: ' + mp.avisos.map(esc).join('; ') + '.' : ' Sem avisos.'}</p>` : '';
+    const cabHtml = cab.length ? `<h2>Cabeamento estimado</h2><table><tr><th>Opção</th><th class="v">Cabo CC vermelho</th><th class="v">Cabo CC preto</th><th class="v">Cabo CA</th></tr>${cab.map((c) => { const s = c.seguro || c.frog || {}; return `<tr><td>${esc(c.nivel || c.tipo || '')}</td><td class="v">${s.vermelho != null ? n(s.vermelho) + ' m' : '—'}</td><td class="v">${s.preto != null ? n(s.preto) + ' m' : '—'}</td><td class="v">${c.caM != null ? n(c.caM) + ' m' : '—'}</td></tr>`; }).join('')}</table>` : '';
+    const corpo = `<h1>Laudo técnico de sombreamento e geração</h1>
+      <p class="mini">Cliente: <b>${esc(o.nome || '')}</b> · ${esc(o.cidade || '')} · Orçamento ${esc(o.id || '')}</p>
+      <h2>Resumo</h2>
+      <table><tr><td>Potência instalada</td><td class="v"><b>${n(r.kwp, 2)} kWp</b></td></tr><tr><td>Placas</td><td class="v">${r.placas} × ${esc(M.nome || '')}${M.c ? ` (${n(M.c * 1000)} × ${n(M.l * 1000)} mm)` : ''}</td></tr>
+        <tr><td>Geração estimada no ano</td><td class="v"><b>${n(r.geracaoAnual)} kWh</b> (média de ${n((r.geracaoAnual || 0) / 12)} kWh/mês)</td></tr>
+        <tr><td>Perda por sombra no ano</td><td class="v">${n((r.perdaSombra || 0) * 100, 1)}%</td></tr><tr><td>Aproveitamento médio do sol (TSRF)</td><td class="v">${n((r.tsrfMedio || 0) * 100)}%</td></tr>
+        <tr><td>Base de irradiação</td><td class="v">${/PVGIS/i.test(r.fonte || '') ? 'PVGIS (Comissão Europeia), satélite SARAH-3, no local' : 'média da cidade'}</td></tr></table>
+      ${p3.fotos && p3.fotos.d3 ? secao3d(p3).replace('<h2>Projeto da sua usina</h2>', '<h2>Implantação e sombra placa a placa</h2>') : ''}
+      ${barras ? `<h2>Geração mês a mês (kWh)</h2>${barras}` : ''}
+      ${mpptHtml}${cabHtml}
+      <h2>Metodologia</h2>
+      <ul class="mini" style="line-height:1.6"><li>Geometria montada sobre ${fonteFoto}: cada telhado com altura, inclinação, caimento e platibanda; obstáculos (caixa d'água, condensadoras, árvores, prédios vizinhos) modelados em 3D.</li>
+        <li>Placas com a medida real do módulo do kit, espaço de grampo entre placas, afastamento das bordas e corredor de manutenção.</li>
+        <li>Sombra por traçado de raios placa a placa, hora a hora, em 7 dias que representam o ano, mais a parcela de céu visível (radiação difusa). Índices por placa: acesso ao sol, orientação (TOF) e o combinado (TSRF).</li>
+        <li>Geração: irradiação do PVGIS por água (inclinação e direção reais) × aproveitamento de cada placa, com perdas do sistema de 14% (cabos, temperatura, sujeira e conversão).</li>
+        <li>Valores de referência de um ano típico: a geração real varia com o clima de cada ano (normalmente ±5%).</li></ul>
+      <div style="margin-top:46px;display:grid;grid-template-columns:1fr 1fr;gap:40px"><div style="border-top:1px solid #333;padding-top:6px" class="mini">${esc(e.razao || 'Chama Solar')}${e.cnpj ? ' · CNPJ ' + esc(e.cnpj) : ''}<br>Responsável pelo projeto</div><div style="border-top:1px solid #333;padding-top:6px" class="mini">Responsável técnico · CREA/CFT</div></div>`;
+    abrir(pagina('Laudo técnico · ' + (o.nome || ''), corpo));
+  }
   function valoresModelo(o, p) {
     const a = C().analisar(o, p), op = a.op, k = o.contrato || {};
     const end = [k.rua, k.numero ? 'nº ' + k.numero : '', k.bairro].filter(Boolean).join(', ');
@@ -231,5 +262,5 @@
     return f;
   }
 
-  raiz.Documentos = { proposta, contrato, procuracao, faltando, empresaDe, pagina, abrir, extenso, preencher };
+  raiz.Documentos = { proposta, contrato, procuracao, laudo, faltando, empresaDe, pagina, abrir, extenso, preencher };
 })(window);

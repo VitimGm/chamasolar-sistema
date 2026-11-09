@@ -65,6 +65,11 @@
         <h2 id="t-exe"><i class="bolha">${Icone('documento')}</i>Resumo executivo</h2>
         <div id="executivo"></div>
       </section>` : ''}
+      ${o.videoApresentacao && B.videoProposta ? `<section class="bloco" data-secao="video" aria-labelledby="t-video">
+        <h2 id="t-video"><i class="bolha">${Icone('monitor')}</i>Assista: explico a sua proposta</h2>
+        <p class="apoio">Um vídeo curto com tudo o que está aqui, do jeito que eu explicaria pessoalmente. Pode mostrar para a família.</p>
+        <div class="vid-prop" id="vidProp"><button class="btn-g" id="vidPlay" type="button">▶ Assistir o vídeo</button></div>
+      </section>` : ''}
       <section class="bloco" data-secao="resumo" aria-labelledby="t-resumo">
         <h2 id="t-resumo"><i class="bolha">${Icone('grafico')}</i>Resumo em três números</h2>
         <div class="tres" id="tres"></div>
@@ -116,6 +121,7 @@
           <div class="v3d-dias" role="group" aria-label="Época do ano">${[[0, 'Verão'], [3, 'Mar · Set'], [6, 'Inverno']].map(([d, t]) => `<button data-v3d-dia="${d}" aria-pressed="${d === 6}">${t}</button>`).join('')}</div>
           <div class="v3d-linha"><button class="v3d-play" id="v3dPlay" aria-label="Ver o sol passar">▶</button><input type="range" id="v3dHora" min="6" max="18" step="0.05" value="9.5" aria-label="Hora do dia"><b id="v3dHoraO">09:30</b></div>
           <span id="v3dTxt"></span></div>
+        ${p3.fotos.antes && p3.fotos.depois ? `<div class="ad" id="antesDepois"><img src="${p3.fotos.antes}" alt="Seu telhado hoje"><div class="ad-dep" id="adDep"><img src="${p3.fotos.depois}" alt="O seu telhado com a usina"></div><i class="ad-linha" id="adLinha"></i><span class="ad-r ad-a">Hoje</span><span class="ad-r ad-d">Com a usina</span><input type="range" min="0" max="100" value="50" id="adRange" aria-label="Arraste para ver antes e depois"></div><p class="apoio" style="margin-top:6px">Arraste para comparar o seu telhado hoje e com a usina.</p>` : ''}
         <button class="btn-g contorno" id="v3dGirar" style="margin-top:10px">${Icone('casa')} Girar a casa e ver o sol passar</button>
         <p class="apoio" style="margin-top:8px">${r3.placas ? `${r3.placas} placas · sombra medida: ${n((r3.perdaSombra ?? r3.perdaSom ?? 0) * 100, 1)}% da geração do ano, já descontada${r3.geracaoAnual ? ` · ${n(r3.geracaoAnual / 12)} kWh por mês` : ''}` : ''}${p3.fonte === 'google' ? ' · Imagens © Google' : ''}</p>
       </section>`; })() : ''}
@@ -307,7 +313,19 @@
       <li><div><b>Usina ligada</b><span>Todo mês você recebe um resumo da sua economia.</span></div></li></ol>`;
 
   /* ---------- Interações ---------- */
+  raiz.addEventListener('input', (ev) => {
+    if (ev.target.id === 'adRange') { const v = +ev.target.value, d = document.getElementById('adDep'), l = document.getElementById('adLinha'); if (d) d.style.clipPath = `inset(0 0 0 ${v}%)`; if (l) l.style.left = v + '%'; }
+  });
   raiz.addEventListener('click', (ev) => {
+    if (ev.target.closest('#vidPlay')) {
+      const bt = ev.target.closest('#vidPlay'); bt.disabled = true; bt.textContent = 'Carregando o vídeo…';
+      B.videoProposta(o.token).then((r) => {
+        if (!r || !r.url) throw new Error('sem vídeo');
+        const box = document.getElementById('vidProp'); box.innerHTML = `<video src="${r.url}" controls autoplay playsinline preload="metadata"></video>`;
+        registrar('viu', { secao: 'video' });
+      }).catch(() => { bt.disabled = false; bt.textContent = 'Não consegui carregar agora: tentar de novo'; });
+      return;
+    }
     if (ev.target.closest('#v3dGirar')) {
       const bt = ev.target.closest('#v3dGirar'); bt.disabled = true; bt.textContent = 'Carregando o 3D…';
       window.Usina3D.carregarThree().then(() => {
