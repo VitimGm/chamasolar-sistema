@@ -898,7 +898,7 @@
         <p style="margin:8px 0 4px">Monte cada opção no <b>Personalize seu Gerador</b>. O valor final do kit é o que entra no preço.</p>
         <p class="mini" id="cot-status">Verificando o robô no seu computador…</p>
         <div class="grade g2" style="margin-top:12px;align-items:end">
-          <label class="campo"><span>Frete (vale para as duas)</span><select id="a-frete">${Cotador.PORTAL.fretes.map((f) => `<option ${f === (orc.freteAuto || 'Cliente Retira') ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></label>
+          <label class="campo"><span>Frete (vale para as duas)</span><select id="a-frete">${Cotador.PORTAL.fretes.map((f) => `<option ${f === (orc.freteAuto || 'Belenus Entrega no Cliente') ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></label>
           <p class="mini" style="margin:0">Escolha em cada opção só o módulo e o inversor. Estrutura, componentes e confirmação seguem automáticos, como o portal sugere.</p></div>
         <div class="linha-h" style="margin-top:12px"><label class="alternar" style="margin:10px 0 0"><span><b>Salvar na Belenergy e anexar o WEB e o PDF</b><br><span class="sutil">fica em "Meus Orçamentos". O robô nunca clica em "Comprar agora".</span></span><input type="checkbox" id="a-salvar" ${orc.salvarBel === false ? '' : 'checked'}></label>
         <div class="chips" style="margin-top:10px">${QUAIS.map(([v, t]) => `<button class="chip ${quais === v ? 'sel' : ''}" data-quais="${v}">${t}</button>`).join('')}</div>
@@ -1058,7 +1058,7 @@
         <label class="campo"><span>Nome da proposta</span><input type="text" id="c-nome" value="${esc(e.nome)}"></label>
         <div class="grade g2"><label class="campo"><span>Estado de entrega</span><input type="text" id="c-uf" value="${esc(e.estadoEntrega || 'SP')}" maxlength="2"></label>
         <label class="campo"><span>Cidade de entrega</span><input type="text" id="c-cid" value="${esc(e.cidadeEntrega || orc.cidade || 'Ribeirão Preto')}"></label>
-        <label class="campo"><span>Dados de frete</span><select id="c-frete">${o.fretes.map((x) => `<option ${x === (e.frete || 'Cliente Retira') ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
+        <label class="campo"><span>Dados de frete</span><select id="c-frete">${o.fretes.map((x) => `<option ${x === (e.frete || 'Belenus Entrega no Cliente') ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
         <label class="campo"><span>Forma de pagamento</span><select id="c-pg">${o.pagamentos.map((x) => `<option>${esc(x)}</option>`).join('')}</select></label></div></div>
         <label class="alternar" style="margin-top:12px"><span><b>Salvar a proposta na Belenergy</b><br><span class="sutil">fica em "Meus Orçamentos". O robô nunca clica em "Comprar agora".</span></span><input type="checkbox" id="c-salvar" ${cot.modo === 'conectado' ? 'checked' : 'disabled'}></label>
         <button class="btn sol" id="c-ok" style="margin-top:12px">Pegar o valor da proposta</button>`;
@@ -1512,7 +1512,7 @@
         if (TREINO.parar) break;
         const ini = Date.now(), prog = (t) => { const el = $('#trProg'); if (el) el.textContent = `${feitos + 1}/${lst.length} · ${c.tipo} ${c.kwp} kWp ${c.ligacao} ${c.telhado}: ${t}… ${acertos} acertos`; };
         try {
-          const s = await Cotador.cotarAuto('conectado', { kwp: c.kwp, ligacao: LIG[c.ligacao] || c.ligacao, cidade: 'Ribeirão Preto', frete: 'Cliente Retira', estruturaTipo: TEL[c.telhado] || c.telhado, tipoInversor: c.tipo === 'Microinversor' ? 'MICROINVERSOR' : 'INVERSOR STRING ON-GRID', nome: 'TREINO ' + c.tipo + ' ' + c.kwp, salvar: false }, prog);
+          const s = await Cotador.cotarAuto('conectado', { kwp: c.kwp, ligacao: LIG[c.ligacao] || c.ligacao, cidade: 'Ribeirão Preto', frete: 'Belenus Entrega no Cliente', estruturaTipo: TEL[c.telhado] || c.telhado, tipoInversor: c.tipo === 'Microinversor' ? 'MICROINVERSOR' : 'INVERSOR STRING ON-GRID', nome: 'TREINO ' + c.tipo + ' ' + c.kwp, salvar: false }, prog);
           const k = Cotador.paraKit(s, c.tipo), wp = k.modulo.qtd * k.modulo.potenciaW; registrarKit(k, { ligacao: c.ligacao }, 'treino');
           if (!(k.valorKit > 0)) throw new Error('valor R$ 0,00');
           await B.treinoGravar({ lote, cenario: c, ok: true, segundos: Math.round((Date.now() - ini) / 1000), valor_kit: k.valorKit, rs_wp: Math.round(k.valorKit / wp * 1000) / 1000, kit: { modulo: k.modulo, inversor: k.inversor, estrutura: k.estrutura, tempos: s.tempos || [] } }).catch(() => {});
@@ -2065,7 +2065,7 @@
   /* pedido para o robô do escritório (mesmo do passo 4): potência pela estimativa, uma linha por opção */
   function pedidoRobo(o) {
     let est = null; try { est = C.opcoes(o, P())[0]; } catch { /* sem consumo */ } const kwp = est ? +est.dim.kwpNecessario.toFixed(2) : 0, quais = o.cotarQuais || 'ambos';
-    const base = { salvar: true, kwp, ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[o.ligacao] || 'BIFÁSICO', cidade: o.cidade || 'Ribeirão Preto', frete: P().freteRobo || 'Cliente Retira',
+    const base = { salvar: true, kwp, ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[o.ligacao] || 'BIFÁSICO', cidade: o.cidade || 'Ribeirão Preto', frete: P().freteRobo || 'Belenus Entrega no Cliente',
       estruturaTipo: TIPO_ESTR[o.telhado], fixacao: FIXACAO[o.telhado] ? o.fixacao || FIXACAO[o.telhado][0][0] : null,
       // o robô do escritório não lê os Parâmetros: vão junto no pedido (escolha do módulo e do inversor)
       custoPorPlaca: +P().maoDeObraPorPlaca || 0, regras: { overloadMin: P().roboOverloadMin, overloadMax: P().roboOverloadMax, modMinW: P().roboModMinW } };

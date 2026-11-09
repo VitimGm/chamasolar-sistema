@@ -25,6 +25,9 @@ No sistema: Novo orçamento → passo 4 "Kit Belenergy". Dá para montar até 3 
 | `cotador.mjs` | Robô que conduz o Personalize seu Gerador no seu PC e responde ao sistema em `http://127.0.0.1:8787`. |
 | `robo.mjs` | Leitura do catálogo avulso (estoque, preço por Wp). Serve só de referência; **não** é o preço do orçamento. |
 
+## Versão 2026-11-09g
+- Para salvar: escolhe a forma de pagamento (Boleto; se não houver, Pix) e o frete padrão passa a ser "Belenus Entrega no Cliente".
+
 ## Versão 2026-11-09f
 - Se o botão "Salvar" do portal não responder, a cotação não para: o preço volta com aviso "não salvo", print e diagnóstico.
 
@@ -44,7 +47,7 @@ No sistema: Novo orçamento → passo 4 "Kit Belenergy". Dá para montar até 3 
   são cotadas juntas (só troca a estrutura, sem refazer módulo e inversor).
 - **Uma cotação por vez**: a do vendedor e a da fila não se misturam mais na mesma tela.
 - **Cupons**: 2× por dia o robô abre "Ver cupons" (só leitura) e o sistema mostra no Radar antes de vencer.
-- Pagamento: Pix e "Plano de Pagamento" dão o mesmo valor (conferido em 08/11/2026).
+- Pagamento: Pix e "Plano de Pagamento" dão o mesmo valor (conferido em 08/11/2026). Para salvar, o robô escolhe Boleto (ou Pix se não houver); dá para trocar depois no portal.
 
 ## Instalar e rodar (no PC do vendedor)
 ```bash
@@ -62,7 +65,7 @@ A Belenergy já integra o montador com softwares de proposta (ex.: SolarMarket).
 2. Salve esse arquivo NESTA pasta (a mesma do INICIAR-COTADOR.bat).
 3. Abra o INICIAR-COTADOR.bat. Deve aparecer "Fila do Jarvis ligada".
 Pré-propostas: em Parâmetros, ligue "Pré-propostas todo dia de manhã", toque em "Sugerir pelas mais vendidas" e salve. O robô cota esses tamanhos no horário escolhido (ou assim que o computador ligar).
-O robô confere a fila a cada minuto, cota e salva na Belenergy (com Pix e a WEB). O preço volta sozinho para o orçamento, e você recebe um lembrete no Meu dia. Ele nunca clica em "Comprar Agora". Não mande a chave por mensagem.
+O robô confere a fila a cada minuto, cota e salva na Belenergy (com Boleto e a WEB). O preço volta sozinho para o orçamento, e você recebe um lembrete no Meu dia. Ele nunca clica em "Comprar Agora". Não mande a chave por mensagem.
 
 ## Se der problema
 Tudo o que aparece na janela preta também fica gravado em `robo.log`, nesta pasta. O sistema mostra em Parâmetros → Robô do escritório se o robô está ligado, a versão e se a Belenergy está conectada.

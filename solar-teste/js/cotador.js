@@ -22,7 +22,7 @@
     if (!r.ok) { const x = new Error(j.erro || `O robô respondeu ${r.status}`); x.diag = j.diag || null; throw x; }
     return j;
   }
-  const ROBO_ESPERADO = '2026-11-09f'; // versão do robô que acompanha este sistema
+  const ROBO_ESPERADO = '2026-11-09g'; // versão do robô que acompanha este sistema
   let versaoRobo = null;
   let motivoRobo = '';
   async function conectado() {
@@ -293,7 +293,7 @@
     aviso('componentes'); await avancar(s, manter());
     await avancar(s, manter());
     await avancar(s, manter());
-    aviso('confirmação'); await avancar(s, { nome: base.nome, estadoEntrega: 'SP', cidadeEntrega: base.cidade || 'Ribeirão Preto', frete: base.frete || 'Cliente Retira', pagamento: (s.opcoes.pagamentos || [])[0], salvar: base.salvar !== false });
+    aviso('confirmação'); await avancar(s, { nome: base.nome, estadoEntrega: 'SP', cidadeEntrega: base.cidade || 'Ribeirão Preto', frete: base.frete || 'Belenus Entrega no Cliente', pagamento: (s.opcoes.pagamentos || [])[0], salvar: base.salvar !== false });
     return s;
   }
   /* Mesmo kit (módulo e inversor) com OUTRA estrutura: o robô volta da confirmação para a estrutura e só recalcula

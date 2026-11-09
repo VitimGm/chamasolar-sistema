@@ -47,7 +47,7 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
-const VERSAO = '2026-11-09f'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+const VERSAO = '2026-11-09g'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
 /* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
    Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
 const voando = new Map(); let ultimoFim = Date.now();
@@ -556,7 +556,11 @@ async function passoInterno(etapa, e = {}) {
     const escolher = async (texto) => {
       if (!texto) return;
       const sel = pg.locator('select').filter({ has: pg.locator('option', { hasText: rx(texto) }) }).first();
-      if (!(await sel.count())) { console.log('Sem a opção "' + texto + '" na confirmação: mantido o padrão do portal.'); return; }
+      if (!(await sel.count())) { // não é <select> nativo: tenta clicar no texto (rádio/lista do portal)
+        const alt = pg.getByText(rx(texto)).filter({ visible: true }).first();
+        if (await alt.count().catch(() => 0)) { await alt.click({ timeout: 4000 }).catch(() => {}); await aguardarPortal(6000); return; }
+        console.log('Sem a opção "' + texto + '" na confirmação: mantido o padrão do portal.'); return;
+      }
       const rot = (await sel.locator('option', { hasText: rx(texto) }).first().textContent({ timeout: 3000 }) || '').trim();
       if ((await sel.evaluate((s) => (s.options[s.selectedIndex] || {}).text || '').catch(() => '')).trim() === rot) return; // já está escolhido
       await sel.selectOption({ label: rot }, { timeout: 5000 }).catch(() => {}); await aguardarPortal(6000);
@@ -596,20 +600,25 @@ async function passoInterno(etapa, e = {}) {
       return buf.length < 4e6 ? { nome: nomeArq, base64: buf.toString('base64') } : null;
     };
     if (e.salvar) { // só com a caixa "Salvar na Belenergy" marcada pelo vendedor
-      // 1) forma de pagamento: sem ela o portal não deixa salvar. Abre "Formas de pagamento" e escolhe Pix (mesmo preço, conferido em 08/11/2026).
+      // 1) forma de pagamento: sem ela o portal não deixa salvar. Preferência: Boleto (depois de salvo dá para trocar no portal); senão Pix.
       const pagTxt = async () => pg.evaluate(() => document.body.innerText);
-      if (!/Forma de pagamento:\s*\n?\s*(Pix|Boleto|Financiamento|Cart)/i.test(await pagTxt())) {
-        const abrir = pg.getByText(/Outras formas de pagamento|Forma de pagamento/i).last();
-        await abrir.click({ timeout: 5000 }).catch(() => {}); await pausa(900);
-        const modal = pg.locator('text=Formas de pagamento:').first();
-        if (await modal.count()) {
-          await pg.getByText(/^\s*Pix\s*$/i).first().click({ timeout: 5000 }).catch(() => {}); await pausa(1200); await aguardarPortal(8000);
-          const conf = pg.getByRole('button', { name: /Confirmar|Selecionar|Aplicar|Continuar|Escolher|Usar/i }).first();
-          if (await conf.count() && await conf.isVisible().catch(() => false)) { await conf.click({ timeout: 4000 }).catch(() => {}); await pausa(800); }
-          if (await pg.locator('text=Formas de pagamento:').first().isVisible().catch(() => false)) await pg.getByRole('button', { name: /^\s*Fechar\s*$/i }).first().click({ timeout: 3000 }).catch(() => {});
-          await pausa(600); console.log('Forma de pagamento escolhida: Pix');
+      const temPag = async () => /Forma de pagamento:\s*\n?\s*(Pix|Boleto|Financiamento|Cart|Plano)/i.test(await pagTxt());
+      for (let tent = 0; tent < 2 && !(await temPag()); tent++) {
+        const abrir = pg.getByText(/Outras formas de pagamento|Forma de pagamento|Formas de pagamento/i).last();
+        await abrir.click({ timeout: 5000 }).catch(() => {}); await pausa(900); await aguardarPortal(6000);
+        let escolhida = '';
+        for (const [rotulo, rxp] of [['Boleto', /^\s*Boleto(\s+banc[aá]rio)?(\s+[àa]\s+vista)?\s*$/i], ['Boleto', /Boleto/i], ['Pix', /^\s*Pix\s*$/i], ['Pix', /\bPix\b/i]]) {
+          const op = pg.getByText(rxp).filter({ visible: true }).first();
+          if (await op.count().catch(() => 0)) { await op.click({ timeout: 4000 }).then(() => { escolhida = rotulo; }).catch(() => {}); if (escolhida) break; }
         }
+        await pausa(1000); await aguardarPortal(8000);
+        const conf = pg.getByRole('button', { name: /Confirmar|Selecionar|Aplicar|Continuar|Escolher|Usar|Salvar forma/i }).filter({ visible: true }).first();
+        if (await conf.count().catch(() => 0)) { await conf.click({ timeout: 4000 }).catch(() => {}); await pausa(800); }
+        if (await pg.locator('text=Formas de pagamento:').first().isVisible().catch(() => false)) await pg.getByRole('button', { name: /^\s*(Fechar|OK|Ok)\s*$/i }).first().click({ timeout: 3000 }).catch(() => {});
+        await pausa(600); await aguardarPortal(6000);
+        console.log('Forma de pagamento: ' + (escolhida || 'não achei Boleto nem Pix na janela'));
       }
+      if (!(await temPag())) AVISOS.push('Não consegui escolher a forma de pagamento no portal (o portal só salva com ela).');
       // 2) PDF antes de salvar (depois de salvar o portal vai para "Meus orçamentos")
       try { const bp = botao(/Baixar PDF|Gerar PDF|Download PDF|Baixar proposta/i); if (await bp.count()) pdf = await guardarPdf(() => bp.click(), 'cotacao-' + Date.now() + '.pdf'); }
       catch (err) { console.log('PDF antes de salvar não veio: ' + String(err.message || err).slice(0, 100)); }
