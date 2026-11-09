@@ -25,6 +25,9 @@ No sistema: Novo orçamento → passo 4 "Kit Belenergy". Dá para montar até 3 
 | `cotador.mjs` | Robô que conduz o Personalize seu Gerador no seu PC e responde ao sistema em `http://127.0.0.1:8787`. |
 | `robo.mjs` | Leitura do catálogo avulso (estoque, preço por Wp). Serve só de referência; **não** é o preço do orçamento. |
 
+## Versão 2026-11-09e
+- Corrige "strict mode violation: locator(body) resolved to 2 elements" ao escolher fabricante do inversor (o portal tem dois <body>).
+
 ## Versão 2026-11-09d (mapeado de novo ao vivo em 08/11/2026)
 - **Preço pelo carrinho do portal**: além do texto da tela, o robô lê o JSON que o portal manda para a própria tela
   (API `KitPersonalizado`): preço de lista de cada item, desconto do kit (~15%), frete e plano de pagamento.

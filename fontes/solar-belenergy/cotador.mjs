@@ -47,7 +47,7 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
-const VERSAO = '2026-11-09d'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+const VERSAO = '2026-11-09e'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
 /* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
    Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
 const voando = new Map(); let ultimoFim = Date.now();
@@ -437,7 +437,7 @@ async function passoInterno(etapa, e = {}) {
       await pg.locator('ng-multiselect-dropdown .dropdown-btn').click(); await pausa(500);
       for (let k = 0; k < 20 && (await pg.locator('ng-multiselect-dropdown li').filter({ hasText: /Não há fabricantes/i }).count()); k++) await pausa(500);
       for (const f of e.fabricantes) { const li = pg.locator('ng-multiselect-dropdown li').filter({ hasText: new RegExp('^\\s*' + f + '\\s*$', 'i') }); if (await li.count()) await li.first().click(); }
-      await pg.locator('body').click({ position: { x: 5, y: 5 } }); await pausa(400);
+      await pg.mouse.click(5, 5); await pausa(400); // fecha a lista de fabricantes (o portal tem 2 <body>)
     }
     await aguardarPortal(6000);
     let tf = Date.now(); await botao(/FILTRAR/i).click({ timeout: 15000 });

@@ -22,14 +22,20 @@
     if (!r.ok) { const x = new Error(j.erro || `O robô respondeu ${r.status}`); x.diag = j.diag || null; throw x; }
     return j;
   }
-  const ROBO_ESPERADO = '2026-11-09d'; // versão do robô que acompanha este sistema
+  const ROBO_ESPERADO = '2026-11-09e'; // versão do robô que acompanha este sistema
   let versaoRobo = null;
+  let motivoRobo = '';
   async function conectado() {
-    try {
-      const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 1200);
-      const r = await fetch(URL_ROBO + '/status', { signal: ctl.signal }); clearTimeout(t);
-      const j = await r.json(); versaoRobo = j.versao || '0'; return !!j.ok && !!j.logado;
-    } catch { return false; }
+    for (let tent = 0; tent < 2; tent++) {
+      try {
+        const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 4000);
+        const r = await fetch(URL_ROBO + '/status', { signal: ctl.signal }); clearTimeout(t);
+        const j = await r.json(); versaoRobo = j.versao || '0';
+        motivoRobo = !j.ok ? 'erro' : (!j.logado ? 'sem-login' : '');
+        return !!j.ok && !!j.logado;
+      } catch { motivoRobo = 'bloqueado'; }
+    }
+    return false;
   }
   const roboDesatualizado = () => versaoRobo !== null && versaoRobo < ROBO_ESPERADO;
 
@@ -321,5 +327,5 @@
     };
   }
 
-  raiz.Cotador = { ETAPAS, PORTAL, REGRAS, perdaClipping, limiteFabricante, cotarAuto, recotarEstrutura, escolherModulo, escolherInversor, chaveTipo, acharTipo, regrasDe, fabModulo, marcaDe, detalhes, conectado, novaSessao, avancar, paraKit, URL_ROBO, ROBO_ESPERADO, roboDesatualizado, versaoRobo: () => versaoRobo };
+  raiz.Cotador = { ETAPAS, PORTAL, REGRAS, perdaClipping, limiteFabricante, cotarAuto, recotarEstrutura, escolherModulo, escolherInversor, chaveTipo, acharTipo, regrasDe, fabModulo, marcaDe, detalhes, conectado, novaSessao, avancar, paraKit, URL_ROBO, ROBO_ESPERADO, roboDesatualizado, versaoRobo: () => versaoRobo, motivoRobo: () => motivoRobo };
 })(window);
