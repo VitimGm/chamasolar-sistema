@@ -56,6 +56,8 @@
       { ate: 50, margem: 0.12 },
       { ate: Infinity, margem: 0.10 },
     ],
+    manutencaoPorPlaca: 25,              // manutenção avulsa (R$ por placa)
+    margemAvulso: 0.20,                  // margem dos serviços avulsos (ampliação, troca de inversor)
     reservaNegociacao: 0.03,            // desconto máximo que o vendedor pode dar
     // Groner (só para comparar e, se o vendedor quiser, usar o preço dela)
     groner: { percentual: 0.365, maoDeObraPorPlaca: 100, art: 70, custoKm: 1, kmIdaVolta: 0, eng: [300, 500, 700] },
