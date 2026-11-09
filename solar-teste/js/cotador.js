@@ -237,6 +237,18 @@
     const dentro = lista.filter((v) => v.overload >= regras.overloadMin && v.overload <= teto(v));
     return dentro.length ? melhor(dentro) : [...lista].sort((a, b) => Math.abs(a.overload - 15) - Math.abs(b.overload - 15))[0];
   }
+  /* Como separar a estrutura no portal (Nº de linhas × módulos por linha, retrato/paisagem).
+     Vem do 3D (fileiras de cada água) ou do vendedor; o portal pede linhas iguais, então usa o divisor
+     do nº de placas mais perto das fileiras pedidas. Sem nada: até 12 placas 1 linha, acima 2. */
+  function linhasPortal(placas, arr) {
+    const ori = arr && /paisagem/i.test(arr.orientacao || '') ? 'Paisagem' : 'Retrato';
+    const fil = arr && Array.isArray(arr.fileiras) ? arr.fileiras.filter((x) => x > 0) : [];
+    let quer = arr && +arr.linhas > 0 ? +arr.linhas : fil.length;
+    if (!quer) { const l = placas > 12 ? 2 : 1; return { linhas: placas % l ? 1 : l, orientacao: ori, fonte: 'auto' }; }
+    quer = Math.min(quer, placas);
+    let melhor = 1; for (let l = 1; l <= placas; l++) if (placas % l === 0 && (Math.abs(l - quer) < Math.abs(melhor - quer) || (Math.abs(l - quer) === Math.abs(melhor - quer) && l > melhor))) melhor = l;
+    return { linhas: melhor, orientacao: ori, fonte: arr.fonte || '3d', exato: melhor === quer && (!fil.length || fil.every((x) => x === placas / melhor)) };
+  }
   async function cotarAuto(modo, base, aviso = () => {}) {
     const par = parametrosDe(), rg = regrasDe(base, par);
     const s = novaSessao(modo);
@@ -285,9 +297,9 @@
     const fx = base.fixacao || FIX_PADRAO[chaveTipo(tipo)];
     const pref = fx && RX_FIX[fx] ? det.find((d) => RX_FIX[fx].test(d)) : null;
     if (pref) det = [pref, ...det.filter((d) => d !== pref)];
-    const placas = s.escolhas.modulo.qtd, linhas = placas > 12 ? 2 : 1;
-    const lin = placas % linhas ? 1 : linhas; // número ímpar em 2 linhas: usa 1 linha
-    aviso('estrutura'); await avancar(s, { semEstrutura: !!base.semEstrutura, estruturaTipo: tipo || base.estruturaTipo, estruturaDetalhe: det[0], linhas: lin, modulosPorLinha: placas / lin, orientacao: 'Retrato' });
+    const placas = s.escolhas.modulo.qtd, arr = linhasPortal(placas, base.arranjo);
+    s.notaArranjo = arr.fonte !== 'auto' && arr.exato === false ? `Estrutura cotada em ${arr.linhas} linha(s) de ${placas / arr.linhas} placas: o portal pede linhas iguais e o arranjo ${arr.fonte === '3d' ? 'do 3D' : 'escolhido'} tinha outra divisão.` : null;
+    aviso('estrutura'); await avancar(s, { semEstrutura: !!base.semEstrutura, estruturaTipo: tipo || base.estruturaTipo, estruturaDetalhe: det[0], linhas: arr.linhas, modulosPorLinha: placas / arr.linhas, orientacao: arr.orientacao });
     // automático: não mexe nas quantidades do portal (mandar a lista de volta podia zerar o MC4 lido antes da tela carregar)
     const manter = () => ({ itens: s.modo === 'conectado' ? [] : s.opcoes.itens });
     aviso('componentes'); await avancar(s, manter());
@@ -310,6 +322,7 @@
   function paraKit(s, nivel) {
     const e = s.escolhas, f = s.final, ficha = raiz.Catalogo ? raiz.Catalogo.fichaModulo(e.modulo.potenciaW) : {};
     const kwp = (e.modulo.qtd * e.modulo.potenciaW) / 1000, avisos = [...(f.avisos || [])];
+    if (s.notaArranjo) avisos.push(s.notaArranjo);
     if (f.valorKit > 0 && kwp > 0) { const rsWp = f.valorKit / (kwp * 1000); if (rsWp < 0.6 || rsWp > 4.5) avisos.push(`R$ ${rsWp.toFixed(2)}/Wp está fora do normal: confira a cotação no portal.`); }
     const pc = e.inversor && e.inversor.tipo !== 'micro' ? perdaClipping(e.inversor.overload) : 0;
     if (pc >= 0.02) avisos.push(`Inversor com sobrecarga de ${String(e.inversor.overload).replace('.', ',')}%: corta ~${Math.round(pc * 100)}% da geração no pico (o fabricante aceita${limiteFabricante(e.inversor) ? ' até ' + limiteFabricante(e.inversor) + '%' : ''}).`);
@@ -327,5 +340,5 @@
     };
   }
 
-  raiz.Cotador = { ETAPAS, PORTAL, REGRAS, perdaClipping, limiteFabricante, cotarAuto, recotarEstrutura, escolherModulo, escolherInversor, chaveTipo, acharTipo, regrasDe, fabModulo, marcaDe, detalhes, conectado, novaSessao, avancar, paraKit, URL_ROBO, ROBO_ESPERADO, roboDesatualizado, versaoRobo: () => versaoRobo, motivoRobo: () => motivoRobo };
+  raiz.Cotador = { ETAPAS, PORTAL, REGRAS, perdaClipping, limiteFabricante, cotarAuto, recotarEstrutura, escolherModulo, escolherInversor, chaveTipo, acharTipo, regrasDe, fabModulo, marcaDe, detalhes, conectado, novaSessao, avancar, paraKit, URL_ROBO, ROBO_ESPERADO, roboDesatualizado, linhasPortal, versaoRobo: () => versaoRobo, motivoRobo: () => motivoRobo };
 })(window);

@@ -900,6 +900,10 @@
         <div class="grade g2" style="margin-top:12px;align-items:end">
           <label class="campo"><span>Frete (vale para as duas)</span><select id="a-frete">${Cotador.PORTAL.fretes.map((f) => `<option ${f === (orc.freteAuto || 'Belenus Entrega no Cliente') ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></label>
           <p class="mini" style="margin:0">Escolha em cada opção só o módulo e o inversor. Estrutura, componentes e confirmação seguem automáticos, como o portal sugere.</p></div>
+        ${(() => { const ar = arranjoDoOrc(orc), m = orc.arranjoBel || {}; return `<div class="grade g2" style="margin-top:10px;align-items:end">
+          <label class="campo"><span>Estrutura · nº de linhas (fileiras)</span><input type="number" min="1" max="20" id="a-lin" placeholder="${ar.fileiras && ar.fileiras.length ? ar.fileiras.length + ' (do 3D)' : 'automático'}" value="${m.linhas || ''}"></label>
+          <label class="campo"><span>Orientação das placas</span><select id="a-ori">${[['', ar.fonte === '3d' && !m.ori ? 'Do 3D (' + ar.orientacao + ')' : 'Automática (retrato)'], ['retrato', 'Retrato'], ['paisagem', 'Paisagem']].map(([v, t]) => `<option value="${v}" ${(m.ori || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label></div>
+          <p class="mini sutil" style="margin:4px 0 0">${ar.fonte === '3d' ? `Puxado do 3D: ${ar.fileiras.length} fileira(s) (${ar.fileiras.join(' + ')} placas)${ar.aguas > 1 ? ' em ' + ar.aguas + ' águas' : ''}. O portal pede linhas iguais: o robô usa o nº de linhas que divide as placas e fica mais perto disso.` : ar.fonte === 'manual' ? 'Escolhido por você. O robô ajusta para linhas iguais (o portal exige).' : 'Sem 3D: até 12 placas em 1 linha, acima disso 2 linhas. Monte o 3D para puxar o arranjo do telhado.'}</p>`; })()}
         <div class="linha-h" style="margin-top:12px"><label class="alternar" style="margin:10px 0 0"><span><b>Salvar na Belenergy e anexar o WEB e o PDF</b><br><span class="sutil">fica em "Meus Orçamentos". O robô nunca clica em "Comprar agora".</span></span><input type="checkbox" id="a-salvar" ${orc.salvarBel === false ? '' : 'checked'}></label>
         <div class="chips" style="margin-top:10px">${QUAIS.map(([v, t]) => `<button class="chip ${quais === v ? 'sel' : ''}" data-quais="${v}">${t}</button>`).join('')}</div>
         <button class="btn sol" id="a-cotar" ${faltam.length ? '' : 'hidden'}>⚡ ${faltam.length === NIVEIS_KIT.length ? 'Cotar as duas de uma vez' : quais === 'ambos' ? 'Cotar a que falta' : `Cotar só o ${quais === 'micro' ? 'microinversor' : 'inversor'}`}</button><span class="mini" id="a-prog"></span></div></div>
@@ -908,7 +912,7 @@
           <span class="rotulo" style="color:var(--sol)">${i === PRINCIPAL ? 'Principal' : 'Opcional'}</span><h3 style="margin:4px 0">${nv}</h3>
           ${k ? `<div class="preco">${brl(k.valorKit, 2)}</div><span class="mini">valor do kit · ${k.origem === 'simulado' ? 'SIMULADO' : k.origem === 'manual' ? 'cotado por fora' + (k.numeroBelenergy ? ': ' + esc(k.numeroBelenergy) : '') : 'Belenergy ' + esc(k.numeroBelenergy)}</span>
             <ul><li><span>Módulos</span><span>${k.modulo.qtd} × ${esc(k.modulo.marca || k.modulo.nome)} ${k.modulo.potenciaW} W</span></li><li><span>${k.inversor.tipo === 'micro' ? 'Micro' : 'Inversor'}</span><span>${esc(C.equipamentos(M.opcaoKitFechado({ ...C.entrada(orc), kitsFechados: null }, k, p)).inversorCurto)}</span></li>
-            <li><span>Estrutura</span><span title="${esc(k.estrutura.detalhe || '')}">${k.estrutura.semEstrutura ? 'sem estrutura' : esc(k.estrutura.tipo) + (k.estrutura.detalhe ? ' · ' + esc(String(k.estrutura.detalhe).slice(0, 34)) : '')}</span></li><li><span>Frete</span><span>${esc(k.frete)}</span></li>
+            <li><span>Estrutura</span><span title="${esc(k.estrutura.detalhe || '')}">${k.estrutura.semEstrutura ? 'sem estrutura' : esc(k.estrutura.tipo) + (k.estrutura.detalhe ? ' · ' + esc(String(k.estrutura.detalhe).slice(0, 34)) : '') + (+k.estrutura.linhas ? ` · ${k.estrutura.linhas}×${k.estrutura.modulosPorLinha} ${esc(String(k.estrutura.orientacao || '').toLowerCase())}` : '')}</span></li><li><span>Frete</span><span>${esc(k.frete)}</span></li>
             <li><span>R$/Wp do kit</span><span>R$ ${n(k.valorKit / (k.modulo.qtd * k.modulo.potenciaW), 2)}</span></li></ul>
             ${k.inversor && k.inversor.tipo !== 'micro' && Number.isFinite(k.inversor.overload) ? `<p class="mini" style="margin:6px 0 0">Sobrecarga do inversor: <b>${n(k.inversor.overload, 1)}%</b>${k.inversor.overloadMaxFabricante ? ` · o fabricante aceita até ${n(k.inversor.overloadMaxFabricante, 0)}% (datasheet)` : ''}${k.inversor.perdaClipping >= 0.005 ? ` · corta ~${n(k.inversor.perdaClipping * 100, 1)}% da geração no pico` : ' · sem corte de geração'}</p>` : ''}
             ${k.escolhaModulo ? `<p class="mini" style="margin:6px 0 0">Módulo: ${esc(k.escolhaModulo)}</p>` : ''}
@@ -945,13 +949,15 @@
     });
     el.querySelectorAll('[data-sel]').forEach((x) => x.onchange = () => { const sk = orc.selKits[+x.dataset.sel]; sk[x.dataset.k] = x.value; if (x.dataset.k === 'fabMod') sk.potMod = ''; salvarR(); novo(); });
     $('#a-frete').onchange = (e) => { orc.freteAuto = e.target.value; salvarR(); };
+    const salvaArr = () => { const l = +$('#a-lin').value, o2 = $('#a-ori').value; orc.arranjoBel = l > 0 || o2 ? { linhas: l > 0 ? Math.round(l) : null, ori: o2 || null } : null; if (!orc.arranjoBel) delete orc.arranjoBel; salvarR(); };
+    $('#a-lin').onchange = () => { salvaArr(); novo(); }; $('#a-ori').onchange = () => { salvaArr(); novo(); };
     el.querySelectorAll('[data-quais]').forEach((b) => b.onclick = () => { orc.cotarQuais = b.dataset.quais; salvarR(); novo(); });
     $('#a-cotar').onclick = async (ev) => {
       const btn = ev.target; btn.disabled = true;
       const prog = $('#a-prog'), modo = cotModo || 'simulado', inicio = Date.now(), erros = [];
       orc.salvarBel = !!($('#a-salvar') && $('#a-salvar').checked);
       const base = { salvar: orc.salvarBel, kwp: +kwpSug.toFixed(2), ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[orc.ligacao], cidade: orc.cidade, frete: $('#a-frete').value,
-        estruturaTipo: TIPO_ESTR[orc.telhado], fixacao: FIXACAO[orc.telhado] ? orc.fixacao || FIXACAO[orc.telhado][0][0] : null };
+        estruturaTipo: TIPO_ESTR[orc.telhado], fixacao: FIXACAO[orc.telhado] ? orc.fixacao || FIXACAO[orc.telhado][0][0] : null, arranjo: arranjoDoOrc(orc) };
       for (let i = 0; i < NIVEIS_KIT.length; i++) {
         if (orc.kitsFechados[i] || !vaiCotar(i)) continue; // já cotada (use "Refazer") ou fora da escolha "só um"
         try {
@@ -2062,11 +2068,19 @@
     $('#jvEnt', ov).onclick = entender;
     $('#jvTxt', ov).onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); entender(); } };
   }
+  /* como separar a estrutura no portal: o que o vendedor escolheu, senão as fileiras do 3D, senão automático */
+  function arranjoDoOrc(o) {
+    const p3 = o.projeto3d && o.projeto3d.versao === 2 && o.projeto3d.resultado && Array.isArray(o.projeto3d.resultado.arranjo) ? o.projeto3d.resultado.arranjo : null;
+    const fil = p3 ? p3.flatMap((a) => a.fileiras || []) : [], tot = fil.reduce((x, y) => x + y, 0);
+    const pais = p3 ? p3.filter((a) => a.ori === 'paisagem').reduce((t, a) => t + (a.fileiras || []).reduce((x, y) => x + y, 0), 0) : 0;
+    const m = o.arranjoBel || {};
+    return { linhas: +m.linhas || null, orientacao: m.ori || (tot && pais * 2 > tot ? 'paisagem' : 'retrato'), fileiras: m.linhas ? null : fil, aguas: p3 ? new Set(p3.map((a) => a.agua)).size : 0, fonte: m.linhas ? 'manual' : fil.length ? '3d' : 'auto' };
+  }
   /* pedido para o robô do escritório (mesmo do passo 4): potência pela estimativa, uma linha por opção */
   function pedidoRobo(o) {
     let est = null; try { est = C.opcoes(o, P())[0]; } catch { /* sem consumo */ } const kwp = est ? +est.dim.kwpNecessario.toFixed(2) : 0, quais = o.cotarQuais || 'ambos';
     const base = { salvar: true, kwp, ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[o.ligacao] || 'BIFÁSICO', cidade: o.cidade || 'Ribeirão Preto', frete: P().freteRobo || 'Belenus Entrega no Cliente',
-      estruturaTipo: TIPO_ESTR[o.telhado], fixacao: FIXACAO[o.telhado] ? o.fixacao || FIXACAO[o.telhado][0][0] : null,
+      estruturaTipo: TIPO_ESTR[o.telhado], fixacao: FIXACAO[o.telhado] ? o.fixacao || FIXACAO[o.telhado][0][0] : null, arranjo: arranjoDoOrc(o),
       // o robô do escritório não lê os Parâmetros: vão junto no pedido (escolha do módulo e do inversor)
       custoPorPlaca: +P().maoDeObraPorPlaca || 0, regras: { overloadMin: P().roboOverloadMin, overloadMax: P().roboOverloadMax, modMinW: P().roboModMinW } };
     return { base, opcoes: NIVEIS_KIT.map((nivel, i) => ({ nivel, tipoInversor: TIPO_POR_OPCAO[i], nome: `${o.id} ${o.nome} ${nivel}` })).filter((x, i) => quais === 'ambos' || (quais === 'inversor' ? i === 0 : i === 1)) };

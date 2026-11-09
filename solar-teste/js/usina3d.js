@@ -303,7 +303,7 @@
               if (!teste.every((q) => dentro(q, util))) continue;
               if (kps.some((k) => cantos.some((q) => dentro(q, k)) || k.some((q) => dentro(q, cantos)) || dentro(c, k))) continue;
               if (coberta(b, cantos)) continue;
-              lista.push({ k: `${b.id}:${i}:${linha}`, bi, b: b.id, c, cantos, i, linha, w, hs, a, d, incl: b.incl, az: b.az });
+              lista.push({ k: `${b.id}:${i}:${linha}`, bi, b: b.id, c, cantos, i, linha, w, hs, a, d, incl: b.incl, az: b.az, ori: retr ? 'retrato' : 'paisagem' });
             }
           });
           linha++;

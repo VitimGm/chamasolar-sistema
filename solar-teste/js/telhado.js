@@ -776,6 +776,10 @@
       }
       try { fim.resultado_cabos = calcCabos().map(({ k, tipo, r, conf }) => ({ nivel: k ? k.nivel : null, tipo, porString: r.porString, modo: proj.cabos.modo, frog: r.frog ? { vermelho: r.frog.vermelho, preto: r.frog.preto } : null, seguro: r.seguro ? { vermelho: r.seguro.vermelho, preto: r.seguro.preto } : null, troncoM: r.troncoM, conexoes: r.conexoes, caM: r.caM, erro: r.erro || null, conf: conf ? { faltaVermelho: conf.faltaVermelho, faltaPreto: conf.faltaPreto, faltaTronco: conf.faltaTronco, faltaCa: conf.faltaCa, semDados: !!conf.semDados, kitVermelho: conf.kit ? conf.kit.vermelho + conf.kit.semCor / 2 : null, kitPreto: conf.kit ? conf.kit.preto + conf.kit.semCor / 2 : null } : null })); } catch { /* cabos são extra */ }
       fim.resultado = { ...res, escolhidas: st.escolhidas.map((s) => s.k), placasPos: st.escolhidas.map((s) => ({ k: s.k, tsrf: s.analise ? Math.round(s.analise.tsrf * 1000) / 1000 : null })) };
+      try { // arranjo para a estrutura do portal: fileiras de cada água, na orientação usada
+        const g = {}; st.escolhidas.forEach((x) => { const ori = x.ori || 'retrato', key = x.b + '|' + ori, G = g[key] = g[key] || { agua: x.b, ori, filas: {} }, l = x.manual ? 'm' : x.linha; G.filas[l] = (G.filas[l] || 0) + 1; });
+        fim.resultado.arranjo = Object.values(g).map((G) => ({ agua: G.agua, ori: G.ori, fileiras: Object.values(G.filas) }));
+      } catch { /* sem arranjo */ }
       if (fim.resultado_cabos) { fim.resultado.cabos = fim.resultado_cabos; delete fim.resultado_cabos; }
       try { const pm = planoMppt(); if (pm) fim.resultado.mppt = { tipo: pm.tipo, ok: pm.ok, avisos: [...pm.avisos, ...(pm.mppts || []).flatMap((m) => m.avisos.map((x) => `MPPT ${m.n}: ${x}`))], mppts: (pm.mppts || []).map((m) => ({ n: m.n, agua: m.agua, placas: m.placas, strings: m.strings, porString: m.porString, vFrio: m.vFrio })), fonte: proj.mppt.ficha.fonte, conferida: !!proj.mppt.ficha.conferida && !proj.mppt.ficha.editada }; } catch { /* extra */ }
       fim.perda = res.perda; fim.fotos = fotos; fim.salvoEm = new Date().toISOString();
