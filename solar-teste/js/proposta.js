@@ -39,7 +39,117 @@
   const vend = D.empresa.vendedor, telVend = '(16) 98136-6288';
   const zapVend = () => `https://wa.me/${D.empresa.whatsapp}?text=${encodeURIComponent(`Olá ${vend}! Vi a proposta ${o.id} e quero conversar.`)}`;
 
-  /* ---------- Estrutura fixa da página ---------- */
+  /* ---------- Estrutura da página: cada tipo de cliente tem a sua ordem e a sua história (js/narrativa.js) ---------- */
+  const N = window.Narrativa, CAPA = N.capa(SEG, o, a), f3 = o.projeto3d && o.projeto3d.fotos ? o.projeto3d.fotos : null;
+  const S = {
+    capa: `<section class="capa capa-${SEG}" data-secao="capa">
+        <div class="capa-foto${f3 && (f3.depois || f3.d3) ? '' : ' capa-sol'}"${f3 && (f3.depois || f3.d3) ? ` style="background-image:url('${f3.depois || f3.d3}')"` : ''}></div>
+        <div class="capa-txt"><span class="selo">${esc(CAPA.selo)}</span>
+          <h1>${esc(CAPA.titulo)}</h1><p>${esc(CAPA.sub)}</p>
+          <div class="capa-num"><span>${esc(CAPA.destaque.rot)}</span><b>${esc(CAPA.destaque.val)}</b></div></div>
+      </section>
+      <div class="consultor">
+        <div class="foto" aria-hidden="true">${esc(vend[0])}</div>
+        <div><b>${esc(vend)}, seu consultor na Chama Solar</b><span>${GA ? 'Preparei com base na conta de média tensão: ponta, fora ponta e demanda.' : 'Preparei com base na sua conta de luz. Leva uns 3 minutos.'} Qualquer dúvida:</span>
+          <div class="tel">${telVend}</div></div>
+      </div>`,
+    sonhos: `<section class="bloco destaque-bloco" data-secao="sonhos" aria-labelledby="t-sonhos">
+        <h2 id="t-sonhos"><i class="bolha">${Icone(SEG === 'grandes' ? 'grafico' : SEG === 'rural' ? 'sol' : SEG === 'comercial' ? 'cofre' : 'casa')}</i>${{ residencial: 'O que a sua família vai fazer com essa economia?', comercial: 'O que essa economia faz pelo seu negócio?', grandes: 'Comparado com deixar o dinheiro aplicado', rural: 'A economia em produção' }[SEG]}</h2>
+        <div id="sonhos"></div>
+      </section>`,
+    garantias: `<section class="bloco" data-secao="garantias" aria-labelledby="t-gar">
+        <h2 id="t-gar"><i class="bolha">${Icone('medalha')}</i>${SEG === 'residencial' ? 'Pode ficar tranquilo' : 'Segurança na decisão'}</h2>
+        <div class="garantias">${N.garantias(SEG, p).map(([ic, t, d]) => `<div><i aria-hidden="true">${ic}</i><b>${esc(t)}</b><span>${esc(d)}</span></div>`).join('')}</div>
+      </section>`,
+    executivo: SEG === 'grandes' || GA ? `<section class="bloco" data-secao="executivo" aria-labelledby="t-exe">
+        <h2 id="t-exe"><i class="bolha">${Icone('documento')}</i>Resumo executivo</h2>
+        <div id="executivo"></div>
+      </section>` : '',
+    video: o.videoApresentacao && B.videoProposta ? `<section class="bloco" data-secao="video" aria-labelledby="t-video">
+        <h2 id="t-video"><i class="bolha">${Icone('monitor')}</i>Assista: explico a sua proposta</h2>
+        <p class="apoio">Um vídeo curto com tudo o que está aqui, do jeito que eu explicaria pessoalmente. Pode mostrar para a família.</p>
+        <div class="vid-prop" id="vidProp"><button class="btn-g" id="vidPlay" type="button">▶ Assistir o vídeo</button></div>
+      </section>` : '',
+    resumo: `<section class="bloco" data-secao="resumo" aria-labelledby="t-resumo">
+        <h2 id="t-resumo"><i class="bolha">${Icone('grafico')}</i>Resumo em três números</h2>
+        <div class="tres" id="tres"></div>
+      </section>`,
+    grupoA: GA ? `<section class="bloco" data-secao="grupoA" aria-labelledby="t-ga">
+        <h2 id="t-ga"><i class="bolha">${Icone('conta')}</i>A conta de média tensão, hoje e com a usina</h2>
+        <p class="apoio">A conta do Grupo A tem três partes. A usina abate a energia (fora ponta e ponta); a demanda contratada continua.</p>
+        <div id="grupoA"></div>
+      </section>` : '',
+    retorno: SEG !== 'residencial' ? `<section class="bloco" data-secao="retorno" aria-labelledby="t-ret">
+        <h2 id="t-ret"><i class="bolha">${Icone('grafico')}</i>${SEG === 'rural' ? 'Quanto a energia solar devolve para a propriedade' : 'Retorno do investimento'}</h2>
+        <p class="apoio">O sistema se paga com a economia na conta. Depois disso, a economia vira lucro por mais de 20 anos.</p>
+        <div id="retorno"></div>
+      </section>` : '',
+    rural: SEG === 'rural' ? `<section class="bloco" data-secao="rural" aria-labelledby="t-rur">
+        <h2 id="t-rur"><i class="bolha">${Icone('sol')}</i>Energia para a produção</h2>
+        <div class="itens">
+          ${'<details class="item"><summary><i class="bolha">' + Icone('relogio') + '</i><span class="txt"><b>Irrigação e bombeamento</b><span>O sol gera de dia e o crédito paga a bomba à noite</span></span><span class="abrir" aria-hidden="true">' + Icone('mais') + '</span></summary><div class="explica">A energia que sobra de dia vira crédito e abate o consumo da irrigação noturna e dos motores. Se a propriedade tem desconto de irrigante, consideramos isso no cálculo.</div></details>'}
+          ${'<details class="item"><summary><i class="bolha">' + Icone('casa') + '</i><span class="txt"><b>Barracão ou solo</b><span>Usamos o telhado do barracão ou uma área de terra sem uso</span></span><span class="abrir" aria-hidden="true">' + Icone('mais') + '</span></summary><div class="explica">Em área de solo a estrutura fica na inclinação ideal, sem sombra, e a manutenção é mais fácil.</div></details>'}
+          ${'<details class="item"><summary><i class="bolha">' + Icone('cofre') + '</i><span class="txt"><b>Crédito rural</b><span>Linhas com juros menores e carência de safra</span></span><span class="abrir" aria-hidden="true">' + Icone('mais') + '</span></summary><div class="explica">Ajudamos a montar a documentação para o banco ou cooperativa da propriedade. As condições dependem da linha e do enquadramento do produtor.</div></details>'}
+        </div>
+      </section>` : '',
+    conta: `<section class="bloco" data-secao="conta" aria-labelledby="t-conta">
+        <h2 id="t-conta"><i class="bolha">${Icone('conta')}</i>${GA ? 'Quanto a empresa pagou de energia no último ano?' : 'Quanto você pagou de luz no último ano?'}</h2>
+        <p class="apoio">${GA ? 'Cada barra é um mês da conta: ponta, fora ponta e demanda somados.' : 'Cada barra é um mês da sua conta.'} A mais escura foi a mais cara.</p>
+        <div class="barras" id="barras" aria-hidden="true"></div>
+        <p class="frase" id="frase-conta"></p>
+      </section>`,
+    espera: `<section class="bloco" data-secao="espera" aria-labelledby="t-espera">
+        <h2 id="t-espera"><i class="bolha">${Icone('relogio')}</i>E se deixar para depois?</h2>
+        <p class="apoio">Enquanto o sistema não é instalado, a conta continua chegando.</p>
+        <div class="duas" id="espera"></div>
+      </section>`,
+    pagamento: `<section class="bloco" data-secao="pagamento" aria-labelledby="t-pag">
+        <h2 id="t-pag"><i class="bolha">${Icone('cofre')}</i>Como fica o pagamento?</h2>
+        <p class="apoio">Toque para ver em quantas vezes:</p>
+        <div class="opcoes-g" id="prazos" role="group" aria-label="Prazo"></div>
+        <div id="comparar"></div>
+      </section>`,
+    sistema: `<section class="bloco" data-secao="sistema" aria-labelledby="t-sis">
+        <h2 id="t-sis"><i class="bolha">${Icone('painel')}</i>O que vamos instalar?</h2>
+        <div id="sistema"></div>
+      </section>`,
+    vizinhos: `<section class="bloco" data-secao="vizinhos" aria-labelledby="t-viz">
+        <h2 id="t-viz"><i class="bolha">${Icone('casa')}</i>${a.vizinhos.total ? 'Quem já tem perto de você?' : 'Por que a Chama Solar?'}</h2>
+        ${a.vizinhos.total ? `<p class="apoio">${a.vizinhos.reais ? 'Clientes Chama Solar' + (a.vizinhos.mesmaCidade ? ' em ' + esc(o.cidade) : ' da região') + ' contando como ficou.' : 'Exemplos do modo teste (fictícios).'}</p>` : ''}
+        ${a.vizinhos.usinas.slice(0, 3).map((u) => `<div class="viz"><b>${u.real ? esc(u.nome || 'Cliente') + (u.cidade ? ' · ' + esc(u.cidade) : '') : 'Bairro ' + esc(u.bairro)}</b>${u.contaAntes ? `<div class="de-para"><s>${brl(u.contaAntes)}</s><span>${brl(u.contaMes)}</span></div>` : ''}<small>${u.texto ? '“' + esc(u.texto) + '”' : `Pagava ${brl(u.contaAntes)} por mês. Hoje paga ${brl(u.contaMes)}.`}${u.desde ? ' Instalado em ' + esc(u.desde) + '.' : ''}${u.link ? ` <a href="${esc(u.link)}" target="_blank" rel="noopener">ver no Instagram</a>` : ''}</small></div>`).join('')}
+        <div class="selos">
+          ${(() => { const ed = p.empresaDoc || {}, teste = !B.nuvem; const anos = ed.anosRegiao || (teste ? D.empresa.anos : 0), selo = ed.seloConfianca || (teste ? D.empresa.selo : ''); return (anos ? `<div>${Icone('medalha')} ${esc(anos)} anos na região</div>` : '') + (selo ? `<div>${Icone('estrela')} ${esc(selo)}</div>` : ''); })()}
+          <div>${Icone('documento')} Papelada da CPFL por nossa conta</div><div>${Icone('monitor')} Acompanhamos sua usina todo mês</div>
+        </div>
+      </section>`,
+    duvidas: `<section class="bloco" data-secao="duvidas" aria-labelledby="t-duv">
+        <h2 id="t-duv"><i class="bolha">${Icone('conversa')}</i>Dúvidas mais comuns</h2>
+        <div id="duvidas"></div>
+      </section>`,
+    decidir: `<section class="bloco" id="s-decidir" data-secao="decidir" aria-labelledby="t-dec">
+        <h2 id="t-dec"><i class="bolha">${Icone('seta')}</i>Vamos para o próximo passo?</h2>
+        <div id="decidir"></div>
+      </section>`,
+    usina3d: `${o.projeto3d && o.projeto3d.fotos && o.projeto3d.fotos.d3 ? (() => { const p3 = o.projeto3d, r3 = p3.resultado || {}; return `<section class="bloco" data-secao="usina3d" aria-labelledby="t-3d">
+        <h2 id="t-3d"><i class="bolha">${Icone('casa')}</i>Sua usina em 3D</h2>
+        <p class="apoio">Montada sobre a foto ${p3.drone ? 'do drone' : p3.fonte === 'google' ? 'de satélite' : 'aérea'} do seu telhado, com a medida real de cada placa e a sombra calculada hora a hora, para o ano inteiro.</p>
+        <div class="v3d" id="v3d"><img src="${p3.fotos.d3}" alt="Usina solar em 3D no seu telhado"></div>
+        <div class="v3d-ctl" id="v3dCtl" hidden>
+          <div class="v3d-dias" role="group" aria-label="Época do ano">${[[0, 'Verão'], [3, 'Mar · Set'], [6, 'Inverno']].map(([d, t]) => `<button data-v3d-dia="${d}" aria-pressed="${d === 6}">${t}</button>`).join('')}</div>
+          <div class="v3d-linha"><button class="v3d-play" id="v3dPlay" aria-label="Ver o sol passar">▶</button><input type="range" id="v3dHora" min="6" max="18" step="0.05" value="9.5" aria-label="Hora do dia"><b id="v3dHoraO">09:30</b></div>
+          <span id="v3dTxt"></span></div>
+        ${p3.fotos.antes && p3.fotos.depois ? `<div class="ad" id="antesDepois"><img src="${p3.fotos.antes}" alt="Seu telhado hoje"><div class="ad-dep" id="adDep"><img src="${p3.fotos.depois}" alt="O seu telhado com a usina"></div><i class="ad-linha" id="adLinha"></i><span class="ad-r ad-a">Hoje</span><span class="ad-r ad-d">Com a usina</span><input type="range" min="0" max="100" value="50" id="adRange" aria-label="Arraste para ver antes e depois"></div><p class="apoio" style="margin-top:6px">Arraste para comparar o seu telhado hoje e com a usina.</p>` : ''}
+        <button class="btn-g contorno" id="v3dGirar" style="margin-top:10px">${Icone('casa')} Girar a casa e ver o sol passar</button>
+        <p class="apoio" style="margin-top:8px">${r3.placas ? `${r3.placas} placas · sombra medida: ${n((r3.perdaSombra ?? r3.perdaSom ?? 0) * 100, 1)}% da geração do ano, já descontada${r3.geracaoAnual ? ` · ${n(r3.geracaoAnual / 12)} kWh por mês` : ''}` : ''}${p3.fonte === 'google' ? ' · Imagens © Google' : ''}</p>
+      </section>`; })() : ''}`,
+  };
+  // a ordem conta a história: família (sonho → conta → parcela), negócio (lucro → retorno), executivo (números → conta → técnica), rural (produção → retorno)
+  const ORDEM = {
+    residencial: ['video', 'resumo', 'sonhos', 'conta', 'espera', 'pagamento', 'usina3d', 'sistema', 'garantias', 'vizinhos', 'duvidas', 'decidir'],
+    comercial: ['video', 'resumo', 'sonhos', 'retorno', 'conta', 'espera', 'pagamento', 'usina3d', 'sistema', 'garantias', 'vizinhos', 'duvidas', 'decidir'],
+    grandes: ['executivo', 'video', 'sonhos', 'grupoA', 'retorno', 'resumo', 'conta', 'usina3d', 'sistema', 'pagamento', 'espera', 'garantias', 'vizinhos', 'duvidas', 'decidir'],
+    rural: ['video', 'resumo', 'sonhos', 'rural', 'retorno', 'conta', 'espera', 'pagamento', 'usina3d', 'sistema', 'garantias', 'vizinhos', 'duvidas', 'decidir'],
+  }[SEG] || [];
   raiz.innerHTML = `
     ${vendedor ? `<div class="faixa">MODO VENDEDOR · suas visitas não contam · <a href="index.html#lead-${esc(o.id)}">voltar para a central</a></div>` : ''}
     ${B.nuvem ? '' : '<div class="faixa" style="background:#e9edf5;color:#46526b">Versão de teste · números simulados</div>'}
@@ -51,104 +161,8 @@
       </div>
     </div></header>
     <main class="pv">
-      <section class="ola">
-        <h1>${ehEmpresa ? `Proposta para ${esc(o.nome)}` : `Olá, ${esc(nomeCurto)}!`}</h1>
-        <p>${GA ? 'Preparamos esta proposta com base na conta de média tensão da empresa: ponta, fora ponta e demanda contratada.' : 'Preparamos esta proposta com base na sua conta de luz.'} Leva uns 3 minutos.</p>
-        <div class="consultor">
-          <div class="foto" aria-hidden="true">${esc(vend[0])}</div>
-          <div><b>${esc(vend)}, seu consultor na Chama Solar</b><span>Qualquer dúvida, é só me chamar:</span>
-            <div class="tel">${telVend}</div></div>
-        </div>
-      </section>
-
-      ${SEG === 'grandes' || GA ? `<section class="bloco" data-secao="executivo" aria-labelledby="t-exe">
-        <h2 id="t-exe"><i class="bolha">${Icone('documento')}</i>Resumo executivo</h2>
-        <div id="executivo"></div>
-      </section>` : ''}
-      ${o.videoApresentacao && B.videoProposta ? `<section class="bloco" data-secao="video" aria-labelledby="t-video">
-        <h2 id="t-video"><i class="bolha">${Icone('monitor')}</i>Assista: explico a sua proposta</h2>
-        <p class="apoio">Um vídeo curto com tudo o que está aqui, do jeito que eu explicaria pessoalmente. Pode mostrar para a família.</p>
-        <div class="vid-prop" id="vidProp"><button class="btn-g" id="vidPlay" type="button">▶ Assistir o vídeo</button></div>
-      </section>` : ''}
-      <section class="bloco" data-secao="resumo" aria-labelledby="t-resumo">
-        <h2 id="t-resumo"><i class="bolha">${Icone('grafico')}</i>Resumo em três números</h2>
-        <div class="tres" id="tres"></div>
-      </section>
-      ${GA ? `<section class="bloco" data-secao="grupoA" aria-labelledby="t-ga">
-        <h2 id="t-ga"><i class="bolha">${Icone('conta')}</i>A conta de média tensão, hoje e com a usina</h2>
-        <p class="apoio">A conta do Grupo A tem três partes. A usina abate a energia (fora ponta e ponta); a demanda contratada continua.</p>
-        <div id="grupoA"></div>
-      </section>` : ''}
-
-      ${SEG !== 'residencial' ? `<section class="bloco" data-secao="retorno" aria-labelledby="t-ret">
-        <h2 id="t-ret"><i class="bolha">${Icone('grafico')}</i>${SEG === 'rural' ? 'Quanto a energia solar devolve para a propriedade' : 'Retorno do investimento'}</h2>
-        <p class="apoio">O sistema se paga com a economia na conta. Depois disso, a economia vira lucro por mais de 20 anos.</p>
-        <div id="retorno"></div>
-      </section>` : ''}
-      ${SEG === 'rural' ? `<section class="bloco" data-secao="rural" aria-labelledby="t-rur">
-        <h2 id="t-rur"><i class="bolha">${Icone('sol')}</i>Energia para a produção</h2>
-        <div class="itens">
-          ${'<details class="item"><summary><i class="bolha">' + Icone('relogio') + '</i><span class="txt"><b>Irrigação e bombeamento</b><span>O sol gera de dia e o crédito paga a bomba à noite</span></span><span class="abrir" aria-hidden="true">' + Icone('mais') + '</span></summary><div class="explica">A energia que sobra de dia vira crédito e abate o consumo da irrigação noturna e dos motores. Se a propriedade tem desconto de irrigante, consideramos isso no cálculo.</div></details>'}
-          ${'<details class="item"><summary><i class="bolha">' + Icone('casa') + '</i><span class="txt"><b>Barracão ou solo</b><span>Usamos o telhado do barracão ou uma área de terra sem uso</span></span><span class="abrir" aria-hidden="true">' + Icone('mais') + '</span></summary><div class="explica">Em área de solo a estrutura fica na inclinação ideal, sem sombra, e a manutenção é mais fácil.</div></details>'}
-          ${'<details class="item"><summary><i class="bolha">' + Icone('cofre') + '</i><span class="txt"><b>Crédito rural</b><span>Linhas com juros menores e carência de safra</span></span><span class="abrir" aria-hidden="true">' + Icone('mais') + '</span></summary><div class="explica">Ajudamos a montar a documentação para o banco ou cooperativa da propriedade. As condições dependem da linha e do enquadramento do produtor.</div></details>'}
-        </div>
-      </section>` : ''}
-      <section class="bloco" data-secao="conta" aria-labelledby="t-conta">
-        <h2 id="t-conta"><i class="bolha">${Icone('conta')}</i>${GA ? 'Quanto a empresa pagou de energia no último ano?' : 'Quanto você pagou de luz no último ano?'}</h2>
-        <p class="apoio">${GA ? 'Cada barra é um mês da conta: ponta, fora ponta e demanda somados.' : 'Cada barra é um mês da sua conta.'} A mais escura foi a mais cara.</p>
-        <div class="barras" id="barras" aria-hidden="true"></div>
-        <p class="frase" id="frase-conta"></p>
-      </section>
-
-      <section class="bloco" data-secao="espera" aria-labelledby="t-espera">
-        <h2 id="t-espera"><i class="bolha">${Icone('relogio')}</i>E se deixar para depois?</h2>
-        <p class="apoio">Enquanto o sistema não é instalado, a conta continua chegando.</p>
-        <div class="duas" id="espera"></div>
-      </section>
-
-      <section class="bloco" data-secao="pagamento" aria-labelledby="t-pag">
-        <h2 id="t-pag"><i class="bolha">${Icone('cofre')}</i>Como fica o pagamento?</h2>
-        <p class="apoio">Toque para ver em quantas vezes:</p>
-        <div class="opcoes-g" id="prazos" role="group" aria-label="Prazo"></div>
-        <div id="comparar"></div>
-      </section>
-
-      ${o.projeto3d && o.projeto3d.fotos && o.projeto3d.fotos.d3 ? (() => { const p3 = o.projeto3d, r3 = p3.resultado || {}; return `<section class="bloco" data-secao="usina3d" aria-labelledby="t-3d">
-        <h2 id="t-3d"><i class="bolha">${Icone('casa')}</i>Sua usina em 3D</h2>
-        <p class="apoio">Montada sobre a foto ${p3.drone ? 'do drone' : p3.fonte === 'google' ? 'de satélite' : 'aérea'} do seu telhado, com a medida real de cada placa e a sombra calculada hora a hora, para o ano inteiro.</p>
-        <div class="v3d" id="v3d"><img src="${p3.fotos.d3}" alt="Usina solar em 3D no seu telhado"></div>
-        <div class="v3d-ctl" id="v3dCtl" hidden>
-          <div class="v3d-dias" role="group" aria-label="Época do ano">${[[0, 'Verão'], [3, 'Mar · Set'], [6, 'Inverno']].map(([d, t]) => `<button data-v3d-dia="${d}" aria-pressed="${d === 6}">${t}</button>`).join('')}</div>
-          <div class="v3d-linha"><button class="v3d-play" id="v3dPlay" aria-label="Ver o sol passar">▶</button><input type="range" id="v3dHora" min="6" max="18" step="0.05" value="9.5" aria-label="Hora do dia"><b id="v3dHoraO">09:30</b></div>
-          <span id="v3dTxt"></span></div>
-        ${p3.fotos.antes && p3.fotos.depois ? `<div class="ad" id="antesDepois"><img src="${p3.fotos.antes}" alt="Seu telhado hoje"><div class="ad-dep" id="adDep"><img src="${p3.fotos.depois}" alt="O seu telhado com a usina"></div><i class="ad-linha" id="adLinha"></i><span class="ad-r ad-a">Hoje</span><span class="ad-r ad-d">Com a usina</span><input type="range" min="0" max="100" value="50" id="adRange" aria-label="Arraste para ver antes e depois"></div><p class="apoio" style="margin-top:6px">Arraste para comparar o seu telhado hoje e com a usina.</p>` : ''}
-        <button class="btn-g contorno" id="v3dGirar" style="margin-top:10px">${Icone('casa')} Girar a casa e ver o sol passar</button>
-        <p class="apoio" style="margin-top:8px">${r3.placas ? `${r3.placas} placas · sombra medida: ${n((r3.perdaSombra ?? r3.perdaSom ?? 0) * 100, 1)}% da geração do ano, já descontada${r3.geracaoAnual ? ` · ${n(r3.geracaoAnual / 12)} kWh por mês` : ''}` : ''}${p3.fonte === 'google' ? ' · Imagens © Google' : ''}</p>
-      </section>`; })() : ''}
-      <section class="bloco" data-secao="sistema" aria-labelledby="t-sis">
-        <h2 id="t-sis"><i class="bolha">${Icone('painel')}</i>O que vamos instalar?</h2>
-        <div id="sistema"></div>
-      </section>
-
-      <section class="bloco" data-secao="vizinhos" aria-labelledby="t-viz">
-        <h2 id="t-viz"><i class="bolha">${Icone('casa')}</i>${a.vizinhos.total ? 'Quem já tem perto de você?' : 'Por que a Chama Solar?'}</h2>
-        ${a.vizinhos.total ? `<p class="apoio">${a.vizinhos.reais ? 'Clientes Chama Solar' + (a.vizinhos.mesmaCidade ? ' em ' + esc(o.cidade) : ' da região') + ' contando como ficou.' : 'Exemplos do modo teste (fictícios).'}</p>` : ''}
-        ${a.vizinhos.usinas.slice(0, 3).map((u) => `<div class="viz"><b>${u.real ? esc(u.nome || 'Cliente') + (u.cidade ? ' · ' + esc(u.cidade) : '') : 'Bairro ' + esc(u.bairro)}</b>${u.contaAntes ? `<div class="de-para"><s>${brl(u.contaAntes)}</s><span>${brl(u.contaMes)}</span></div>` : ''}<small>${u.texto ? '“' + esc(u.texto) + '”' : `Pagava ${brl(u.contaAntes)} por mês. Hoje paga ${brl(u.contaMes)}.`}${u.desde ? ' Instalado em ' + esc(u.desde) + '.' : ''}${u.link ? ` <a href="${esc(u.link)}" target="_blank" rel="noopener">ver no Instagram</a>` : ''}</small></div>`).join('')}
-        <div class="selos">
-          ${(() => { const ed = p.empresaDoc || {}, teste = !B.nuvem; const anos = ed.anosRegiao || (teste ? D.empresa.anos : 0), selo = ed.seloConfianca || (teste ? D.empresa.selo : ''); return (anos ? `<div>${Icone('medalha')} ${esc(anos)} anos na região</div>` : '') + (selo ? `<div>${Icone('estrela')} ${esc(selo)}</div>` : ''); })()}
-          <div>${Icone('documento')} Papelada da CPFL por nossa conta</div><div>${Icone('monitor')} Acompanhamos sua usina todo mês</div>
-        </div>
-      </section>
-
-      <section class="bloco" data-secao="duvidas" aria-labelledby="t-duv">
-        <h2 id="t-duv"><i class="bolha">${Icone('conversa')}</i>Dúvidas mais comuns</h2>
-        <div id="duvidas"></div>
-      </section>
-
-      <section class="bloco" id="s-decidir" data-secao="decidir" aria-labelledby="t-dec">
-        <h2 id="t-dec"><i class="bolha">${Icone('seta')}</i>Vamos para o próximo passo?</h2>
-        <div id="decidir"></div>
-      </section>
+      ${S.capa}
+      ${ORDEM.map((k) => S[k] || '').join('\n      ')}
 
       <footer class="rodape">
         <img src="marca/logo-cor.webp" alt="Chama Solar" width="104" height="44">
@@ -196,6 +210,46 @@
     ];
   }
 
+  /* ---------- A economia contada do jeito de cada cliente (sonhos, negócio, investimento, produção) ---------- */
+  function blocoSonhos(op, eco, sobra) {
+    const R = N.ref(p);
+    if (SEG === 'residencial') {
+      const extra = est.sonho && est.sonho.valor > 0 ? { id: 'meu', icone: '⭐', titulo: est.sonho.titulo || 'O nosso sonho', valor: est.sonho.valor, meu: true } : null;
+      const lista = N.sonhos(eco, p, extra), poup = N.valorFuturo(eco.economiaMes1, 25, R.poupancaAnual);
+      return `<p class="apoio">Com <b style="color:var(--bom)">${brl(sobra)} por mês</b> que deixam de ir para a CPFL, a economia sozinha paga:</p>
+        <div class="sonhos">${lista.map((x) => `<div class="sonho${x.meu ? ' meu' : ''}"><i aria-hidden="true">${x.icone}</i><b>${esc(x.titulo)}</b><small>${brl(x.valor)}</small><span>pago ${x.quando}</span>${x.vezes > 1 ? `<em>${x.vezes} vezes em 25 anos</em>` : ''}</div>`).join('')}</div>
+        <details class="meu-sonho"${est.sonho ? ' open' : ''}><summary>Qual é o sonho de vocês? Calcule aqui</summary>
+          <div class="ms-campos"><label>Sonho<input type="text" id="msTit" placeholder="ex.: intercâmbio da filha" value="${esc((est.sonho && est.sonho.titulo) || '')}"></label>
+          <label>Quanto custa (R$)<input type="number" id="msVal" inputmode="numeric" placeholder="ex.: 20000" value="${(est.sonho && est.sonho.valor) || ''}"></label></div>
+          <button type="button" class="btn-g contorno" id="msOk">Ver em quanto tempo a economia paga</button></details>
+        <p class="frase" style="font-size:1rem">Ou guarde: se depositar a economia na poupança todo mês, em 25 anos a família tem <b class="destaque-bom">${brl(poup)}</b>.</p>`;
+    }
+    if (SEG === 'comercial') {
+      const ng = N.negocio(eco, p), inv = N.investimento(eco, op.preco.precoFinal, p);
+      const func = ng.funcionarios >= 1 ? `${n(Math.floor(ng.funcionarios))} ${Math.floor(ng.funcionarios) > 1 ? 'funcionários pagos' : 'funcionário pago'} o ano todo` : `${n(ng.funcionarios * 12)} meses de um funcionário`;
+      return `<p class="apoio">A conta de luz é custo fixo: todo mês sai do caixa, venda bem ou mal. Com a usina, <b style="color:var(--bom)">${brl(ng.ano)} por ano</b> voltam para o negócio. É o mesmo que:</p>
+        <div class="sonhos">
+          <div class="sonho"><i aria-hidden="true">👥</i><b>${func}</b><small>salário + encargos de ${brl(ng.custoFuncionario)}/mês</small></div>
+          <div class="sonho"><i aria-hidden="true">🛒</i><b>Vender ${brl(ng.vendasEquivalentes)} a mais</b><small>por ano, com margem de ${n(ng.margem * 100)}%: o lucro que a economia já entrega</small></div>
+          <div class="sonho"><i aria-hidden="true">📈</i><b>${n(inv.tir * 100, 1)}% ao ano</b><small>de retorno, contra ${n(inv.cdiLiquido * 100, 1)}% do CDI (já com IR)</small></div>
+          <div class="sonho"><i aria-hidden="true">💰</i><b>${brl(eco.economia25)}</b><small>de caixa em 25 anos</small></div></div>`;
+    }
+    if (SEG === 'grandes') {
+      const inv = N.investimento(eco, op.preco.precoFinal, p), amb = N.ambiental(op, p);
+      const bar = (rot, v, cls) => `<div class="cmp"><span>${rot}</span><div class="trilho"><i class="${cls}" style="width:${Math.max(4, Math.min(v / Math.max(inv.tir, inv.cdiLiquido, 0.01), 1) * 100)}%"></i></div><b>${n(v * 100, 1)}% a.a.</b></div>`;
+      return `<p class="apoio">Rendimento ao ano de cada alternativa para o mesmo dinheiro:</p>
+        ${bar('Usina solar (TIR)', inv.tir, 'bom')}${bar('CDI (líquido de IR)', inv.cdiLiquido, 'neutro')}${bar('Poupança', inv.poupanca, 'neutro')}
+        <p class="frase" style="font-size:1rem">Os ${brl(op.preco.precoFinal)} no CDI renderiam cerca de <b>${brl(inv.rendeCdiMes)} por mês</b>. Na usina, a empresa deixa de pagar <b class="destaque-bom">${brl(eco.economiaMes1)} por mês</b> já no primeiro ano, e essa economia cresce com cada reajuste da tarifa.</p>
+        <div class="esg"><div><b>${n(amb.mwhAno, 1)} MWh</b><span>de energia limpa por ano</span></div><div><b>${n(amb.tco2_25, 1)} t</b><span>de CO₂ evitadas em 25 anos</span></div><div><b>ESG</b><span>energia renovável no relatório da empresa</span></div></div>`;
+    }
+    // rural
+    const pr = N.producao(eco, p);
+    return `<p class="apoio">Por ano, a economia na conta vale o mesmo que:</p>
+      <div class="sonhos">${pr.map((x) => `<div class="sonho"><i aria-hidden="true">${x.icone}</i><b>${n(x.qtd)} ${x.titulo}</b><small>a ${brl(x.preco)} a ${x.un}</small></div>`).join('')}
+        <div class="sonho"><i aria-hidden="true">💰</i><b>${brl(eco.economia25)}</b><small>em 25 anos que ficam na propriedade</small></div></div>
+      <p class="apoio" style="margin-top:10px">É produção que deixa de ir embora na conta de luz e pode virar adubo, ração, máquina ou reserva para a próxima safra.</p>`;
+  }
+
   /* ---------- Partes que mudam com as escolhas ---------- */
   function desenhar() {
     a = C.analisar({ ...o, opcaoEscolhida: est.opcao }, p, est.prazo);
@@ -233,6 +287,7 @@
       </tbody></table>
       <p class="apoio" style="margin-top:10px">Geração garantida em contrato: ${n(op.dim.geracaoMes * 12 * 0.9)} kWh por ano (90% da simulada), apurada pela média de 12 meses.</p>`;
     }
+    if ($('#sonhos')) $('#sonhos').innerHTML = blocoSonhos(op, eco, sobra);
     const v = a.raioX.mensal, max = Math.max(...v), iMax = v.indexOf(max);
     $('#barras').innerHTML = v.map((x, i) => `<div class="b ${i === iMax ? 'max' : ''}"><i style="height:${Math.max((x / max) * 100, 4)}%"></i><em>${MESES[i]}</em></div>`).join('');
     $('#frase-conta').innerHTML = `No total foram <b class="destaque-ruim">${brl(a.raioX.pago12)}</b> para a CPFL. A conta mais cara foi em ${MESES_LONGOS[iMax]}: <b>${brl(max)}</b>.`;
@@ -241,7 +296,7 @@
     const t25 = a.raioX.curva[24];
     const mx = Math.max(t25.sem, t25.com);
     $('#espera').innerHTML = `
-      <p class="frase" style="margin:0 0 14px">Cada mês sem energia solar custa <b class="destaque-ruim">${brl(a.espera.porMes)}</b>. Em seis meses, <b class="destaque-ruim">${brl(a.espera.seisMeses)}</b>.</p>
+      <div class="por-dia"><span>Cada dia sem energia solar custa</span><b>${brl(a.espera.porMes / 30, 2)}</b><small>${brl(a.espera.porMes)} por mês · ${brl(a.espera.seisMeses)} em seis meses</small></div>
       <div class="linha-c"><div class="rot"><span>25 anos só com a CPFL</span><b class="destaque-ruim">${brl(t25.sem)}</b></div><div class="trilho"><i style="width:100%;background:var(--ruim)"></i></div></div>
       <div class="linha-c"><div class="rot"><span>25 anos com energia solar</span><b class="destaque-bom">${brl(t25.com)}</b></div><div class="trilho"><i style="width:${(t25.com / mx) * 100}%;background:var(--bom)"></i></div></div>
       <p class="apoio" style="margin:12px 0 0">${GA ? `Com solar já está tudo somado: o sistema, a demanda contratada, a energia que ainda fica na conta e a limpeza anual. A simulação usa reajuste de ${n(p.reajusteAnual * 100, 1)}% ao ano na tarifa.` : `Com solar já está tudo somado: o sistema, a taxa mínima da CPFL e a limpeza anual. A CPFL reajustou a tarifa residencial em ${n(p.reajusteUltimo * 100, 2)}% em 2026.`}</p>`;
@@ -256,7 +311,7 @@
         <div class="caixa hoje"><span>Hoje</span><b>${brl(b.contaAtual)}</b><small>conta de luz</small></div>
         <div class="caixa solar"><span>Com energia solar</span><b>${brl(b.totalMes)}</b><small>${b.parcela ? `parcela ${brl(b.parcela)} + conta ${brl(b.contaDepois)}` : GA ? 'só o que fica na conta' : 'só a conta mínima'}</small></div>
       </div>
-      <div class="veredito ${b.diferenca >= 0 ? 'bom' : 'quase'}">${b.diferenca >= 0 ? `Você já começa pagando ${brl(b.diferenca)} a menos por mês.` : `Fica só ${brl(-b.diferenca)} a mais por mês, até terminar de pagar.`}</div>
+      <div class="veredito ${b.diferenca >= 0 ? 'bom' : 'quase'}">${b.diferenca >= 0 ? `Você já começa pagando ${brl(b.diferenca)} a menos por mês.` : `Fica só ${brl(-b.diferenca)} a mais por mês (${brl(-b.diferenca / 30, 2)} por dia) até terminar de pagar. Depois, ${brl(eco.contaAtual - eco.contaDepois)} por mês ficam com ${GA || SEG !== 'residencial' ? 'a empresa' : 'você'}.`}</div>
       <p class="frase" style="font-size:1rem">${b.parcela ? `Depois de ${b.prazo / 12} anos as parcelas acabam e ${GA ? 'a empresa passa' : 'você passa'} a pagar só ${brl(b.contaDepois)} de ${GA ? 'energia' : 'luz'}.` : `Desde o primeiro mês ${GA ? 'a empresa paga' : 'você paga'} só ${brl(b.contaDepois)} de ${GA ? 'energia' : 'luz'}.`}</p>`;
 
     const consumoZerar = Math.max(C.consumoMedio(o) - op.dim.disponibilidade, 0);
@@ -365,6 +420,11 @@
         });
         mover(); registrar('abriu3d', {});
       }).catch(() => { bt.disabled = false; bt.textContent = 'Não carregou: tocar para tentar de novo'; });
+      return;
+    }
+    if (ev.target.closest('#msOk')) {
+      const v = Math.round(+String(($('#msVal') || {}).value || '').replace(/\D/g, '')), t0 = (($('#msTit') || {}).value || '').trim().slice(0, 40);
+      if (v > 0) { est.sonho = { titulo: t0 || 'O nosso sonho', valor: v }; registrar('sonho', est.sonho); desenhar(); }
       return;
     }
     const t = ev.target.closest('[data-prazo],[data-op],[data-hr],#aceitar,#compartilhar,#baixarPdf,#zap,#zap-fixo,#letra,#ouvir');

@@ -49,13 +49,13 @@
     .barra button { font: 700 15px system-ui; padding: 10px 18px; border-radius: 999px; border: 0; background: #ff6700; color: #fff; cursor: pointer; }
     .mini { color: #5b6476; font-size: 9.5pt; }`;
 
-  function pagina(titulo, corpo, { qr } = {}) {
+  function pagina(titulo, corpo, { qr, css = '', semTopo = false } = {}) {
     const logo = new URL('marca/logo-cor.webp', location.href).href;
     return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(titulo)}</title>
       <link href="https://fonts.googleapis.com/css2?family=Albert+Sans:wght@400;600;700;800&family=Exo:wght@700;800&display=swap" rel="stylesheet">
-      <style>${CSS}</style>${qr ? `<script src="${new URL('js/qrcode.js', location.href).href}"></script>` : ''}</head>
+      <style>${CSS}${css}</style>${qr ? `<script src="${new URL('js/qrcode.js', location.href).href}"></script>` : ''}</head>
       <body><div class="barra naoimprime">Confira e toque em <button onclick="print()">Salvar em PDF / Imprimir</button></div>
-      <div class="folha"><div class="topo"><img src="${logo}" alt="Chama Solar"><small>${esc(titulo)}<br>${hoje()}</small></div>${corpo}</div>
+      <div class="folha">${semTopo ? '' : `<div class="topo"><img src="${logo}" alt="Chama Solar"><small>${esc(titulo)}<br>${hoje()}</small></div>`}${corpo}</div>
       ${qr ? `<script>try{var q=qrcode(0,'M');q.addData(${JSON.stringify(qr)});q.make();document.getElementById('qr').innerHTML=q.createImgTag(4,0);}catch(e){}</script>` : ''}
       </body></html>`;
   }
@@ -66,56 +66,174 @@
     w.document.open(); w.document.write(html); w.document.close();
   }
 
-  /* ---------- PROPOSTA EM PDF ---------- */
+  /* ---------- PROPOSTA EM PDF: capa e história por tipo de cliente (js/narrativa.js) ---------- */
+  const CSS_PROP = `
+    .folha { padding: 0 !important; overflow: hidden; } @media print { .folha { padding: 0 !important; } }
+    .pg { padding: 11mm 15mm; } .quebra { break-before: page; }
+    .capa { position: relative; color: #fff; min-height: 84mm; display: flex; flex-direction: column; justify-content: space-between; padding: 14mm 15mm 12mm; background: #1d283e; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .capa .fundo { position: absolute; inset: 0; background: center/cover no-repeat; }
+    .capa .fundo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, #0d132259 0%, #0d1322d9 60%, #0d1322f5 100%); }
+    .capa.residencial .sol { background: radial-gradient(120% 95% at 85% 0%, #ffb347 0%, #ff6700 28%, #b8340a 55%, #1d283e 88%); }
+    .capa.comercial .sol { background: radial-gradient(120% 95% at 85% 0%, #ffd27a 0%, #ff8a1f 25%, #23466e 62%, #121a2b 92%); }
+    .capa.grandes .sol { background: radial-gradient(120% 95% at 85% 0%, #9fd3ff 0%, #2f74c0 30%, #18325a 62%, #0b1220 92%); }
+    .capa.rural .sol { background: radial-gradient(120% 95% at 85% 0%, #ffe08a 0%, #f5a623 22%, #4f7a2a 55%, #1d2a17 92%); }
+    .capa .sol::after { background: linear-gradient(180deg, #0000 35%, #0d1322b3 100%); }
+    .capa > * { position: relative; } .capa .logo { height: 40px; }
+    .capa .selo { display: inline-block; font: 700 8.5pt/1 "Albert Sans", system-ui, sans-serif; letter-spacing: .1em; text-transform: uppercase; border: 1px solid #ffffff66; padding: 6px 10px; border-radius: 99px; margin-bottom: 10px; }
+    .capa h1 { font: 800 25pt/1.12 Exo, sans-serif; color: #fff; max-width: 150mm; margin: 0 0 8px; }
+    .capa p { color: #ffffffe0; font-size: 12pt; max-width: 150mm; margin: 0; }
+    .capa .id { font-size: 9pt; color: #ffffffb3; }
+    .big3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: -14mm 15mm 0; position: relative; }
+    .big3 div { background: #fff; border-radius: 14px; padding: 12px 14px; box-shadow: 0 8px 22px -10px #1d283e66; border: 1px solid #e3e6ec; }
+    .big3 span { display: block; font-size: 9pt; color: #5b6476; font-weight: 600; } .big3 b { font: 800 19pt/1.15 Exo, sans-serif; }
+    .big3 .r b { color: #c4283c; } .big3 .g b { color: #1e7a34; } .big3 .a b { color: #1f5fae; }
+    .vend { display: flex; gap: 12px; align-items: center; margin-top: 12px; padding: 10px 14px; border: 1px solid #e3e6ec; border-radius: 12px; }
+    .vend .ini { width: 40px; height: 40px; border-radius: 50%; background: #1d283e; color: #fff; display: grid; place-items: center; font: 800 14pt Exo, system-ui, sans-serif; flex: none; }
+    h2 { font: 800 14pt Exo, sans-serif !important; color: #1d283e !important; margin: 14px 0 6px !important; break-after: avoid; display: flex; align-items: center; gap: 8px; }
+    h2::before { content: ""; width: 6px; height: 18px; border-radius: 3px; background: #ff6700; }
+    .grade { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .grade.g3 { grid-template-columns: repeat(3, 1fr); } .grade.g2 { grid-template-columns: repeat(2, 1fr); }
+    .card { border: 1px solid #e3e6ec; border-radius: 12px; padding: 8px 10px; break-inside: avoid; }
+    .grade { break-inside: auto; } .card .ic { font-size: 15pt !important; }
+    .card .ic { font-size: 18pt; line-height: 1; } .card b { display: block; font-size: 11pt; margin-top: 4px; } .card small { color: #5b6476; font-size: 8.5pt; display: block; }
+    .card .ok { color: #1e7a34; font-weight: 800; font-size: 10.5pt; } .card em { font-style: normal; color: #c44d00; font-size: 8.5pt; font-weight: 700; }
+    .verde { background: #f1faf3; border-color: #cfe9d6; } .azul { background: #eef6ff; border-color: #d3e5fa; } .vermelho { background: #fdecee; border-color: #f6c9cf; }
+    .faixa-dia { break-inside: avoid; display: flex; justify-content: space-between; align-items: center; gap: 12px; background: #fdecee; border-radius: 12px; padding: 10px 14px; margin-top: 10px; }
+    .faixa-dia b { font: 800 18pt Exo, system-ui, sans-serif; color: #c4283c; }
+    .cmp { display: grid; grid-template-columns: 52mm 1fr 26mm; gap: 8px; align-items: center; margin: 6px 0; font-size: 10pt; }
+    .cmp .t { height: 12px; background: #eef1f6; border-radius: 6px; overflow: hidden; } .cmp .t i { display: block; height: 100%; border-radius: 6px; }
+    .cmp b { text-align: right; font: 800 11pt Exo, system-ui, sans-serif; }
+    .passos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; counter-reset: p; }
+    .passos div { border-top: 3px solid #ff6700; padding-top: 6px; font-size: 9.5pt; } .passos b { display: block; font-size: 10.5pt; }
+    .passos div::before { counter-increment: p; content: counter(p); font: 800 13pt Exo, system-ui, sans-serif; color: #ff6700; }
+    svg text { font-family: "Albert Sans", sans-serif; }
+    .gar { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px 14px; } .gar div { display: flex; gap: 8px; align-items: flex-start; break-inside: avoid; }
+    .gar .ic { font-size: 14pt; line-height: 1.2; } .gar b { display: block; font-size: 10pt; } .gar small { display: block; color: #5b6476; font-size: 8.5pt; line-height: 1.35; }
+    .pg .qr { margin-top: 8px; padding: 6px 12px; } .pg .qr img { width: 80px; height: 80px; }
+    .pg td, .pg th { padding: 4px 8px; font-size: 10pt; } .pg p { margin: 4px 0; }`;
+
+  function graficoMeses(v) { // 12 barras da conta
+    const W = 520, H = 58, max = Math.max(...v, 1), bw = W / 12, M = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'], iMax = v.indexOf(max);
+    return `<svg viewBox="0 0 ${W} ${H + 18}" width="100%">${v.map((x, i) => { const h = Math.max((x / max) * H, 3); return `<rect x="${i * bw + 5}" y="${H - h}" width="${bw - 10}" height="${h}" rx="4" fill="${i === iMax ? '#c4283c' : '#ec9aa5'}"/><text x="${i * bw + bw / 2}" y="${H + 14}" text-anchor="middle" font-size="10" fill="#5b6476">${M[i]}</text>`; }).join('')}</svg>`;
+  }
+  function graficoCaixa(op) { // acumulado ano a ano: vermelho pagando, verde lucro
+    const tab = [{ acumulado: -op.preco.precoFinal }, ...op.eco.tabela], W = 520, H = 85;
+    const neg = Math.max(...tab.map((t) => (t.acumulado < 0 ? -t.acumulado : 0)), 1), pos = Math.max(...tab.map((t) => (t.acumulado > 0 ? t.acumulado : 0)), 1), z = H * pos / (neg + pos), bw = W / tab.length;
+    return `<svg viewBox="0 0 ${W} ${H + 18}" width="100%"><line x1="0" x2="${W}" y1="${z}" y2="${z}" stroke="#c9ced9"/>${tab.map((t, i) => { const h = Math.abs(t.acumulado) / (neg + pos) * H; return `<rect x="${i * bw + 1.5}" y="${t.acumulado < 0 ? z : z - h}" width="${bw - 3}" height="${Math.max(h, 1)}" rx="2" fill="${t.acumulado < 0 ? '#c4283c' : '#1e7a34'}"/>`; }).join('')}${[0, 5, 10, 15, 20, 25].map((a) => `<text x="${Math.min(a * bw + bw / 2, W - 14)}" y="${H + 14}" text-anchor="middle" font-size="10" fill="#5b6476">${a ? 'ano ' + a : 'hoje'}</text>`).join('')}</svg>`;
+  }
+
   function proposta(o, p, link) {
-    const a = C().analisar(o, p), op = a.op, eq = C().equipamentos(op), e = empresaDe(p);
-    const ga = C().ehGA && C().ehGA(o) ? op.eco.grupoA : null, tRede = ga ? (+o.grupoA.tarifas.teFP || 0) + (+o.grupoA.tarifas.tusdFP || 0) : p.tarifaKwh;
-    const prazos = p.financiamento.prazos || [];
-    const parcelas = prazos.map((pz) => `<td class="v">${pz}x de <b>${brl(C().boleto(op, p, pz).parcela)}</b></td>`).join('');
-    const anos = op.eco.tabela.filter((t, i) => [0, 4, 9, 14, 19, 24].includes(i));
+    const a = C().analisar(o, p), op = a.op, eco = op.eco, eq = C().equipamentos(op), e = empresaDe(p), Nr = raiz.Narrativa;
+    const seg = Nr.segmento(o), CAPA = Nr.capa(seg, o, a), R = Nr.ref(p);
+    const ga = C().ehGA && C().ehGA(o) ? eco.grupoA : null, tRede = ga ? (+o.grupoA.tarifas.teFP || 0) + (+o.grupoA.tarifas.tusdFP || 0) : p.tarifaKwh;
+    const prazos = p.financiamento.prazos || [], sobra = eco.contaAtual - eco.contaDepois;
+    const anos = eco.tabela.filter((t, i) => [0, 4, 9, 14, 19, 24].includes(i));
     const outras = a.opcoes.filter((x) => x !== op);
     const validade = new Date(Date.now() + (p.validadeDias || 7) * 864e5).toLocaleDateString('pt-BR');
-    const corpo = `
-      <h1>Proposta de energia solar para ${esc(o.nome)}</h1>
-      <p class="mini">${esc(o.id)} · ${esc(o.cidade || '')} · válida até ${validade} (o preço do kit muda com o fornecedor)</p>
-      <div class="tres"><div><span>Sua conta hoje</span><b>${brl(op.eco.contaAtual, 0)}</b></div><div><span>Com energia solar</span><b>${brl(op.eco.contaDepois, 0)}</b></div><div><span>Economia por mês</span><b>${brl(op.eco.economiaMes1, 0)}</b></div></div>
-      ${ga || o.segmento === 'grandes' || o.segmento === 'comercial' || o.segmento === 'rural' ? `<h2>${ga || o.segmento === 'grandes' ? 'Resumo executivo' : 'Retorno do investimento'}</h2>
+    const f3 = o.projeto3d && o.projeto3d.fotos ? o.projeto3d.fotos : null, foto = f3 && (f3.depois || f3.d3);
+    const logoB = new URL('marca/logo-branco.webp', location.href).href, vend = D.empresa.vendedor;
+    const zap = String(e.whatsapp).replace(/^55(\d\d)(\d{5})(\d{4})$/, '($1) $2-$3');
+    const B0 = (v) => brl(v, 0);
+
+    // números da capa: família (conta), negócio (caixa), executivo (investimento), rural (produção)
+    const big = seg === 'grandes'
+      ? [['a', 'Investimento', B0(op.preco.precoFinal)], ['g', 'Rendimento (TIR)', `${n(eco.tir * 100, 1)}% a.a.`], ['', 'Retorno em', eco.paybackAnos ? n(eco.paybackAnos, 1) + ' anos' : '—']]
+      : [['r', ga ? 'Conta de energia hoje' : 'Sua conta hoje', B0(eco.contaAtual) + '/mês'], ['', 'Com energia solar', B0(eco.contaDepois) + '/mês'], ['g', seg === 'residencial' ? 'De volta no seu bolso' : 'De volta para o caixa', B0(sobra) + '/mês']];
+
+    // a economia contada para cada tipo de cliente
+    let historia = '';
+    if (seg === 'residencial') {
+      const lista = Nr.sonhos(eco, p);
+      historia = `<h2>O que a família vai fazer com essa economia?</h2>
+        <p class="mini" style="margin:0 0 8px">Só com os ${B0(sobra)} por mês que deixam de ir para a CPFL:</p>
+        <div class="grade">${lista.map((x) => `<div class="card verde"><div class="ic">${x.icone}</div><b>${esc(x.titulo)}</b><small>${B0(x.valor)}</small><div class="ok">pago ${x.quando}</div>${x.vezes > 1 ? `<em>${x.vezes} vezes em 25 anos</em>` : ''}</div>`).join('')}</div>
+        <p class="mini" style="margin-top:8px">Se guardar a economia na poupança todo mês, em 25 anos a família tem <b>${B0(Nr.valorFuturo(eco.economiaMes1, 25, R.poupancaAnual))}</b>.</p>`;
+    } else if (seg === 'comercial') {
+      const ng = Nr.negocio(eco, p), inv = Nr.investimento(eco, op.preco.precoFinal, p);
+      historia = `<h2>A conta de luz vira lucro</h2>
+        <p class="mini" style="margin:0 0 8px">A conta de luz sai do caixa todo mês, venda bem ou mal. Com a usina, ${B0(ng.ano)} por ano voltam para o negócio. É o mesmo que:</p>
+        <div class="grade">
+          <div class="card verde"><div class="ic">👥</div><b>${ng.funcionarios >= 1 ? `${n(Math.floor(ng.funcionarios))} funcionário(s) pago(s) o ano todo` : `${n(ng.funcionarios * 12)} meses de um funcionário`}</b><small>a ${B0(ng.custoFuncionario)}/mês com encargos</small></div>
+          <div class="card verde"><div class="ic">🛒</div><b>Vender ${B0(ng.vendasEquivalentes)} a mais</b><small>por ano, com margem de ${n(ng.margem * 100)}%</small></div>
+          <div class="card azul"><div class="ic">📈</div><b>${n(inv.tir * 100, 1)}% ao ano</b><small>de retorno, contra ${n(inv.cdiLiquido * 100, 1)}% do CDI líquido</small></div>
+          <div class="card"><div class="ic">💰</div><b>${B0(eco.economia25)}</b><small>de caixa em 25 anos</small></div></div>`;
+    } else if (seg === 'grandes') {
+      const inv = Nr.investimento(eco, op.preco.precoFinal, p), amb = Nr.ambiental(op, p), mx = Math.max(inv.tir, inv.cdiLiquido, 0.01);
+      const bar = (rot, v, cor) => `<div class="cmp"><span>${rot}</span><div class="t"><i style="width:${Math.max(3, Math.min(v / mx, 1) * 100)}%;background:${cor}"></i></div><b>${n(v * 100, 1)}%</b></div>`;
+      historia = `<h2>Comparado com deixar o dinheiro aplicado</h2>
+        ${bar('Usina solar (TIR)', inv.tir, '#1e7a34')}${bar('CDI (líquido de IR)', inv.cdiLiquido, '#9aa4b8')}${bar('Poupança', inv.poupanca, '#c3c9d5')}
+        <p class="mini">Os ${B0(op.preco.precoFinal)} no CDI renderiam cerca de ${B0(inv.rendeCdiMes)} por mês. Na usina, a economia é de ${B0(eco.economiaMes1)} por mês já no primeiro ano e cresce com cada reajuste da tarifa.</p>
+        <div class="grade g3" style="margin-top:8px"><div class="card azul"><b>${n(amb.mwhAno, 1)} MWh/ano</b><small>de energia limpa</small></div><div class="card azul"><b>${n(amb.tco2_25, 1)} t de CO₂</b><small>evitadas em 25 anos</small></div><div class="card azul"><b>ESG</b><small>energia renovável para o relatório de sustentabilidade</small></div></div>`;
+    } else {
+      historia = `<h2>A economia em produção</h2>
+        <p class="mini" style="margin:0 0 8px">Por ano, a economia na conta vale o mesmo que:</p>
+        <div class="grade">${Nr.producao(eco, p).map((x) => `<div class="card verde"><div class="ic">${x.icone}</div><b>${n(x.qtd)} ${x.titulo}</b><small>a ${B0(x.preco)} a ${x.un}</small></div>`).join('')}<div class="card"><div class="ic">💰</div><b>${B0(eco.economia25)}</b><small>em 25 anos na propriedade</small></div></div>
+        <p class="mini" style="margin-top:8px">Energia para irrigação, ordenha, resfriamento e secagem: o crédito de dia paga o consumo da noite.</p>`;
+    }
+
+    const exec = seg !== 'residencial' || ga ? `<h2>${seg === 'grandes' ? 'Resumo executivo' : 'Retorno do investimento'}</h2>
       <table><tr><th>Indicador</th><th class="v">Valor</th></tr>
-        <tr><td>Investimento</td><td class="v">${brl(op.preco.precoFinal, 0)}</td></tr>
-        <tr><td>Geração anual estimada</td><td class="v">${n(op.dim.geracaoMes * 12)} kWh</td></tr>
-        <tr><td>Economia no 1º ano</td><td class="v">${brl(op.eco.economiaMes1 * 12, 0)}</td></tr>
-        <tr><td>Retorno (payback)</td><td class="v">${op.eco.paybackAnos ? n(op.eco.paybackAnos, 1) + ' anos' : '—'}</td></tr>
-        <tr><td>TIR</td><td class="v">${n(op.eco.tir * 100, 1)}% ao ano</td></tr>
-        <tr><td>VPL (taxa de ${n((p.taxaDesconto || 0) * 100, 1)}% a.a.)</td><td class="v">${brl(op.eco.vpl, 0)}</td></tr>
+        <tr><td>Investimento</td><td class="v">${B0(op.preco.precoFinal)}</td></tr>
+        <tr><td>Potência · geração anual</td><td class="v">${n(op.dim.kwpReal, 2)} kWp · ${n(op.dim.geracaoMes * 12)} kWh</td></tr>
+        <tr><td>Economia no 1º ano</td><td class="v">${B0(eco.economiaMes1 * 12)}</td></tr>
+        <tr><td>Retorno (payback)</td><td class="v">${eco.paybackAnos ? n(eco.paybackAnos, 1) + ' anos' : '—'}</td></tr>
+        <tr><td>TIR · VPL (taxa de ${n((p.taxaDesconto || 0) * 100, 1)}% a.a.)</td><td class="v">${n(eco.tir * 100, 1)}% a.a. · ${B0(eco.vpl)}</td></tr>
         <tr><td>Custo da energia gerada (LCOE)</td><td class="v">R$ ${n(a.energia.rsKwh, 2)}/kWh (rede${ga ? ', fora ponta' : ''}: R$ ${n(tRede, 2)})</td></tr>
-        <tr><td>Economia em 25 anos</td><td class="v">${brl(op.eco.economia25, 0)}</td></tr>
-        ${ga || o.segmento === 'grandes' ? `<tr><td>Geração garantida em contrato</td><td class="v">${n(op.dim.geracaoMes * 12 * 0.9)} kWh/ano (90% da simulada, média de 12 meses)</td></tr>` : ''}</table>` : ''}
-      ${ga ? (() => { const l = op.limiteDemanda || {}, dem = ga.modalidade === 'azul' ? `${n(ga.demandaKw.p)} kW ponta · ${n(ga.demandaKw.fp)} kW fora ponta` : `${n(ga.demandaKw)} kW`; return `<h2>A conta de média tensão (Grupo A, tarifa ${ga.modalidade === 'azul' ? 'azul' : 'verde'})</h2>
+        <tr><td>Economia em 25 anos</td><td class="v">${B0(eco.economia25)}</td></tr>
+        ${ga || seg === 'grandes' ? `<tr><td>Geração garantida em contrato</td><td class="v">${n(op.dim.geracaoMes * 12 * 0.9)} kWh/ano (90% da simulada)</td></tr>` : ''}</table>` : '';
+
+    const gaHtml = ga ? (() => { const l = op.limiteDemanda || {}, dem = ga.modalidade === 'azul' ? `${n(ga.demandaKw.p)} kW ponta · ${n(ga.demandaKw.fp)} kW fora ponta` : `${n(ga.demandaKw)} kW`; return `<h2>A conta de média tensão (Grupo A, tarifa ${ga.modalidade === 'azul' ? 'azul' : 'verde'})</h2>
       <table><tr><th>Parte da conta</th><th class="v">Hoje</th><th class="v">Com a usina</th></tr>
-        <tr><td>Energia fora ponta (${n(ga.cFP)} kWh/mês)</td><td class="v">${brl(ga.valorFP, 0)}</td><td class="v">${brl(ga.depoisFP, 0)}</td></tr>
-        <tr><td>Energia na ponta (${n(ga.cP)} kWh/mês)</td><td class="v">${brl(ga.valorP, 0)}</td><td class="v">${brl(ga.depoisP, 0)}</td></tr>
-        <tr><td>Demanda contratada (${dem})</td><td class="v">${brl(ga.demandaMes, 0)}</td><td class="v">${brl(ga.demandaMes, 0)}</td></tr>
-        <tr><td><b>Total por mês</b></td><td class="v"><b>${brl(op.eco.contaAtual, 0)}</b></td><td class="v"><b>${brl(op.eco.contaDepois, 0)}</b></td></tr></table>
-      <p class="mini">Por mês: ${n(ga.autoconsumo)} kWh usados na hora em que a usina gera, ${n(ga.compensadoFP)} kWh compensados no fora ponta${ga.compensadoP ? ` e ${n(ga.compensadoP)} kWh de ponta pagos com o crédito que sobra (1 kWh de ponta = ${n(ga.fa, 2)} kWh de crédito, pela relação das tarifas de energia)` : ''}. A demanda contratada continua. Fio B não compensado (Lei 14.300): cerca de ${brl(ga.fioBMes, 0)} por mês em ${p.anoBase}, já descontado.${l.demandaKw && !l.ok ? ` O inversor (${n(l.potInvKw, 1)} kW) passa da demanda contratada (${n(l.demandaKw)} kW): a demanda precisa ser revista com a CPFL antes da ligação; o custo dessa revisão não está nesta simulação.` : ''}</p>`; })() : ''}
-      ${o.projeto3d && o.projeto3d.fotos && o.projeto3d.fotos.d3 ? secao3d(o.projeto3d) : ''}
-      <h2>O sistema</h2>
-      <table><tr><th>Item</th><th>Detalhe</th></tr>
-        <tr><td>Placas solares</td><td>${esc(eq.modulo)}</td></tr><tr><td>${eq.tipo === 'micro' ? 'Microinversores' : 'Inversor'}</td><td>${esc(eq.inversor)}</td></tr>
-        <tr><td>Potência</td><td>${n(op.dim.kwpReal, 2)} kWp</td></tr><tr><td>Geração estimada</td><td>${n(op.dim.geracaoMes)} kWh por mês (média do ano)</td></tr>
-        <tr><td>${ga ? 'Consumo da empresa' : 'Seu consumo'}</td><td>${ga ? `${n(ga.cFP)} kWh fora ponta e ${n(ga.cP)} kWh na ponta por mês` : `${n(C().consumoMedio(o))} kWh por mês`}</td></tr><tr><td>Área no telhado</td><td>cerca de ${n(op.areaM2)} m²</td></tr>
-        <tr><td>Incluso</td><td>Projeto, homologação na CPFL, ART, estrutura, instalação completa e acompanhamento até ligar</td></tr></table>
-      <h2>Investimento</h2>
-      <div class="preco"><div><span class="mini">${esc(PAGAMENTO[o.formaPagamento] || 'Valor do projeto')}</span><br><b>${brl(op.preco.precoFinal)}</b></div>
-        <div class="mini" style="text-align:right">Retorno estimado em<br><b style="font-size:16pt;color:#1d283e">${op.eco.paybackAnos ? n(op.eco.paybackAnos, 1) + ' anos' : '—'}</b></div></div>
-      ${prazos.length ? `<p class="mini" style="margin:10px 0 4px">Financiamento (simulação, sujeito à análise de crédito do banco):</p><table><tr>${parcelas}</tr></table>` : ''}
-      <h2>Economia ao longo do tempo</h2>
-      <table><tr><th>Ano</th><th>Tarifa estimada${ga ? ' (fora ponta)' : ''}</th><th class="v">Economia no ano</th><th class="v">Acumulado</th></tr>
-        ${anos.map((t) => `<tr><td>${t.ano}</td><td>R$ ${n(t.tarifa, 2)}/kWh</td><td class="v">${brl(t.economiaAno, 0)}</td><td class="v">${brl(t.acumulado, 0)}</td></tr>`).join('')}</table>
-      <p class="mini">Estimativas com reajuste de ${n((p.reajusteAnual || 0) * 100, 1)}% ao ano, perda de ${n((p.degradacaoAnual || 0) * 100, 1)}% ao ano das placas e as regras do Fio B da Lei 14.300. ${ga ? 'A demanda contratada continua na conta.' : 'Ainda fica a taxa mínima da CPFL.'} A geração real depende do clima.</p>
-      ${outras.length ? `<h2>${outras.length > 1 ? 'Outras opções' : 'Outra opção'}</h2><table>${outras.map((x) => `<tr><td><b>${esc(x.nivel)}</b>: ${esc(C().equipamentos(x).modulo)} + ${esc(C().equipamentos(x).inversor)}</td><td class="v">${brl(x.preco.precoFinal)}</td></tr>`).join('')}</table>` : ''}
-      ${link ? `<div class="qr"><div id="qr"></div><div><b>Veja esta proposta no celular</b><br><span class="mini">Aponte a câmera para o código: dá para simular parcelas, ouvir a explicação e mandar ${ga || (o.segmento && o.segmento !== 'residencial') ? 'para quem decide junto' : 'para a família'}.</span></div></div>` : ''}
-      <p style="margin-top:18px">Dúvidas? Fale com ${esc(D.empresa.vendedor)}: WhatsApp ${esc(String(e.whatsapp).replace(/^55(\d\d)(\d{5})(\d{4})$/, '($1) $2-$3'))} · ${esc(e.email)}<br><span class="mini">${esc(e.nome)} · ${esc(e.endereco)}</span></p>`;
-    abrir(pagina('Proposta ' + o.id, corpo, { qr: link }));
+        <tr><td>Energia fora ponta (${n(ga.cFP)} kWh/mês)</td><td class="v">${B0(ga.valorFP)}</td><td class="v">${B0(ga.depoisFP)}</td></tr>
+        <tr><td>Energia na ponta (${n(ga.cP)} kWh/mês)</td><td class="v">${B0(ga.valorP)}</td><td class="v">${B0(ga.depoisP)}</td></tr>
+        <tr><td>Demanda contratada (${dem})</td><td class="v">${B0(ga.demandaMes)}</td><td class="v">${B0(ga.demandaMes)}</td></tr>
+        <tr><td><b>Total por mês</b></td><td class="v"><b>${B0(eco.contaAtual)}</b></td><td class="v"><b>${B0(eco.contaDepois)}</b></td></tr></table>
+      <p class="mini">Por mês: ${n(ga.autoconsumo)} kWh usados na hora em que a usina gera, ${n(ga.compensadoFP)} kWh compensados no fora ponta${ga.compensadoP ? ` e ${n(ga.compensadoP)} kWh de ponta pagos com o crédito que sobra (1 kWh de ponta = ${n(ga.fa, 2)} kWh de crédito)` : ''}. A demanda contratada continua. Fio B não compensado (Lei 14.300): cerca de ${B0(ga.fioBMes)} por mês em ${p.anoBase}, já descontado.${l.demandaKw && !l.ok ? ` O inversor (${n(l.potInvKw, 1)} kW) passa da demanda contratada (${n(l.demandaKw)} kW): a demanda precisa ser revista com a CPFL antes da ligação; o custo dessa revisão não está nesta simulação.` : ''}</p>`; })() : '';
+
+    const corpo = `
+      <section class="capa ${seg}"><div class="fundo${foto ? '' : ' sol'}"${foto ? ` style="background-image:url('${foto}')"` : ''}></div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start"><img class="logo" src="${logoB}" alt="Chama Solar"><span class="id">Proposta ${esc(o.id)}<br>${hoje()}</span></div>
+        <div style="padding-bottom:14mm"><span class="selo">${esc(CAPA.selo)}</span><h1>${esc(CAPA.titulo)}</h1><p>${esc(CAPA.sub)}</p></div>
+      </section>
+      <div class="big3">${big.map(([c, r, v]) => `<div class="${c}"><span>${r}</span><b>${v}</b></div>`).join('')}</div>
+      <div class="pg" style="padding-top:8mm">
+        <div class="vend"><div class="ini">${esc(vend[0])}</div><div><b>${esc(vend)}, seu consultor na Chama Solar</b><br><span class="mini">WhatsApp ${esc(zap)} · ${esc(e.email)} · proposta válida até ${validade}</span></div></div>
+        ${historia}
+        <h2>${ga ? 'O que a empresa pagou de energia no último ano' : 'O que você pagou de luz no último ano'}</h2>
+        ${graficoMeses(a.raioX.mensal)}
+        <p class="mini" style="margin:2px 0 0">Total de <b>${B0(a.raioX.pago12)}</b> para a CPFL em 12 meses. A barra mais escura foi a conta mais cara.</p>
+        <div class="faixa-dia"><span>Cada dia sem energia solar custa</span><b>${brl(a.espera.porMes / 30)}</b><span class="mini">${B0(a.espera.porMes)} por mês</span></div>
+      </div>
+      <div class="pg" style="padding-top:2mm">
+        ${exec}${gaHtml}
+        <h2>Seu dinheiro ao longo de 25 anos</h2>
+        <p class="mini" style="margin:0 0 4px">Caixa acumulado: em vermelho, o sistema ainda se pagando; em verde, lucro.</p>
+        ${graficoCaixa(op)}
+        <table><tr><th>Ano</th><th>Tarifa estimada${ga ? ' (fora ponta)' : ''}</th><th class="v">Economia no ano</th><th class="v">Acumulado</th></tr>
+          ${anos.map((t) => `<tr><td>${t.ano}</td><td>R$ ${n(t.tarifa, 2)}/kWh</td><td class="v">${B0(t.economiaAno)}</td><td class="v">${B0(t.acumulado)}</td></tr>`).join('')}</table>
+        <p class="mini">Estimativas com reajuste de ${n((p.reajusteAnual || 0) * 100, 1)}% ao ano, perda de ${n((p.degradacaoAnual || 0) * 100, 1)}% ao ano das placas e as regras do Fio B da Lei 14.300. ${ga ? 'A demanda contratada continua na conta.' : 'Ainda fica a taxa mínima da CPFL.'} A geração real depende do clima.</p>
+        ${o.projeto3d && o.projeto3d.fotos && o.projeto3d.fotos.d3 ? secao3d(o.projeto3d) : ''}
+      </div>
+      <div class="pg" style="padding-top:2mm">
+        <h2>O que vamos instalar</h2>
+        <div class="grade">
+          <div class="card"><div class="ic">☀️</div><b>${esc(eq.modulo)}</b><small>${n(op.dim.kwpReal, 2)} kWp · cerca de ${n(op.areaM2)} m² de telhado</small></div>
+          <div class="card"><div class="ic">⚡</div><b>${esc(eq.inversor)}</b><small>${eq.tipo === 'micro' ? 'um para cada grupo de placas: sombra numa placa não derruba as outras' : 'transforma a energia das placas na energia da tomada'}</small></div>
+          <div class="card verde"><div class="ic">📊</div><b>${n(op.dim.geracaoMes)} kWh por mês</b><small>${ga ? `consumo: ${n(ga.cFP)} kWh fora ponta e ${n(ga.cP)} kWh na ponta` : `seu consumo: ${n(C().consumoMedio(o))} kWh por mês`} (média do ano)</small></div>
+          <div class="card"><div class="ic">🛠️</div><b>Tudo incluído</b><small>Projeto, ART, homologação na CPFL, estrutura, instalação e acompanhamento até ligar</small></div></div>
+        <h2>Investimento</h2>
+        <div class="preco"><div><span class="mini">${esc(PAGAMENTO[o.formaPagamento] || 'Valor do projeto')}</span><br><b>${brl(op.preco.precoFinal)}</b></div>
+          <div class="mini" style="text-align:right">Retorno estimado em<br><b style="font-size:16pt;color:#1d283e">${eco.paybackAnos ? n(eco.paybackAnos, 1) + ' anos' : '—'}</b></div></div>
+        ${prazos.length ? `<p class="mini" style="margin:10px 0 4px">Financiamento (simulação, sujeito à análise de crédito do banco). A parcela fica perto do que já ${seg === 'residencial' ? 'você paga' : 'se paga'} de conta:</p><table><tr>${prazos.map((pz) => { const bo = C().boleto(op, p, pz); return `<td class="v">${pz}x de <b>${brl(bo.parcela)}</b><br><span class="mini">${brl(bo.parcela / 30)} por dia</span></td>`; }).join('')}</tr></table>` : ''}
+        ${outras.length ? `<p class="mini" style="margin-top:8px"><b>${outras.length > 1 ? 'Outras opções' : 'Outra opção'}:</b> ${outras.map((x) => `${esc(x.nivel)} (${esc(C().equipamentos(x).inversor)}) por ${B0(x.preco.precoFinal)}`).join(' · ')}</p>` : ''}
+        <h2>${seg === 'residencial' ? 'Pode ficar tranquilo' : 'Segurança na decisão'}</h2>
+        <div class="gar">${Nr.garantias(seg, p).map(([ic, t, d]) => `<div><span class="ic">${ic}</span><span><b>${esc(t)}</b><small>${esc(d)}</small></span></div>`).join('')}</div>
+        <h2>Próximos passos</h2>
+        <div class="passos"><div><b>Visita técnica gratuita</b>telhado e entrada de energia</div><div><b>Projeto e CPFL</b>a papelada é por nossa conta</div><div><b>Instalação</b>em poucos dias, com equipe própria</div><div><b>Usina ligada</b>e resumo da economia todo mês</div></div>
+        ${link ? `<div class="qr"><div id="qr"></div><div><b>Veja esta proposta no celular</b><br><span class="mini">Aponte a câmera: dá para simular parcelas, ${seg === 'residencial' ? 'calcular o sonho da família, ouvir a explicação e mandar para quem decide junto' : 'ver o retorno e mandar para quem decide junto'}.</span></div></div>` : ''}
+        <p style="margin-top:14px">Dúvidas? Fale com ${esc(vend)}: WhatsApp ${esc(zap)} · ${esc(e.email)}<br><span class="mini">${esc(e.nome)} · ${esc(e.endereco)}</span></p>
+      </div>`;
+    abrir(pagina('Proposta ' + o.id, corpo, { qr: link, css: CSS_PROP, semTopo: true }));
   }
 
   /* ---------- MODELOS DA EMPRESA (guardados no banco, não no código) ---------- */
