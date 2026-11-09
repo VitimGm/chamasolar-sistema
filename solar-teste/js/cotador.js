@@ -22,7 +22,7 @@
     if (!r.ok) { const x = new Error(j.erro || `O robô respondeu ${r.status}`); x.diag = j.diag || null; throw x; }
     return j;
   }
-  const ROBO_ESPERADO = '2026-11-09c'; // versão do robô que acompanha este sistema
+  const ROBO_ESPERADO = '2026-11-09d'; // versão do robô que acompanha este sistema
   let versaoRobo = null;
   async function conectado() {
     try {
@@ -35,13 +35,15 @@
 
   /* ---------- Dados reais do portal (listas) + simulação de valores ---------- */
   const PORTAL = {
-    modulos: [ // ordem real do portal em "Menor Preço Por Watt" (04/11/2026)
-      ['MFMB-1.3-MO-66-425W', 'Maxeon 425 W monofacial black', 425], ['MFMA-1.3-MO-66-425W', 'Maxeon 425 W monofacial', 425],
-      ['MFAS-1.4-BF-132-615W', 'Astronergy 615 W bifacial N type', 615], ['MFRI-1.4-HJ-132-685W', 'Risen 685 W bifacial HJT', 685],
+    modulos: [ // ordem real do portal em "Menor Preço Por Watt" (API, 08/11/2026). O robô novo manda a lista atual (catálogo).
+      ['MFMA-1.3-MO-66-425W', 'Maxeon 425 W monofacial black', 425], ['MFOB-0.3-BF-132-620W', 'OSDA 620 W bifacial N type black', 620],
+      ['MFAS-1.4-BF-132-615W', 'Astronergy 615 W bifacial N type', 615], ['MFRI-1.4-HJ-132-690W', 'Risen 690 W bifacial HJT', 690],
       ['MFJA-1.5-BF-132-615W', 'JA Solar 615 W bifacial N type', 615], ['MFAS-1.4-BF-144-575W', 'Astronergy 575 W bifacial N type', 575],
-      ['MFAS-1.4-BF-144-580W', 'Astronergy 580 W bifacial N type', 580], ['MFAS-1.4-BF-132-705W', 'Astronergy 705 W bifacial N type', 705],
-      ['MFTR-1.4-BF-132-720W', 'Trina 720 W bifacial N type', 720], ['MFJA-1.5-BF-132-620W', 'JA Solar 620 W bifacial N type', 620],
+      ['MFAS-1.4-BF-144-580W', 'Astronergy 580 W bifacial N type', 580], ['MFTR-1.4-BF-132-720W', 'Trina 720 W bifacial N type', 720],
+      ['MFAS-1.4-BF-132-705W', 'Astronergy 705 W bifacial N type', 705], ['MFJA-1.5-BF-132-620W', 'JA Solar 620 W bifacial N type', 620],
       ['MFJA-1.4-BF-132-625W', 'JA Solar 625 W bifacial N type', 625], ['MFTR-1.4-BF-132-715W', 'Trina 715 W bifacial N type', 715],
+      ['MFRI-1.4-HJ-132-715W', 'Risen 715 W bifacial HJT', 715], ['MFLO-1.4-MO-144-635W', 'Longi 635 W monofacial N type', 635],
+      ['MFLO-1.4-MO-144-650W', 'Longi 650 W monofacial N type', 650],
     ],
     tipos: ['INVERSOR STRING ON-GRID', 'MICROINVERSOR', 'INVERSOR STRING HÍBRIDO'],
     ligacoes: ['MONOFÁSICO', 'BIFÁSICO', 'TRIFÁSICO'],

@@ -47,7 +47,7 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
-const VERSAO = '2026-11-09c'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+const VERSAO = '2026-11-09d'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
 /* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
    Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
 const voando = new Map(); let ultimoFim = Date.now();
@@ -263,6 +263,10 @@ let FATOR = 3.3307;
 let ESTR = null; // tipos de estrutura e detalhes exatos (API TipoEstrutura) da cotação em andamento
 let AVISOS = []; // avisos desta cotação (vão para o sistema junto com o kit)
 let CUPONS = { em: 0, lista: [] };
+/* catálogo que o portal mostrou (módulos e inversores de verdade): vai para o sistema montar as listas de escolha */
+let CATALOGO = { modulos: [], modEm: null, inversores: {}, invEm: null };
+try { const fs0 = await import('node:fs'); const c0 = JSON.parse(fs0.readFileSync(path.resolve('catalogo.json'), 'utf8')); if (c0 && Array.isArray(c0.modulos)) CATALOGO = { ...CATALOGO, ...c0 }; } catch { /* primeira vez */ }
+async function guardarCatalogo() { try { const fs0 = await import('node:fs'); fs0.writeFileSync(path.resolve('catalogo.json'), JSON.stringify(CATALOGO)); } catch { /* */ } }
 const semAcento = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 const ALIAS_TIPO = { 'telha metalico': 'telha metalica', metalico: 'telha metalica', metalica: 'telha metalica', ceramico: 'colonial', ceramica: 'colonial', fibrocimento: 'telha fibrocimento', shingle: 'telha shingle' };
 const chaveTipo = (t) => { const x = semAcento(t); return ALIAS_TIPO[x] || x; };
@@ -398,6 +402,7 @@ async function passoInterno(etapa, e = {}) {
       await esperarLinhas('MODULO', 20000); // a tabela precisa estar na tela para marcar o módulo depois
       const mods = d.modulos.map((m) => { const w = +m.potencia || 0, q = +m.numeroModulos || 0; return { sku: m.item, nome: String(m.descricaoItem || '').replace(/^MODULO\s*/i, ''), fabricante: m.fabricante || '', potenciaW: w, qtdSugerida: q, kwp: r2((q * w) / 1000), indice: +m.index || null, precoUnEst: m.index && w ? r2((m.index * w) / FATOR) : null, tipoCelula: m.tipoCelula || '', eficiencia: +m.eficiencia || null }; })
         .filter((m) => m.sku && m.potenciaW > 0).sort((x, y) => (x.indice ?? 9e9) - (y.indice ?? 9e9)); // = "Menor Preço Por Watt"
+      CATALOGO.modulos = mods.map((m) => ({ sku: m.sku, fab: m.fabricante, w: m.potenciaW, rw: m.precoUnEst && m.potenciaW ? Math.round((m.precoUnEst / m.potenciaW) * 1000) / 1000 : null, tipo: m.tipoCelula })); CATALOGO.modEm = new Date().toISOString(); guardarCatalogo();
       return { etapa: 1, opcoes: { modulos: mods, fonte: 'api' } };
     }
     // sem a resposta da API: jeito antigo, pela tabela da tela
@@ -451,6 +456,7 @@ async function passoInterno(etapa, e = {}) {
     } else {
       invs = (await linhas('INVERSOR|MICRO')).map((v) => { const kwU = parseFloat(String((v.nome.match(/(\d+(?:[.,]\d+)?)\s*KW/i) || [])[1] || '0').replace(',', '.')) || 0, n = v.qtdSugerida || 1; return { sku: v.sku, nome: nomeInversor(v.nome), potenciaKw: r2(kwU * n), potenciaUnKw: kwU, qtd: n, overload: num(v.overload), tipo: tipoInv(v.nome), fabricante: (v.nome.match(/(AUXSOL|DEYE|GROWATT|HUAWEI|SOLIS|SUNGROW|HOYMILES|TSUNESS|ENPHASE|FOX ?ESS|SAJ)/i) || [])[1] || '' }; });
     }
+    if (invs.length && !(e.fabricantes && e.fabricantes.length)) { const ant = CATALOGO.inversores[e.tipoInversor] || []; const novo = invs.map((v) => ({ fab: v.fabricante, kw: v.potenciaUnKw, lig: e.ligacao })); CATALOGO.inversores[e.tipoInversor] = [...novo, ...ant.filter((a) => a.lig !== e.ligacao)]; CATALOGO.invEm = new Date().toISOString(); guardarCatalogo(); }
     return { etapa: 2, opcoes: { tipos: [e.tipoInversor], ligacoes: [e.ligacao], tensoes: { [e.ligacao]: tensoes }, fabricantes: [], inversores: invs } };
   }
   if (etapa === 2) {
@@ -727,7 +733,7 @@ async function cotarComNovaTentativa(C, base, log) {
 async function filaVez(chave) {
   if (filaOcupada) return; filaOcupada = true;
   try {
-    try { let lg = null; try { lg = await logado(); } catch { /* navegador fechado */ } await filaRpc('sol_robo_ping', { p_segredo: chave, p_versao: VERSAO, p_logado: lg, p_maquina: os.hostname(), p_info: { pasta: process.cwd(), node: process.version, ocupado: dono, cupons: CUPONS.lista, cuponsEm: CUPONS.em ? new Date(CUPONS.em).toISOString() : null, fatorIndice: Math.round(FATOR * 10000) / 10000 } }); } catch (e) { console.log('Fila: não consegui avisar o sistema que estou ligado: ' + String(e.message || e).slice(0, 120)); }
+    try { let lg = null; try { lg = await logado(); } catch { /* navegador fechado */ } await filaRpc('sol_robo_ping', { p_segredo: chave, p_versao: VERSAO, p_logado: lg, p_maquina: os.hostname(), p_info: { pasta: process.cwd(), node: process.version, ocupado: dono, cupons: CUPONS.lista, cuponsEm: CUPONS.em ? new Date(CUPONS.em).toISOString() : null, catalogo: CATALOGO, fatorIndice: Math.round(FATOR * 10000) / 10000 } }); } catch (e) { console.log('Fila: não consegui avisar o sistema que estou ligado: ' + String(e.message || e).slice(0, 120)); }
     if (ocupadoPor('fila')) return; // o vendedor está cotando agora: a fila espera
     try { const n = await filaRpc('sol_robo_pre_agendar', { p_segredo: chave }); if (n) console.log(`Fila: ${n} pré-proposta(s) do dia agendada(s)`); } catch (e) { /* sem pré-propostas */ }
     const j = await filaRpc('sol_robo_proximo', { p_segredo: chave }); if (!j) return;

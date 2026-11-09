@@ -842,17 +842,25 @@
         ${c('valor', 'Valor final do kit (R$)', 'text', '', 'ex.: 412.500,00', 'inputmode="decimal"')}${c('forn', 'Fornecedor e nº do orçamento', 'text', '', 'ex.: Aldo 12345')}</div>
       <div class="acoes-r" style="justify-content:flex-start;margin-top:10px"><button class="btn sol pequeno" data-kd-salvar="${i}">Usar este kit</button><button class="link" data-kd-cancelar>cancelar</button></div>`;
   }
+  /* listas de módulo e inversor: as que o portal mostrou na última cotação do robô (catálogo); sem ele, a lista fixa */
+  let catRobo = null, catPedido = false;
+  function carregarCatalogo() { if (catPedido || !B.roboStatus) return; catPedido = true; B.roboStatus().then((st) => { const c = st && st.info && st.info.catalogo; if (c && Array.isArray(c.modulos) && c.modulos.length) { catRobo = c; if ((location.hash || '') === '#novo' && etapa === 3) novo(); } }).catch(() => {}); }
+  const tituloFab = (f) => String(f || '').toLowerCase().replace(/(^|\s)\S/g, (x) => x.toUpperCase()).replace('Trinasolar', 'Trina').replace(/^Ja /, 'JA ').replace(/^Osda/, 'OSDA');
   function seletores(i) {
+    carregarCatalogo();
     const sel = (orc.selKits = orc.selKits || [{}, {}])[i];
-    const P0 = Cotador.PORTAL, fabsMod = [...new Set(P0.modulos.map((m) => Cotador.fabModulo(m[1])))];
-    const pots = [...new Set(P0.modulos.filter((m) => !sel.fabMod || Cotador.fabModulo(m[1]) === sel.fabMod).map((m) => m[2]))].sort((a, b) => a - b);
-    const tipo = TIPO_POR_OPCAO[i], fabsInv = tipo === 'MICROINVERSOR' ? P0.fabricantesMicro : P0.fabricantes;
+    const P0 = Cotador.PORTAL, cm = catRobo && catRobo.modulos;
+    const fabsMod = cm ? [...new Set(cm.map((m) => tituloFab(m.fab)))] : [...new Set(P0.modulos.map((m) => Cotador.fabModulo(m[1])))];
+    const pots = cm ? [...new Set(cm.filter((m) => !sel.fabMod || tituloFab(m.fab) === sel.fabMod).map((m) => m.w))].sort((a, b) => a - b) : [...new Set(P0.modulos.filter((m) => !sel.fabMod || Cotador.fabModulo(m[1]) === sel.fabMod).map((m) => m[2]))].sort((a, b) => a - b);
+    const tipo = TIPO_POR_OPCAO[i], ci = catRobo && catRobo.inversores && catRobo.inversores[tipo];
+    const fabsInv = ci && ci.length ? [...new Set(ci.map((v) => v.fab).filter(Boolean))].sort() : tipo === 'MICROINVERSOR' ? P0.fabricantesMicro : P0.fabricantes;
     const op = (lista, atual, vazio, fmt = (x) => x) => `<option value="">${vazio}</option>` + lista.map((x) => `<option value="${esc(x)}" ${String(x) === String(atual) ? 'selected' : ''}>${esc(fmt(x))}</option>`).join('');
     return `<div class="grade g2" style="gap:8px">
+      ${catRobo && catRobo.modEm ? `<p class="mini" style="grid-column:1/-1;margin:0">Lista do portal Belenergy de ${new Date(catRobo.modEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} (atualiza a cada cotação do robô)</p>` : ''}
       <label class="campo"><span>Módulo · fabricante</span><select data-sel="${i}" data-k="fabMod">${op(fabsMod, sel.fabMod, 'Mais barato')}</select></label>
       <label class="campo"><span>Módulo · potência</span><select data-sel="${i}" data-k="potMod">${op(pots, sel.potMod, 'Automática', (w) => w + ' W')}</select></label>
       <label class="campo"><span>${tipo === 'MICROINVERSOR' ? 'Micro' : 'Inversor'} · fabricante</span><select data-sel="${i}" data-k="fabInv">${op(fabsInv, sel.fabInv, 'Melhor custo-benefício')}</select></label>
-      <label class="campo"><span>${tipo === 'MICROINVERSOR' ? 'Micro' : 'Inversor'} · potência</span><select data-sel="${i}" data-k="potInv">${op(P0.potInversor[tipo], sel.potInv, 'Automática', (k) => String(k).replace('.', ',') + ' kW')}</select></label></div>`;
+      <label class="campo"><span>${tipo === 'MICROINVERSOR' ? 'Micro' : 'Inversor'} · potência</span><select data-sel="${i}" data-k="potInv">${op(ci && ci.length ? [...new Set(ci.filter((v) => !sel.fabInv || v.fab === sel.fabInv).map((v) => v.kw))].sort((x, y) => x - y) : P0.potInversor[tipo], sel.potInv, 'Automática', (k) => String(k).replace('.', ',') + ' kW')}</select></label></div>`;
   }
   /* passo 4: depois do kit, o 3D usa a placa e a quantidade certas (é o que vai para o contrato) */
   function painel3dKit() {
