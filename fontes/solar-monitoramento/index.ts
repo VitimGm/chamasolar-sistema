@@ -127,10 +127,194 @@ async function growattV1(cred: Record<string, string>, amostra: Record<string, u
   return plantas;
 }
 async function growattAuto(cred: Record<string, string>, amostra: Record<string, unknown>) {
-  return (cred.chave || "").trim() ? growattV1(cred, amostra) : growatt(cred, amostra);
+  if (!(cred.chave || "").trim()) return growatt(cred, amostra);
+  const plantas = await growattV1(cred, amostra);
+  // token sem permissão de "energia por dia": tenta o histórico pelo login do app (usuário e senha), se houver
+  if (plantas.length && !plantas.some((p) => p.dias.length) && cred.usuario && cred.senha) {
+    try {
+      const a2: Record<string, unknown> = {};
+      const app = await growatt(cred, a2);
+      const porId = Object.fromEntries(app.map((p) => [p.id, p.dias]));
+      let n = 0; plantas.forEach((p) => { if (porId[p.id] && porId[p.id].length) { p.dias = porId[p.id]; n++; } });
+      amostra.historicoApp = { usinas: app.length, comDias: n };
+    } catch (e) { amostra.historicoApp = String((e as Error).message || e).slice(0, 160); }
+  }
+  return plantas;
 }
 
-const LEITORES: Record<string, (c: Record<string, string>, a: Record<string, unknown>) => Promise<{ id: string; nome: string; kwp: number; total?: number; pot?: number; status?: string; dias: { dia: string; kwh: number }[] }[]>> = { Growatt: growattAuto };
+// ---------- utilidades ----------
+type Planta = { id: string; nome: string; kwp: number; total?: number; pot?: number; status?: string; dias: { dia: string; kwh: number }[] };
+const hex = (b: ArrayBuffer) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join("");
+const md5 = async (t: string) => hex(await stdCrypto.subtle.digest("MD5", new TextEncoder().encode(t)));
+const sha256 = async (t: string) => hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)));
+const b64 = (b: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(b)));
+const hojeSPd = () => new Date(Date.now() - 3 * 3600e3);
+const isoD = (d: Date) => d.toISOString().slice(0, 10);
+const kwhDe = (v: unknown, un?: unknown) => { const n = Number(v); if (!Number.isFinite(n)) return NaN; const u = String(un || "kWh").toLowerCase(); return u.startsWith("g") ? n * 1e6 : u.startsWith("m") ? n * 1000 : u === "wh" ? n / 1000 : n; };
+async function jfetch(url: string, opt: RequestInit, amostra: Record<string, unknown>, rotulo: string) {
+  const r = await fetch(url, opt); const t = await r.text(); let j: any = null; try { j = JSON.parse(t); } catch { /* */ }
+  if (!amostra[rotulo]) amostra[rotulo] = { status: r.status, chaves: j && typeof j === "object" ? Object.keys(j).slice(0, 12) : null, inicio: j ? null : t.slice(0, 120), msg: j && (j.msg || j.message || j.result_msg || j.error_msg || j.failCode) };
+  return { r, j };
+}
+
+// ---------- Solis (SolisCloud API: KeyID + KeySecret em Parâmetros → chave e segredo) ----------
+async function solis(cred: Record<string, string>, amostra: Record<string, unknown>): Promise<Planta[]> {
+  const id = (cred.chave || "").trim(), seg = (cred.segredo || "").trim();
+  if (!id || !seg) throw new Error("Solis só libera os dados pela API: peça KeyID e KeySecret no SolisCloud (Serviço → Gerenciamento de API) e guarde em Chave e Segredo.");
+  const base = "https://www.soliscloud.com:13333";
+  const chamar = async (rota: string, corpo: Record<string, unknown>) => {
+    const body = JSON.stringify(corpo), cmd5 = b64(await stdCrypto.subtle.digest("MD5", new TextEncoder().encode(body))), data = new Date().toUTCString();
+    const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(seg), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+    const assin = b64(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(`POST\n${cmd5}\napplication/json\n${data}\n${rota}`)));
+    const { j } = await jfetch(base + rota, { method: "POST", headers: { "Content-Type": "application/json", "Content-MD5": cmd5, Date: data, Authorization: `API ${id}:${assin}` }, body }, amostra, "solis_" + rota.split("/").pop());
+    if (!j || !(j.success === true || j.code === "0")) throw new Error("Solis " + rota + ": " + ((j && (j.msg || j.code)) || "sem resposta"));
+    return j.data;
+  };
+  const plantas: Planta[] = [];
+  for (let pag = 1; pag <= 20; pag++) {
+    const d = await chamar("/v1/api/userStationList", { pageNo: pag, pageSize: 100 });
+    const lista = (d && d.page && d.page.records) || [];
+    lista.forEach((p: any) => plantas.push({ id: String(p.id), nome: p.stationName || p.sno || "", kwp: Number(p.capacity) * (String(p.capacityStr || "kWp").toLowerCase().startsWith("m") ? 1000 : 1) || 0, total: kwhDe(p.allEnergy, p.allEnergyStr), pot: kwhDe(p.power, p.powerStr) * 1000, status: String(p.state ?? ""), dias: [] }));
+    if (lista.length < 100) break;
+  }
+  const h = hojeSPd(), meses = [isoD(h).slice(0, 7), isoD(new Date(h.getFullYear(), h.getMonth() - 1, 15)).slice(0, 7)];
+  for (const p of plantas) for (const mes of meses) {
+    try {
+      const d = await chamar("/v1/api/stationMonth", { id: p.id, money: "BRL", month: mes, timeZone: -3 });
+      for (const x of (Array.isArray(d) ? d : [])) { const dia = String(x.dateStr || "").slice(0, 10); const kwh = kwhDe(x.energy, x.energyStr); if (/^\d{4}-\d{2}-\d{2}$/.test(dia) && Number.isFinite(kwh)) p.dias.push({ dia, kwh }); }
+    } catch (e) { amostra["erro_" + p.id] = String(e).slice(0, 120); }
+    await new Promise((r) => setTimeout(r, 400)); // limite da API: 2 por segundo
+  }
+  return plantas;
+}
+
+// ---------- Deye Cloud (API de desenvolvedor: App ID e App Secret em Chave e Segredo; e-mail e senha da conta) ----------
+async function deye(cred: Record<string, string>, amostra: Record<string, unknown>): Promise<Planta[]> {
+  const appId = (cred.chave || "").trim(), appSecret = (cred.segredo || "").trim();
+  if (!appId || !appSecret) throw new Error("Deye Cloud só libera pela API de desenvolvedor: crie um app em developer.deyecloud.com e guarde o App ID em Chave e o App Secret em Segredo (o e-mail e a senha continuam).");
+  const senha = await sha256(cred.senha || "");
+  let base = "", token = "";
+  for (const b of ["https://us1-developer.deyecloud.com", "https://eu1-developer.deyecloud.com"]) {
+    const corpo: Record<string, string> = { appSecret, password: senha }; if (/@/.test(cred.usuario || "")) corpo.email = cred.usuario; else corpo.username = cred.usuario;
+    const { j } = await jfetch(`${b}/v1.0/account/token?appId=${encodeURIComponent(appId)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) }, amostra, "deye_login_" + b.slice(8, 11));
+    if (j && j.success && j.accessToken) { base = b; token = j.accessToken; break; }
+  }
+  if (!token) throw new Error("Deye recusou o login (confira e-mail, senha, App ID e App Secret).");
+  const post = async (rota: string, corpo: unknown) => { const { j } = await jfetch(base + rota, { method: "POST", headers: { "Content-Type": "application/json", Authorization: "bearer " + token }, body: JSON.stringify(corpo) }, amostra, "deye_" + rota.split("/").pop()); if (!j || j.success === false) throw new Error("Deye " + rota + ": " + ((j && j.msg) || "sem resposta")); return j; };
+  const plantas: Planta[] = [];
+  for (let pag = 1; pag <= 20; pag++) {
+    const j = await post("/v1.0/station/list", { page: pag, size: 100 });
+    const lista = j.stationList || [];
+    lista.forEach((p: any) => plantas.push({ id: String(p.id), nome: p.name || "", kwp: Number(p.installedCapacity) || 0, pot: Number(p.generationPower), status: String(p.connectionStatus ?? ""), dias: [] }));
+    if (lista.length < 100) break;
+  }
+  const h = hojeSPd(), ini = isoD(new Date(h.getTime() - 30 * 864e5)), fim = isoD(h);
+  for (const p of plantas) {
+    try {
+      const j = await post("/v1.0/station/history", { stationId: Number(p.id), granularity: 2, startAt: ini, endAt: fim });
+      for (const x of (j.stationDataItems || [])) { const dia = `${x.year}-${String(x.month).padStart(2, "0")}-${String(x.day).padStart(2, "0")}`; const kwh = Number(x.generationValue); if (Number.isFinite(kwh)) p.dias.push({ dia, kwh }); }
+    } catch (e) { amostra["erro_" + p.id] = String(e).slice(0, 120); }
+  }
+  return plantas;
+}
+
+// ---------- Huawei FusionSolar (usuário de API "Northbound" criado no FusionSolar) ----------
+async function huawei(cred: Record<string, string>, amostra: Record<string, unknown>): Promise<Planta[]> {
+  let base = "", tok = "", cookie = "";
+  const hosts = cred.obs && /^https?:\/\//.test(cred.obs.trim()) ? [cred.obs.trim().replace(/\/$/, "")] : ["https://la5.fusionsolar.huawei.com", "https://eu5.fusionsolar.huawei.com", "https://sg5.fusionsolar.huawei.com"];
+  for (const b of hosts) {
+    let r: Response, j: any;
+    try { ({ r, j } = await jfetch(b + "/thirdData/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userName: cred.usuario, systemCode: cred.senha }) }, amostra, "huawei_login_" + b.slice(8, 20))); } catch (e) { amostra["huawei_" + b.slice(8, 20)] = String(e).slice(0, 80); continue; } // servidor que não existe: tenta o próximo
+    if (j && j.success) { base = b; tok = r.headers.get("xsrf-token") || ""; cookie = (r.headers.getSetCookie?.() || []).map((c) => c.split(";")[0]).join("; "); break; }
+    if (j) break; // respondeu e recusou: não tenta de novo (a Huawei bloqueia a conta depois de várias tentativas)
+  }
+  if (!base) throw new Error("Huawei recusou o login. O FusionSolar só libera os dados para um usuário de API: no FusionSolar, Sistema → Gerenciamento da empresa → Northbound → criar usuário (com senha) e guardar esse usuário aqui.");
+  const post = async (rota: string, corpo: unknown) => { const { j } = await jfetch(base + rota, { method: "POST", headers: { "Content-Type": "application/json", "XSRF-TOKEN": tok, Cookie: cookie }, body: JSON.stringify(corpo) }, amostra, "huawei_" + rota.split("/").pop()); if (!j || !j.success) throw new Error("Huawei " + rota + ": " + ((j && (j.message || j.failCode)) || "sem resposta")); return j.data; };
+  const plantas: Planta[] = [];
+  for (let pag = 1; pag <= 20; pag++) {
+    const d = await post("/thirdData/stations", { pageNo: pag });
+    const lista = (d && d.list) || [];
+    lista.forEach((p: any) => plantas.push({ id: String(p.plantCode), nome: p.plantName || "", kwp: Number(p.capacity) > 1000 ? Number(p.capacity) / 1000 : Number(p.capacity) || 0, dias: [] }));
+    if (!d || pag >= (d.pageCount || 1)) break;
+  }
+  const h = hojeSPd(), quando = [h.getTime(), new Date(h.getFullYear(), h.getMonth() - 1, 15).getTime()];
+  for (let i = 0; i < plantas.length; i += 100) {
+    const grupo = plantas.slice(i, i + 100), cod = grupo.map((p) => p.id).join(",");
+    for (const ms of quando) {
+      try {
+        const d = await post("/thirdData/getKpiStationDay", { stationCodes: cod, collectTime: ms });
+        for (const x of (d || [])) { const p = grupo.find((y) => y.id === x.stationCode); const m = x.dataItemMap || {}; const kwh = Number(m.PVYield ?? m.inverter_power ?? m.inverterYield); if (p && Number.isFinite(kwh)) p.dias.push({ dia: isoD(new Date(Number(x.collectTime) - 3 * 3600e3 + 12 * 3600e3)), kwh }); }
+      } catch (e) { amostra["erro_kpi_" + i] = String(e).slice(0, 160); }
+      await new Promise((r) => setTimeout(r, 1500)); // a Huawei limita chamadas por minuto
+    }
+  }
+  return plantas;
+}
+
+// ---------- Sungrow iSolarCloud (login do app com usuário e senha) ----------
+async function sungrow(cred: Record<string, string>, amostra: Record<string, unknown>): Promise<Planta[]> {
+  const APPKEY = (cred.chave || "").trim() || "93D72E60331ABDCDC7B39ADC2D1F32B3", AK = (cred.segredo || "").trim() || "9grzgbmxdsp3arfmmgq347xjbza4ysps";
+  const H = { "Content-Type": "application/json", "x-access-key": AK, sys_code: "901", lang: "_pt_BR" };
+  const OPEN = !!(cred.chave || "").trim(); // app próprio do Open API (developer-api.isolarcloud.com)
+  const R_LOGIN = OPEN ? "/openapi/login" : "/v1/userService/login", R_LISTA = OPEN ? "/openapi/getPowerStationList" : "/v1/powerStationService/getPsList";
+  let base = "", token = "", uid = "";
+  for (const b of ["https://gateway.isolarcloud.com.hk", "https://gateway.isolarcloud.eu", "https://augateway.isolarcloud.com", "https://gateway.isolarcloud.com"]) {
+    try {
+      const { j } = await jfetch(b + R_LOGIN, { method: "POST", headers: H, body: JSON.stringify({ appkey: APPKEY, sys_code: "900", user_account: cred.usuario, user_password: cred.senha, login_type: "1", lang: "_pt_BR" }) }, amostra, "sungrow_login_" + b.slice(8, 24));
+      const rd = j && j.result_data;
+      if (rd && rd.token) { base = b; token = rd.token; uid = String(rd.user_id || ""); break; }
+      if (j && j.result_code) break; // servidor respondeu e recusou: não insiste (evita bloquear a conta)
+    } catch (e) { amostra["sungrow_login_" + b.slice(8, 24)] = String(e).slice(0, 100); }
+  }
+  if (!token) throw new Error(JSON.stringify(amostra).includes("invalid_appkey") ? "Sungrow não aceita mais o acesso só com usuário e senha: crie um app em developer-api.isolarcloud.com (Open API) e guarde o Appkey em Chave e o Secret Key em Segredo." : "Sungrow recusou o login (confira usuário e senha do iSolarCloud).");
+  const post = async (rota: string, corpo: Record<string, unknown>) => { const { j } = await jfetch(base + rota, { method: "POST", headers: H, body: JSON.stringify({ appkey: APPKEY, token, user_id: uid, sys_code: "901", lang: "_pt_BR", ...corpo }) }, amostra, "sungrow_" + rota.split("/").pop()); if (!j || j.result_code !== "1") throw new Error("Sungrow " + rota + ": " + ((j && j.result_msg) || "sem resposta")); return j.result_data; };
+  const plantas: Planta[] = [];
+  for (let pag = 1; pag <= 20; pag++) {
+    const d = await post(R_LISTA, { curPage: pag, size: 100 });
+    const lista = (d && d.pageList) || [];
+    lista.forEach((p: any) => {
+      const cap = p.design_capacity && typeof p.design_capacity === "object" ? kwhDe(p.design_capacity.value, p.design_capacity.unit) : Number(p.design_capacity) / (Number(p.design_capacity) > 1000 ? 1000 : 1);
+      const tot = p.total_energy && typeof p.total_energy === "object" ? kwhDe(p.total_energy.value, p.total_energy.unit) : NaN;
+      plantas.push({ id: String(p.ps_id), nome: p.ps_name || "", kwp: Number.isFinite(cap) ? cap : 0, total: tot, status: String(p.ps_status ?? ""), dias: [] });
+    });
+    if (lista.length < 100) break;
+  }
+  return plantas; // geração do dia sai da diferença do total acumulado (como na Growatt)
+}
+
+// ---------- Hoymiles S-Miles Cloud (usuário e senha) ----------
+async function hoymiles(cred: Record<string, string>, amostra: Record<string, unknown>): Promise<Planta[]> {
+  let base = "", token = "";
+  const senha = await md5(cred.senha || "");
+  for (const b of ["https://neapi.hoymiles.com", "https://euapi.hoymiles.com", "https://global.hoymiles.com/platform/api/gateway"]) {
+    try {
+      const { j } = await jfetch(b + "/iam/pub/0/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_name: cred.usuario, password: senha }) }, amostra, "hoymiles_login_" + b.slice(8, 20));
+      if (j && String(j.status) === "0" && j.data && j.data.token) { base = b; token = j.data.token; break; }
+      if (j && j.status != null) break; // respondeu e recusou: não insiste
+    } catch (e) { amostra["hoymiles_login_" + b.slice(8, 20)] = String(e).slice(0, 100); }
+  }
+  if (!token) throw new Error("Hoymiles recusou o login (confira usuário e senha do S-Miles Cloud).");
+  const post = async (rota: string, corpo: unknown) => { const { j } = await jfetch(base + rota, { method: "POST", headers: { "Content-Type": "application/json", Authorization: token }, body: JSON.stringify(corpo) }, amostra, "hoymiles_" + rota.split("/").pop()); if (!j || String(j.status) !== "0") throw new Error("Hoymiles " + rota + ": " + ((j && j.message) || "sem resposta")); return j.data; };
+  const plantas: Planta[] = [];
+  for (let pag = 1; pag <= 20; pag++) {
+    const d = await post("/pvm/api/0/station/select_by_page", { page: pag, page_size: 100 });
+    const lista = (d && d.list) || [];
+    lista.forEach((p: any) => plantas.push({ id: String(p.id), nome: p.name || "", kwp: Number(p.capacitor) || 0, dias: [] }));
+    if (lista.length < 100) break;
+  }
+  for (const p of plantas) {
+    try { const d = await post("/pvm-data/api/0/station/data/count_station_real_data", { sid: Number(p.id) }); p.total = Number(d && d.total_eq) / 1000; p.pot = Number(d && d.real_power); }
+    catch (e) { amostra["erro_" + p.id] = String(e).slice(0, 120); }
+  }
+  return plantas; // total_eq vem em Wh: a geração do dia sai da diferença do total
+}
+
+// ---------- Auxsol: sem API pública conhecida ----------
+async function auxsol(_c: Record<string, string>, _a: Record<string, unknown>): Promise<Planta[]> {
+  throw new Error("Auxsol ainda não tem leitura automática: a plataforma não tem API aberta. Dá para fazer pelo robô do escritório (como o da Belenergy) se precisar.");
+}
+
+const LEITORES: Record<string, (c: Record<string, string>, a: Record<string, unknown>) => Promise<Planta[]>> = { Growatt: growattAuto, Solis: solis, Deye: deye, Huawei: huawei, Sungrow: sungrow, Hoymiles: hoymiles, Auxsol: auxsol };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
