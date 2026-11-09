@@ -309,12 +309,77 @@ async function hoymiles(cred: Record<string, string>, amostra: Record<string, un
   return plantas; // total_eq vem em Wh: a geração do dia sai da diferença do total
 }
 
+// ---------- SolarZ Open API (todas as marcas que a Chama Solar monitora no SolarZ) ----------
+// Usuário de API gerado em SolarZ → Configurações → Usuário de API (HTTP Basic). Documentação: app.solarz.com.br/v3/api-docs/seller-open-api
+const MARCA_SZ: [RegExp, string][] = [[/hoymiles/i, "Hoymiles"], [/auxsol/i, "Auxsol"], [/solis/i, "Solis"], [/sungrow|isolar/i, "Sungrow"], [/fusion|huawei/i, "Huawei"], [/deye|solarman/i, "Deye"], [/growatt|shine/i, "Growatt"], [/goodwe|sems/i, "GoodWe"]];
+const marcaSZ = (api: string) => (MARCA_SZ.find(([r]) => r.test(api || "")) || [null, "Outra"])[1];
+async function solarz(cred: Record<string, string>, amostra: Record<string, unknown>): Promise<(Planta & { marcaReal: string; nomePortal: string })[]> {
+  const base = "https://app.solarz.com.br/openApi/seller", auth = "Basic " + btoa(`${(cred.usuario || "").trim()}:${(cred.senha || "").trim()}`);
+  const H = { Authorization: auth, "Content-Type": "application/json", Accept: "application/json" };
+  // os POST de lista aceitam os filtros no corpo (JSON); se o servidor pedir na URL, tenta assim
+  const post = async (rota: string, corpo: Record<string, unknown>, rotulo: string) => {
+    let { r, j } = await jfetch(base + rota, { method: "POST", headers: H, body: JSON.stringify(corpo) }, amostra, rotulo);
+    if (r.status === 400 || r.status === 415) ({ r, j } = await jfetch(base + rota + "?" + new URLSearchParams(Object.entries(corpo).map(([k, v]) => [k, String(v)])), { method: "POST", headers: H }, amostra, rotulo + "_q"));
+    if (r.status === 401 || r.status === 403) throw new Error("SolarZ recusou o Usuário de API (confira usuário e senha em Parâmetros → Acessos → SolarZ).");
+    if (!r.ok) throw new Error(`SolarZ ${rota}: HTTP ${r.status}`);
+    return j;
+  };
+  const marcaDe: Record<string, { marca: string; nome: string }> = {};
+  for (let pag = 0; pag < 40; pag++) {
+    const d = await post("/plant/list/simple", { page: pag, pageSize: 100 }, "sz_simples");
+    for (const x of (d && d.content) || []) { const c = Array.isArray(x.coletas) ? x.coletas[0] : x.coletas; marcaDe[String(x.id)] = { marca: marcaSZ(c && c.apiNome), nome: (c && c.nomeUsinaPortal) || x.denominacao || "" }; }
+    if (!d || d.last || !(d.content || []).length) break;
+  }
+  const plantas: (Planta & { marcaReal: string; nomePortal: string })[] = [];
+  for (let pag = 0; pag < 40; pag++) {
+    const d = await post("/plant/list", { page: pag, pageSize: 100 }, "sz_lista");
+    for (const x of (d && d.content) || []) {
+      const id = String(x.id), m = marcaDe[id] || { marca: "Outra", nome: x.name };
+      plantas.push({ id, nome: x.name || m.nome, kwp: Number(x.installedPower) || 0, status: x.status && x.status.status ? String(x.status.status) : "", dias: [], marcaReal: m.marca, nomePortal: m.nome || x.name });
+    }
+    if (!d || d.last || !(d.content || []).length) break;
+  }
+  // geração por dia dos últimos 35 dias, 6 usinas por vez
+  const h = hojeSPd(), de = isoD(new Date(h.getTime() - 35 * 864e5)), ate = isoD(h);
+  let i = 0, erros = 0;
+  const trabalhador = async () => {
+    while (i < plantas.length) {
+      const p = plantas[i++];
+      try {
+        const d = await post("/plant/energy/dayRange", { plantId: p.id, fromLocalDate: de, toLocalDate: ate }, "sz_dias");
+        for (const x of Array.isArray(d) ? d : []) { const dia = String(x.date || "").slice(0, 10), kwh = Number(x.total); if (/^\d{4}-\d{2}-\d{2}$/.test(dia) && Number.isFinite(kwh) && dia <= ate) p.dias.push({ dia, kwh }); }
+      } catch (e) { if (++erros <= 3) amostra["erro_" + p.id] = String(e).slice(0, 120); }
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, trabalhador));
+  amostra.marcas = plantas.reduce((t: Record<string, number>, p) => { t[p.marcaReal] = (t[p.marcaReal] || 0) + 1; return t; }, {});
+  return plantas;
+}
+
 // ---------- Auxsol: sem API pública conhecida ----------
 async function auxsol(_c: Record<string, string>, _a: Record<string, unknown>): Promise<Planta[]> {
   throw new Error("Auxsol ainda não tem leitura automática: a plataforma não tem API aberta. Dá para fazer pelo robô do escritório (como o da Belenergy) se precisar.");
 }
 
-const LEITORES: Record<string, (c: Record<string, string>, a: Record<string, unknown>) => Promise<Planta[]>> = { Growatt: growattAuto, Solis: solis, Deye: deye, Huawei: huawei, Sungrow: sungrow, Hoymiles: hoymiles, Auxsol: auxsol };
+const LEITORES: Record<string, (c: Record<string, string>, a: Record<string, unknown>) => Promise<Planta[]>> = { Growatt: growattAuto, Solis: solis, Deye: deye, Huawei: huawei, Sungrow: sungrow, Hoymiles: hoymiles, Auxsol: auxsol, SolarZ: solarz };
+
+// SolarZ: cada usina entra com a marca real; se já existe (importada direto da marca, mesmo nome), usa a mesma
+async function gravarSolarZ(plantas: (Planta & { marcaReal: string; nomePortal: string })[], amostra: Record<string, unknown>) {
+  const norm = (t: string) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  const todas = await rest("sol_usinas?select=id,marca,plataforma_id,cliente_nome");
+  const porSz: Record<string, number> = {}, porNome: Record<string, number> = {};
+  for (const u of todas) { if (String(u.plataforma_id || "").startsWith("sz:")) porSz[u.plataforma_id.slice(3)] = u.id; porNome[u.marca + "|" + norm(u.cliente_nome)] = porNome[u.marca + "|" + norm(u.cliente_nome)] || u.id; }
+  const novas = plantas.filter((p) => !porSz[p.id] && !porNome[p.marcaReal + "|" + norm(p.nomePortal)] && !porNome[p.marcaReal + "|" + norm(p.nome)]);
+  if (novas.length) await rest("sol_usinas?on_conflict=marca,plataforma_id", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates" },
+    body: JSON.stringify(novas.map((p) => ({ marca: p.marcaReal, plataforma_id: "sz:" + p.id, cliente_nome: p.nome || "Usina " + p.id, kwp: p.kwp > 0 ? Math.round(p.kwp * 1000) / 1000 : 1, obs: "importada do SolarZ" + (p.kwp > 0 ? "" : " · conferir kWp") }))) });
+  const depois = novas.length ? await rest("sol_usinas?select=id,plataforma_id&plataforma_id=like.sz:*") : [];
+  for (const u of depois) porSz[u.plataforma_id.slice(3)] = u.id;
+  const idDe = (p: Planta & { marcaReal: string; nomePortal: string }) => porSz[p.id] || porNome[p.marcaReal + "|" + norm(p.nomePortal)] || porNome[p.marcaReal + "|" + norm(p.nome)];
+  const linhas = plantas.flatMap((p) => { const uid = idDe(p); return uid ? p.dias.map((d) => ({ usina_id: uid, dia: d.dia, kwh: d.kwh, origem: "api" })) : []; });
+  for (let i = 0; i < linhas.length; i += 500) await rest("sol_geracao?on_conflict=usina_id,dia", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(linhas.slice(i, i + 500)) });
+  amostra.ligadasPeloNome = plantas.filter((p) => !porSz[p.id] && idDe(p)).length;
+  return { usinas: plantas.length, novas: novas.length, dias: linhas.length };
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -331,7 +396,8 @@ Deno.serve(async (req) => {
       if (!ok) return resp({ erro: "não autorizado" }, 401);
     }
     const corpo = await req.json().catch(() => ({}));
-    const marcas: string[] = corpo.marca ? [corpo.marca] : Object.keys(LEITORES);
+    const temSZ = !corpo.marca && !!(await rest("rpc/sol_ler_credencial", { method: "POST", body: JSON.stringify({ p_marca: "SolarZ" }) }).catch(() => null));
+    const marcas: string[] = corpo.marca ? [corpo.marca] : temSZ ? ["SolarZ"] : Object.keys(LEITORES).filter((m) => m !== "SolarZ");
     const resultado: Record<string, unknown> = {};
     for (const marca of marcas) {
       const amostra: Record<string, unknown> = {};
@@ -340,6 +406,7 @@ Deno.serve(async (req) => {
         const cred = await rest("rpc/sol_ler_credencial", { method: "POST", body: JSON.stringify({ p_marca: marca }) });
         if (!cred) { resultado[marca] = "sem acesso guardado"; continue; }
         const plantas = await LEITORES[marca](cred, amostra);
+        if (marca === "SolarZ") { const r = await gravarSolarZ(plantas as any, amostra); resultado[marca] = r; await rest("sol_monitoramento_execucoes", { method: "POST", body: JSON.stringify({ marca, ok: true, resumo: { ...r, ms: Date.now() - inicio, amostra } }) }); continue; }
         // usinas novas entram com o nome da plataforma; as já cadastradas não são alteradas
         if (plantas.length) await rest("sol_usinas?on_conflict=marca,plataforma_id", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates" },
           body: JSON.stringify(plantas.map((p) => ({ marca, plataforma_id: p.id, cliente_nome: p.nome || "Usina " + p.id, kwp: p.kwp > 0 ? Math.round(p.kwp * 1000) / 1000 : 1, obs: p.kwp > 0 ? "importada da plataforma" : "importada da plataforma · conferir kWp" }))) });
