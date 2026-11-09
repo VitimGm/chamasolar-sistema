@@ -59,4 +59,13 @@ app = (DEST / 'js' / 'app.js').read_text(encoding='utf-8')
 app = app.replace("$('#resetar').onclick =", "if ($('#resetar')) $('#resetar').onclick =")
 (DEST / 'js' / 'app.js').write_text(app, encoding='utf-8')
 
+# versão nos arquivos: o navegador do cliente e do vendedor pega sempre o código novo (sem "Ctrl+F5")
+import time as _t
+VERSAO = _t.strftime('%Y%m%d%H%M')
+for pagina in DEST.glob('*.html'):
+    h = pagina.read_text(encoding='utf-8')
+    h = re.sub(r'((?:src|href)="(?:js|css)/[^"?]+\.(?:js|css))"', r'\1?v=' + VERSAO + '"', h)
+    h = re.sub(r'(s\.src = "js/[^"?]+\.js)"', r'\1?v=' + VERSAO + '"', h)
+    pagina.write_text(h, encoding='utf-8')
+
 print('pronto:', DEST)
