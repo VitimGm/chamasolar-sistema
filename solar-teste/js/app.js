@@ -1710,12 +1710,13 @@
     const cupOk = (cup || []).filter((c) => !c.usado && c.habilitado !== false && (!c.validade || new Date(c.validade) >= hoje0));
     const cupPerdidos = (cup || []).filter((c) => !c.usado && c.validade && new Date(c.validade) < hoje0 && new Date(c.validade) > new Date(agora - 120 * 864e5));
     const graves = aten.filter((a) => a.al.some((x) => x.grave)).length, oport = aten.filter((a) => a.al.some((x) => x.oport)).length;
-    const r7 = precos.filter((x) => x.t >= D7), rsHoje = mediana(r7.map((x) => x.rs)), rsAntes = mediana(precos.filter((x) => x.t < D7 && x.t >= D37).map((x) => x.rs));
+    const inv = precos.filter((x) => (x.nivel || 'Inversor') === 'Inversor'); // o micro é mais caro: a referência é a opção inversor
+    const r7 = inv.filter((x) => x.t >= D7), rsHoje = mediana(r7.map((x) => x.rs)), rsAntes = mediana(inv.filter((x) => x.t < D7 && x.t >= D37).map((x) => x.rs));
     const varTxt = rsHoje && rsAntes ? `${rsHoje < rsAntes ? '▼' : '▲'} ${n(Math.abs((rsHoje - rsAntes) / rsAntes) * 100, 1)}% no mês` : 'sem base para comparar ainda';
     const dataBR = (d) => (d ? new Date(d).toLocaleDateString('pt-BR') : '—');
     app.innerHTML = `${cabCelular()}<div class="cab"><div><h1>Radar de oportunidades</h1><p class="sutil">Preço do kit em tempo real, propostas que precisam de atenção e o que dá para ganhar agora. Cada cotação do robô alimenta este painel.</p></div></div>
       <div class="kpis"><div class="kpi ${graves ? '' : 'destaque'}"><span class="rotulo">Propostas com preço a revisar</span><b>${aten.length}</b><span class="sutil">${graves} urgente(s) · ${oport} oportunidade(s)</span></div>
-        <div class="kpi"><span class="rotulo">Kit hoje (mediana 7 dias)</span><b>${rsHoje ? 'R$ ' + n(rsHoje, 2) + '/Wp' : '—'}</b><span class="sutil">${r7.length} cotação(ões) · ${varTxt}</span></div>
+        <div class="kpi"><span class="rotulo">Kit hoje · opção inversor (7 dias)</span><b>${rsHoje ? 'R$ ' + n(rsHoje, 2) + '/Wp' : '—'}</b><span class="sutil">${r7.length} cotação(ões) · ${varTxt}</span></div>
         <div class="kpi"><span class="rotulo">Cupons válidos na Belenergy</span><b>${cup ? cupOk.length : '—'}</b><span class="sutil">${cup ? (cupOk.length ? brl(cupOk.reduce((t, c) => t + c.valor, 0), 2) + ' para usar' : 'nenhum agora') : 'o robô novo confere 2× por dia'}</span></div>
         <div class="kpi"><span class="rotulo">Cotações guardadas (90 dias)</span><b>${precos.length}</b><span class="sutil">robô, Jarvis e pré-propostas</span></div></div>
       <div class="painel" style="margin-top:14px"><div class="entre"><span class="rotulo">⚠ Propostas abertas que precisam de atenção no preço</span>${aten.length ? '<button class="btn sol pequeno" id="rdTodas">Recotar todas pelo robô</button>' : ''}</div>
