@@ -587,7 +587,7 @@ async function passoInterno(etapa, e = {}) {
     const iv = comps.find((c) => c.tipoKitMontado === 'inversor' && +c.index > 0 && +c.precoBruto > 0);
     if (iv) { const f = iv.index / iv.precoBruto; if (f > 1 && f < 10) FATOR = f; }
     const produtos = produtosTela || produtosApi;
-    const valor = valorTela || (produtosApi ? produtosApi + freteApi : 0);
+    let valor = valorTela || (produtosApi ? produtosApi + freteApi : 0);
     if (valorTela && produtosApi && Math.abs(valorTela - (produtosApi + freteApi)) > Math.max(2, valorTela * 0.01)) AVISOS.push(`Valor da tela (R$ ${valorTela.toFixed(2)}) diferente do carrinho do portal (R$ ${(produtosApi + freteApi).toFixed(2)}): confira no portal.`);
     if (cart && (+cart.acrescimoPlanoDePagamento > 0)) AVISOS.push(`O plano de pagamento do portal tem acréscimo de R$ ${(+cart.acrescimoPlanoDePagamento).toFixed(2)}.`);
     let numero = 'não salvo', pdf = null, diagSalvar = null;
@@ -630,6 +630,11 @@ async function passoInterno(etapa, e = {}) {
       }
       if (await janela().isVisible().catch(() => false)) await pg.getByRole('button', { name: /^\s*Fechar\s*$/i }).first().click({ timeout: 3000 }).catch(() => {});
       if (!(await pagAtual())) AVISOS.push('Não consegui escolher a forma de pagamento no portal (o portal só salva com ela).');
+      { // o valor que vale é o "Valor da proposta" (acima do Comprar Agora), lido de novo depois da forma de pagamento
+        const vp = num(((await pagTxt()).match(/Valor da proposta:\s*R\$\s*([\d.,]+)/) || [])[1]);
+        if (vp && valor && Math.abs(vp - valor) > 0.5) console.log(`Valor da proposta mudou com a forma de pagamento: R$ ${valor.toFixed(2)} → R$ ${vp.toFixed(2)}`);
+        if (vp) valor = vp;
+      }
       // 2) PDF antes de salvar (depois de salvar o portal vai para "Meus orçamentos")
       try { const bp = botao(/Baixar PDF|Gerar PDF|Download PDF|Baixar proposta/i); if (await bp.count()) pdf = await guardarPdf(() => bp.click(), 'cotacao-' + Date.now() + '.pdf'); }
       catch (err) { console.log('PDF antes de salvar não veio: ' + String(err.message || err).slice(0, 100)); }
