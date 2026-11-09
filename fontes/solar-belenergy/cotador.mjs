@@ -47,7 +47,7 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
-const VERSAO = '2026-11-09a'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+const VERSAO = '2026-11-09b'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
 /* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
    Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
 const voando = new Map(); let ultimoFim = Date.now();
@@ -89,6 +89,7 @@ async function aguardarPortal(maxMs = 25000) {
     if (!r.carregando && r.assinatura === antes) { if (++iguais >= 1) return true; } else iguais = 0;
     antes = r.assinatura; await pausa(300);
   }
+  if (maxMs >= 5000) console.log(`(lento) a tela não parou em ${Math.round(maxMs / 1000)} s em ${pg.url().replace(BASE, '')}`);
   return false;
 }
 /* Correções automáticas para bloqueios conhecidos do portal */
@@ -291,6 +292,20 @@ async function combo(seletor, alvo, igual = (a, b) => a === b) {
   }
   return { achou: false, opcoes: [] };
 }
+/* Ao voltar da confirmação o arranjo fica travado ("desabilitado") até clicar em MODIFICAR LAYOUT.
+   A tela demora a montar: espera o campo e o botão, clica e confere que destravou. */
+async function liberarLayout(ms = 12000) {
+  const campo = pg.locator('app-tipo-de-estrutura .form-control').first();
+  const travado = async () => /desabilitado/.test((await campo.getAttribute('class').catch(() => '')) || '');
+  const fim = Date.now() + ms;
+  while (Date.now() < fim) {
+    if (!(await campo.count())) { await pausa(300); continue; }
+    if (!(await travado())) return true;
+    const b = botao(/MODIFICAR LAYOUT/i);
+    if (await b.count()) { await b.click({ timeout: 4000 }).catch(() => {}); await pausa(700); } else await pausa(400);
+  }
+  return (await campo.count()) > 0 && !(await travado());
+}
 async function fecharModal() {
   const x = pg.locator('mat-dialog-container button, mat-dialog-container mat-icon').filter({ hasText: /^\s*close\s*$/i }).first();
   if (await x.count()) await x.click({ timeout: 2000 }).catch(() => {});
@@ -385,7 +400,7 @@ async function passoInterno(etapa, e = {}) {
     return { etapa: 2, opcoes: { tipos: await opcoes('tipoInversor'), ligacoes: ['MONOFÁSICO', 'BIFÁSICO', 'TRIFÁSICO'], tensoes: {}, fabricantes: (await pg.locator('ng-multiselect-dropdown li').allInnerTexts()).map((x) => x.trim()).filter((x) => x && !/Marcar Todos/i.test(x)), inversores: null } };
   }
   if (etapa === 2 && e.filtrar) {
-    await aguardarPortal(20000);
+    await aguardarPortal(8000);
     await matSelect('mat-select[formcontrolname="tipoInversor"]', e.tipoInversor);
     await matSelect('mat-select[formcontrolname="tipoLigacao"]', e.ligacao);
     await pg.locator('mat-select[formcontrolname="tensaoNominal"]').click(); await pausa(600);
@@ -397,7 +412,7 @@ async function passoInterno(etapa, e = {}) {
       for (const f of e.fabricantes) { const li = pg.locator('ng-multiselect-dropdown li').filter({ hasText: new RegExp('^\\s*' + f + '\\s*$', 'i') }); if (await li.count()) await li.first().click(); }
       await pg.locator('body').click({ position: { x: 5, y: 5 } }); await pausa(400);
     }
-    await aguardarPortal(15000);
+    await aguardarPortal(6000);
     let tf = Date.now(); await botao(/FILTRAR/i).click({ timeout: 15000 });
     let a = await apiOuTela('inversor', tf, 'INVERSOR|MICRO', 90000);
     if (!a && !(await esperarLinhas('INVERSOR|MICRO', 5000).catch(() => 0))) { // sistemas grandes demoram: filtra de novo uma vez
@@ -436,20 +451,21 @@ async function passoInterno(etapa, e = {}) {
     const mod = comps.find((c) => c.tipoKitMontado === 'modulo');
     if (e.moduloSku && (!mod || mod.sku !== e.moduloSku || (+e.moduloQtd && +mod.quantidade !== +e.moduloQtd))) throw new Error('o kit da tela não é o mesmo da cotação anterior');
     if (e.inversorSku && !comps.some((c) => c.tipoKitMontado === 'inversor' && c.sku === e.inversorSku)) throw new Error('o inversor da tela não é o mesmo da cotação anterior');
-    AVISOS = [];
+    AVISOS = []; const tVolta = Date.now();
     for (let k = 0; k < 4 && !/\/energy\/estrutura/.test(pg.url()); k++) {
       const antes = pg.url(); await aguardarPortal(6000);
       await botao(/^\s*voltar\s*$/i).click({ timeout: 8000 });
       await pg.waitForURL((u) => u.toString() !== antes, { timeout: 10000 }).catch(() => {});
     }
     if (!/\/energy\/estrutura/.test(pg.url())) throw new Error('não consegui voltar para a tela de estrutura');
-    await aguardarPortal(6000);
+    await esperarApi('tipoestrutura', tVolta, 15000); // a tela recarrega os tipos ao voltar
+    if (!(await liberarLayout(15000))) throw new Error('o arranjo ficou travado (não consegui clicar em "Modificar layout")');
     return { etapa: 3, opcoes: { estruturas: ESTR || {}, orientacoes: ['Retrato', 'Paisagem'], sugestao: { linhas: 1, modulosPorLinha: 0 }, detalhesSobDemanda: !ESTR } };
   }
   if (etapa === 3) {
-    // voltou da confirmação: o arranjo fica travado até "MODIFICAR LAYOUT"
-    const mod = botao(/MODIFICAR LAYOUT/i); if (await mod.count()) { await mod.click(); await aguardarPortal(5000); }
     if (e.semEstrutura) { await pg.getByText(exato('Sem Estrutura')).click(); await pausa(800); return { etapa: 4, opcoes: { itens: [] } }; }
+    // voltou da confirmação: o arranjo fica travado até "MODIFICAR LAYOUT"
+    if (!(await liberarLayout(12000))) throw new Error('o arranjo ficou travado (não consegui clicar em "Modificar layout")');
     const tipos = Object.keys(ESTR || {});
     const tipoPortal = tipos.find((t) => chaveTipo(t) === chaveTipo(e.estruturaTipo)) || e.estruturaTipo;
     if (tipos.length && !tipos.some((t) => chaveTipo(t) === chaveTipo(e.estruturaTipo))) throw new Error(`o portal não tem a estrutura "${e.estruturaTipo}" (tem: ${tipos.join(', ')})`);
