@@ -47,7 +47,7 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
-const VERSAO = '2026-11-09e'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+const VERSAO = '2026-11-09f'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
 /* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
    Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
 const voando = new Map(); let ultimoFim = Date.now();
@@ -615,9 +615,21 @@ async function passoInterno(etapa, e = {}) {
       catch (err) { console.log('PDF antes de salvar não veio: ' + String(err.message || err).slice(0, 100)); }
       // 3) salvar e achar o número WEB em "Meus orçamentos" (cartão com o nome da proposta)
       const antesSalvar = await pagTxt();
-      await botao(/^\s*Salvar\s*$/i).click(); await aguardarPortal(20000); await pausa(1500);
+      const bs = botao(/^\s*Salvar\s*$/i);
+      let salvou = true;
+      try { await bs.click({ timeout: 12000 }); }
+      catch (err) { // botão travado (portal sem forma de pagamento, nome ou outro campo): devolve o preço mesmo assim, sem salvar
+        salvou = false;
+        const desab = await bs.isDisabled().catch(() => null), vis = await bs.isVisible().catch(() => null);
+        const f = await printErro('salvar');
+        const tela = (await pagTxt()).replace(/\s+/g, ' '); const i4 = tela.search(/Forma de pagamento|Salvar/i);
+        diagSalvar = { url: pg.url(), botaoVisivel: vis, botaoDesabilitado: desab, tela: tela.slice(Math.max(0, i4 - 400), i4 + 600) };
+        AVISOS.push('Não consegui clicar em "Salvar" no portal (' + (desab ? 'botão desabilitado' : vis === false ? 'botão escondido' : 'botão não respondeu') + '). O preço veio, mas a proposta NÃO foi salva na Belenergy' + (f ? ' · print: ' + f : '') + '.');
+        console.log('Salvar falhou: ' + String(err.message || err).slice(0, 120));
+      }
+      if (salvou) { await aguardarPortal(20000); await pausa(1500); }
       let achado = null;
-      for (let k = 0; k < 16 && !achado; k++) {
+      for (let k = 0; k < 16 && !achado && salvou; k++) {
         const t2 = (await pagTxt()) + ' ' + (await avisoPortal()) + ' ' + pg.url();
         if (/Meus or[çc]amentos/i.test(t2)) {
           achado = await pg.evaluate((nome) => { // cartões: "nome · WEB-0071… · Total"
@@ -628,9 +640,9 @@ async function passoInterno(etapa, e = {}) {
         } else { const w = t2.match(/\bWEB\s*[-:#nº°]*\s*(\d{5,})/i); if (w && !antesSalvar.includes(w[1])) achado = w[1]; }
         if (!achado) await pausa(700);
       }
-      numero = achado ? 'WEB ' + achado : 'salvo (ver Meus Orçamentos)';
+      numero = !salvou ? 'não salvo' : achado ? 'WEB ' + achado : 'salvo (ver Meus Orçamentos)';
       if (achado && pdf) pdf.nome = 'WEB-' + achado + '.pdf';
-      if (!achado) { const t3 = await pagTxt(), i3 = t3.search(/salv|sucesso|or[çc]amento/i); diagSalvar = { url: pg.url(), tela: t3.slice(Math.max(0, i3 - 300), i3 + 900).replace(/\s+/g, ' ') }; console.log('Salvou, mas não achei o número WEB. Guardei o texto da tela.'); }
+      if (salvou && !achado) { const t3 = await pagTxt(), i3 = t3.search(/salv|sucesso|or[çc]amento/i); diagSalvar = { url: pg.url(), tela: t3.slice(Math.max(0, i3 - 300), i3 + 900).replace(/\s+/g, ' ') }; console.log('Salvou, mas não achei o número WEB. Guardei o texto da tela.'); }
       // 4) sem PDF ainda: baixa pelo botão de download do cartão em "Meus orçamentos"
       if (!pdf && achado) {
         try { const card = pg.locator('[data-robo-card="1"]').first(); const bt = card.locator('button, a').first(); if (await bt.count()) pdf = await guardarPdf(() => bt.click(), 'WEB-' + achado + '.pdf'); }
