@@ -36,6 +36,8 @@
       margemManual: o.margemManual === '' || o.margemManual == null || !Number.isFinite(+o.margemManual) ? undefined : +o.margemManual / 100,
       custosExtras: Array.isArray(o.custosExtras) ? o.custosExtras : [], custosAjustados: o.custosAjustados || {},
       precoModo: o.precoModo || 'chama', precoManual: o.precoManual || {},
+      // potência pedida pelo vendedor (ex.: refazer um orçamento de 13,75 kWp): manda no dimensionamento
+      kwpDesejado: Number(String(o.kwpDesejado || '').replace(',', '.')) > 0 ? Number(String(o.kwpDesejado).replace(',', '.')) : 0,
     };
   }
 

@@ -15,13 +15,14 @@
   // Alvo = consumo que dá para zerar (consumo − taxa mínima da CPFL) + margem de segurança
   // (a margem cobre a perda natural dos módulos com os anos e variação de clima).
   // Padrão do mercado (e o seguro): dimensionar pelo consumo TOTAL, sem descontar a taxa mínima.
-  function dimensionar({ consumoMedio, ligacao, hsp, orientacao, pr, potModuloW, margemGeracao = 0, descontarDisponibilidade = false }) {
+  function dimensionar({ consumoMedio, ligacao, hsp, orientacao, pr, potModuloW, margemGeracao = 0, descontarDisponibilidade = false, kwpDesejado = 0 }) {
     const disp = DISPONIBILIDADE[ligacao] ?? 50;
     const hspEf = hsp * (FATOR_ORIENTACAO[orientacao] ?? 1);
     const descontado = descontarDisponibilidade ? disp : 0;
     const alvoKwh = Math.max(consumoMedio - descontado, 0);
-    const kwpNecessario = (alvoKwh * (1 + margemGeracao)) / (hspEf * 30 * pr);
-    const placas = Math.max(Math.ceil((kwpNecessario * 1000) / potModuloW), 1);
+    // potência fixa (kWp pedido pelo vendedor) manda; senão, sai do consumo
+    const kwpNecessario = kwpDesejado > 0 ? kwpDesejado : (alvoKwh * (1 + margemGeracao)) / (hspEf * 30 * pr);
+    const placas = Math.max(Math.ceil((kwpNecessario * 1000) / potModuloW - (kwpDesejado > 0 ? 0.05 : 0)), 1);
     const kwpReal = (placas * potModuloW) / 1000;
     const geracaoMes = kwpReal * hspEf * 30 * pr;
     return {
@@ -268,7 +269,7 @@
     const disp = DISPONIBILIDADE[orc.ligacao] ?? 50, descontado = p.descontarDisponibilidade ? disp : 0;
     const alvoKwh = Math.max(orc.consumoMedio - descontado, 0);
     const geracaoMes = kwpReal * hspEf * 30 * p.pr;
-    const dim = { disponibilidade: disp, descontado, hspEfetivo: arred(hspEf, 2), alvoKwh: arred(alvoKwh, 0), kwpNecessario: arred((alvoKwh * (1 + (p.margemGeracao ?? 0))) / (hspEf * 30 * p.pr), 2), placas, kwpReal: arred(kwpReal, 2), geracaoMes: arred(geracaoMes, 0), cobertura: alvoKwh ? arred(geracaoMes / alvoKwh, 3) : 0 };
+    const dim = { disponibilidade: disp, descontado, hspEfetivo: arred(hspEf, 2), alvoKwh: arred(alvoKwh, 0), kwpNecessario: arred(orc.kwpDesejado > 0 ? orc.kwpDesejado : (alvoKwh * (1 + (p.margemGeracao ?? 0))) / (hspEf * 30 * p.pr), 2), placas, kwpReal: arred(kwpReal, 2), geracaoMes: arred(geracaoMes, 0), cobertura: alvoKwh ? arred(geracaoMes / alvoKwh, 3) : 0 };
     const inversor = { id: k.inversor.sku, nome: k.inversor.nome, fabricante: k.inversor.fabricante || '', qtd: k.inversor.qtd || 1, potenciaUnKw: k.inversor.potenciaUnKw || k.inversor.potenciaKw, tipo: k.inversor.tipo, potenciaKw: k.inversor.potenciaKw, hibrido: k.inversor.tipo === 'hibrido', vMaxDc: k.inversor.vMaxDc || 0 };
     const relacao = inversor.potenciaKw ? kwpReal / inversor.potenciaKw : 0;
     // frete que já veio dentro do valor do kit (entrega da Belenergy ou kit digitado com frete incluso) não entra de novo

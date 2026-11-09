@@ -517,7 +517,7 @@
   const PDFS_PENDENTES = {}; // PDF da Belenergy de cada opção, anexado quando o orçamento ganha número
   const salvarR = () => { B.rascunho.gravar(orc); B.rascunho.gravarEtapa(etapa); };
   const ETAPAS = [
-    ['Cliente e conta', passo1, () => (orc.nome.trim() && C.consumoMedio(orc) > 0 && orc.cidade) ? '' : 'Preencha nome, cidade e o consumo.'],
+    ['Cliente e conta', passo1, () => (orc.nome.trim() && C.consumoMedio(orc) > 0 && orc.cidade) ? '' : 'Preencha nome, cidade e o consumo (ou a potência em kWp).'],
     ['Local e telhado', passo2, () => ''], ['Dimensionamento', passo3, () => ''], ['Kit Belenergy', passo4, () => (orc.kitsFechados && orc.kitsFechados.some(Boolean)) ? '' : 'Cote pelo menos uma opção (inversor ou micro).'],
     ['Preço e pagamento', passo5, () => ''], ['Proposta Viva', passo6, () => ''],
   ];
@@ -644,6 +644,8 @@
         <div class="meses" style="margin-top:12px">${MESES.map((m, i) => `<label>${m}<input type="number" min="0" data-mes="${i}" value="${orc.consumos[i]}"></label>`).join('')}</div>
         <div class="numeros4" style="margin-top:12px"><div><span>Média</span><b id="media">${n(media)} kWh</b></div><div><span>Tarifa (R$/kWh)</span><b><input type="number" step="0.01" id="f-tar" value="${orc.tarifaKwh}" style="padding:4px 8px;font-size:17px"></b></div>
         <div style="grid-column:1/-1"><span>Pagou nos últimos 12 meses (estimado)</span><b id="pago" class="grad">${brl(media * 12 * orc.tarifaKwh)}</b></div></div>
+        <label class="campo" style="margin-top:14px"><span>Potência da usina em kWp (opcional)</span><input type="text" id="f-kwp" inputmode="decimal" placeholder="ex.: 13,75 · vazio = calcula pelo consumo" value="${orc.kwpDesejado ? String(orc.kwpDesejado).replace('.', ',') : ''}"></label>
+        <p class="mini" style="margin:6px 0 0" id="kwpInfo">${orc.kwpDesejado ? `Usina fixa em ${esc(String(orc.kwpDesejado).replace('.', ','))} kWp: o dimensionamento, o robô e a proposta usam esse tamanho.` : 'Use quando o cliente já pediu um tamanho. Sem consumo, estimamos a conta pela geração dessa potência.'}</p>
         ${orc.avisosLeitura ? orc.avisosLeitura.map((a) => `<div class="aviso">${esc(a)}</div>`).join('') : ''}</div>`}</div>`;
     ligarGrupoA(el);
     const atual = () => { const m = C.consumoMedio(orc); if (!$('#media')) { salvarR(); barra(); return; } $('#media').textContent = n(m) + ' kWh'; $('#pago').textContent = brl(orc.consumos.map(Number).filter(Boolean).reduce((s, x) => s + x, 0) * orc.tarifaKwh); salvarR(); barra(); };
@@ -655,6 +657,13 @@
     $('#f-km').oninput = (e) => { orc.distanciaKm = +e.target.value || 0; salvarR(); };
     if ($('#f-tar')) $('#f-tar').oninput = (e) => { orc.tarifaKwh = +e.target.value || 0; atual(); };
     el.querySelectorAll('[data-mes]').forEach((i) => i.oninput = () => { orc.consumos[+i.dataset.mes] = i.value; atual(); });
+    if ($('#f-kwp')) $('#f-kwp').onchange = (e) => {
+      const v = Number(String(e.target.value).replace(',', '.')); orc.kwpDesejado = v > 0 ? Math.round(v * 100) / 100 : null;
+      // sem consumo: estima pela geração da potência (economia e proposta precisam de uma conta)
+      if (orc.kwpDesejado && !(C.consumoMedio(orc) > 0)) { const e0 = C.entrada({ ...orc, kwpDesejado: 0 }), pr = P().pr || 0.8; preencher(orc.kwpDesejado * (e0.hsp || 5) * 30 * pr); }
+      $('#kwpInfo').textContent = orc.kwpDesejado ? `Usina fixa em ${String(orc.kwpDesejado).replace('.', ',')} kWp: o dimensionamento, o robô e a proposta usam esse tamanho.` : 'Potência calculada pelo consumo.';
+      salvarR(); barra();
+    };
     el.querySelectorAll('[data-modo]').forEach((b) => b.onclick = () => { orc.modo = b.dataset.modo; salvarR(); novo(); });
     el.querySelectorAll('[data-lig]').forEach((b) => b.onclick = () => {
       const dd = (l) => (P().descontarDisponibilidade ? (M.DISPONIBILIDADE[l] ?? 50) : 0), antes = dd(orc.ligacao); orc.ligacao = b.dataset.lig;
@@ -807,7 +816,7 @@
       ${C.ehGA(orc) ? avisoDemanda(op) : ''}
       <div class="painel"><span class="rotulo">Como foi calculado</span>
         ${C.ehGA(orc) ? `<p class="mini" style="margin:8px 0 0">Grupo A: dimensionado pelo ${orc.grupoA.alvo === 'total' ? `fora ponta + a ponta convertida em crédito (1 kWh de ponta = ${n(GA.fatorAjuste(orc.grupoA), 2)} kWh)` : 'consumo fora ponta'}${orc.grupoA.limitarDemanda ? `, limitado à demanda contratada (${n(GA.demandaLimite(orc.grupoA))} kW)` : ''}.</p>` : ''}
-        <p class="num" style="margin:10px 0">kWp = (${n(C.entrada(orc).consumoMedio)}${d.descontado ? ' − ' + d.descontado : ''}) ÷ (${n(d.hspEfetivo, 2)} × 30 × ${n(p.pr, 3)}) = <b>${n(d.kwpNecessario, 2)} kWp</b></p>
+        ${orc.kwpDesejado > 0 ? `<p class="num" style="margin:10px 0">Potência fixa pedida: <b>${n(orc.kwpDesejado, 2)} kWp</b> → ${d.placas} placas = ${n(d.kwpReal, 2)} kWp (cobre ${n(d.cobertura * 100)}% do consumo)</p>` : `<p class="num" style="margin:10px 0">kWp = (${n(C.entrada(orc).consumoMedio)}${d.descontado ? ' − ' + d.descontado : ''}) ÷ (${n(d.hspEfetivo, 2)} × 30 × ${n(p.pr, 3)}) = <b>${n(d.kwpNecessario, 2)} kWp</b></p>`}
         <table><tr><td>Inversor (${esc(op.nivel)})</td><td class="v">${esc(op.inversor.nome)}</td></tr>
         <tr><td>DC/AC (ideal ${n(p.faixaDcAc.min, 2)}–${n(p.faixaDcAc.max, 2)})</td><td class="v">${n(op.relacaoDcAc, 2)} ${op.dcAcOk ? '✓' : '⚠'}</td></tr>
         <tr><td>Strings</td><td class="v">${op.strings.strings} × ${op.strings.porString}</td></tr>
