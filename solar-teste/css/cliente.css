@@ -1,0 +1,32 @@
+/* App do cliente (cliente.html): usa a base clara da proposta */
+.cl-capa { margin-top: 18px; border-radius: 24px; padding: 24px 22px; background: linear-gradient(135deg, #1d283e, #2c3d5e); color: #fff; position: relative; overflow: hidden; }
+.cl-capa::after { content: ""; position: absolute; right: -40px; top: -40px; width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, #ffb347 0%, #ff6700 55%, transparent 70%); opacity: .55; }
+.cl-capa > * { position: relative; z-index: 1; }
+.cl-capa .selo { font: 700 .7rem/1 var(--f-texto); letter-spacing: .1em; text-transform: uppercase; opacity: .8; }
+.cl-capa h1 { color: #fff; font-size: 1.8rem; margin: 8px 0 4px; }
+.cl-capa p { margin: 0; color: #ffffffcc; }
+.cl-hoje { margin-top: 16px; display: inline-flex; flex-direction: column; background: #fff; color: var(--tinta); border-radius: 16px; padding: 10px 16px; }
+.cl-hoje span { font-size: .8rem; color: var(--tinta-2); font-weight: 700; } .cl-hoje b { font: 800 1.7rem/1.1 var(--f-num); color: var(--bom); }
+.cl-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+.cl-nums div { background: var(--cartao); border: 1px solid var(--borda); border-radius: 18px; padding: 12px 14px; }
+.cl-nums span { display: block; font-size: .78rem; color: var(--tinta-2); font-weight: 700; }
+.cl-nums b { display: block; font: 800 1.2rem/1.2 var(--f-num); margin-top: 2px; }
+.cl-nums small { color: var(--bom); font-weight: 700; font-size: .75rem; }
+.cl-barras { position: relative; display: flex; align-items: flex-end; gap: 6px; height: 170px; padding-bottom: 22px; }
+.cl-barras button { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; background: none; border: 0; padding: 0; cursor: pointer; position: relative; }
+.cl-barras button i { display: block; border-radius: 6px 6px 2px 2px; background: #f6b37a; }
+.cl-barras button.sel i { background: var(--acao); }
+.cl-barras button em { position: absolute; bottom: -20px; left: 0; right: 0; text-align: center; font-style: normal; font-size: .7rem; color: var(--tinta-2); }
+.cl-esp { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--bom); pointer-events: none; z-index: 1; }
+.cl-sub { font-size: 1rem; margin: 22px 0 8px; }
+.cl-dias { display: flex; align-items: flex-end; gap: 2px; height: 100px; border-bottom: 1px solid var(--borda); }
+.cl-dias i { flex: 1; background: var(--acao); border-radius: 3px 3px 0 0; opacity: .85; }
+.cl-unid { display: grid; gap: 10px; }
+.cl-unid > div { border: 1px solid var(--borda); border-radius: 18px; padding: 14px; display: grid; gap: 6px; }
+.cl-u-cab { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.cl-u-cab span { font-weight: 800; color: var(--acao-texto); font-size: .9rem; white-space: nowrap; }
+.cl-unid small { color: var(--tinta-2); font-size: .8rem; }
+.cl-u-num { display: grid; grid-template-columns: 1fr auto; gap: 0 10px; align-items: baseline; }
+.cl-u-num span { font-size: .85rem; color: var(--tinta-2); } .cl-u-num b { font: 800 1.2rem var(--f-num); }
+.cl-u-num em { grid-column: 1 / -1; font-style: normal; color: var(--bom); font-weight: 700; font-size: .9rem; }
+@media (max-width: 520px) { .cl-nums { grid-template-columns: 1fr; } }

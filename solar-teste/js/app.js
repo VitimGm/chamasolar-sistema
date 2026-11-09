@@ -1419,7 +1419,7 @@
         ${ab ? `<div class="us-d">${s.alerta ? `<p class="aviso" style="margin:0 0 8px">⚠️ ${esc(s.alerta)}</p>` : ''}
           <div class="numeros4"><div><span>Este mês</span><b>${s.pct === null ? '–' : n(s.total) + ' kWh'}</b></div><div><span>Esperado</span><b>${n(u.esperado_mes)} kWh/mês</b></div><div><span>Economia no mês</span><b>${s.pct === null ? '–' : brl(s.economiaMes)}</b></div><div><span>Desde a instalação</span><b>${l ? n(l.total_kwh) + ' kWh' : '–'}</b></div></div>
           <p class="mini" style="margin:8px 0">${esc(u.marca)}${u.plataforma_id ? ' · id ' + esc(u.plataforma_id) : ''}${l ? ` · ${off ? '<b style="color:#ff5c5c">inversor sem comunicação</b>' : `comunicando${+l.potencia_w > 0 ? ' (' + n(l.potencia_w) + ' W na leitura)' : ''}`}` : ''}${s.ultimo ? ' · última leitura ' + s.ultimo.split('-').reverse().join('/') : ''}${u.whatsapp ? '' : ' · <b>sem WhatsApp cadastrado</b>'}</p>
-          <div class="acoes-r" style="flex-wrap:wrap"><button class="btn sol pequeno" data-us="conta" data-id="${u.id}">💡 Relatório da conta</button><button class="btn vidro pequeno" data-us="rel" data-id="${u.id}">Relatório do mês</button>${u.whatsapp ? `<button class="btn zap pequeno" data-us="zap" data-id="${u.id}">WhatsApp</button>` : ''}<button class="btn vidro pequeno" data-us="imp" data-id="${u.id}">Importar planilha</button><button class="btn vidro pequeno" data-us="ed" data-id="${u.id}">Editar</button></div></div>` : ''}</div>`; };
+          <div class="acoes-r" style="flex-wrap:wrap"><button class="btn sol pequeno" data-us="conta" data-id="${u.id}">💡 Relatório da conta</button><button class="btn vidro pequeno" data-us="rel" data-id="${u.id}">Relatório do mês</button><button class="btn vidro pequeno" data-us="app" data-id="${u.id}">📱 App do cliente</button><button class="btn vidro pequeno" data-us="rateio" data-id="${u.id}">🔀 Rateio de créditos</button>${u.whatsapp ? `<button class="btn zap pequeno" data-us="zap" data-id="${u.id}">WhatsApp</button>` : ''}<button class="btn vidro pequeno" data-us="imp" data-id="${u.id}">Importar planilha</button><button class="btn vidro pequeno" data-us="ed" data-id="${u.id}">Editar</button></div></div>` : ''}</div>`; };
     app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Usinas</h1><p class="sutil">${lista.length} usinas · ${n(lista.reduce((t, u) => t + Number(u.kwp), 0), 1)} kWp · ${n(totalMes)} kWh no mês</p></div>
         <div class="linha-h"><button class="btn vidro" id="usAtu">↻ Atualizar</button><button class="btn sol" id="usNova">＋ Usina</button></div></div>
       <div class="kpis entra us-kpis">${kpi('atencao', 'Precisam de atenção', conta('atencao'), 'gerando abaixo do esperado', conta('atencao') ? 'var(--laranja)' : '')}${kpi('semcom', 'Sem comunicação', conta('semcom'), 'inversor sem internet', conta('semcom') ? '#ff5c5c' : '')}${kpi('bem', 'Gerando bem', conta('bem'), 'dentro do esperado', '')}${kpi('todas', 'Todas', conta('todas'), usF.marca ? 'da marca ' + esc(usF.marca) : 'ver a lista inteira', '')}</div>
@@ -1457,6 +1457,8 @@
       const u = lista.find((x) => String(x.id) === b.dataset.id), g = B.geracao(u.id);
       if (b.dataset.us === 'conta') formFatura(u);
       else if (b.dataset.us === 'rel') U.relatorio(u, g);
+      else if (b.dataset.us === 'app') appCliente(u);
+      else if (b.dataset.us === 'rateio') formRateio(u);
       else if (b.dataset.us === 'zap') window.open('https://wa.me/55' + String(u.whatsapp || '').replace(/\D/g, '').replace(/^55/, '') + '?text=' + encodeURIComponent(U.mensagem(u, g)), '_blank', 'noopener');
       else if (b.dataset.us === 'imp') { alvo = u.id; arq.click(); }
       else formUsina(u);
@@ -1609,6 +1611,8 @@
   async function formFatura(u) {
     const U = window.Usinas, g = B.geracao(u.id);
     const hist = await B.faturas(u.id).catch(() => []);
+    const unids = (await B.unidades(u.id).catch(() => [])).filter((x) => !x.geradora);
+    const nomeUn = (id) => { const x = unids.find((y) => y.id === +id); return x ? (x.apelido || 'UC ' + x.uc) : 'Usina'; };
     const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:80;background:#0009;display:grid;place-items:center;padding:16px';
     let f = { usina_id: u.id, tarifa: u.tarifa_kwh || '', dados: {} };
     const campos = [['leitura_ini', 'Leitura anterior', 'date'], ['leitura_fim', 'Leitura atual', 'date'], ['consumo_rede', 'Consumo da rede (kWh)', 'number'], ['injetada', 'Energia injetada (kWh)', 'number'],
@@ -1617,13 +1621,14 @@
       ov.innerHTML = `<div class="painel" style="max-width:640px;width:100%;max-height:92vh;overflow:auto"><div class="entre"><span class="rotulo" style="color:var(--sol)">Relatório da conta · ${esc(u.cliente_nome)}</span><button class="link" data-x>fechar</button></div>
         <div class="linha-h" style="margin-top:10px"><button class="btn vidro" data-ler>📄 Ler a conta (PDF da CPFL)</button><span class="mini" id="ftAviso">ou digite os campos da conta</span></div>
         <input type="file" id="ftArq" accept="application/pdf" hidden>
-        <div class="grade g2" style="margin-top:10px">${campos.map(([k, r, t]) => `<label class="campo"><span>${r}</span><input data-ft="${k}" type="${t}" step="any" value="${esc(k === 'iluminacao' ? (f.dados.iluminacao ?? '') : (f[k] ?? ''))}"></label>`).join('')}</div>
+        ${unids.length ? `<label class="campo" style="margin-top:10px"><span>Conta de qual unidade</span><select id="ftUn"><option value="0">Usina (unidade geradora)</option>${unids.map((x) => `<option value="${x.id}" ${+f.unidade_id === x.id ? 'selected' : ''}>${esc(x.apelido || 'UC ' + x.uc)}${x.percentual != null ? ' · ' + n(x.percentual) + '%' : ''}</option>`).join('')}</select></label>` : ''}
+        <div class="grade g2" style="margin-top:10px">${campos.filter(([k]) => !(+f.unidade_id > 0 && k === 'geracao_manual')).map(([k, r, t]) => `<label class="campo"><span>${+f.unidade_id > 0 && k === 'injetada' ? 'Créditos recebidos da usina (kWh)' : r}</span><input data-ft="${k}" type="${t}" step="any" value="${esc(k === 'iluminacao' ? (f.dados.iluminacao ?? '') : (f[k] ?? ''))}"></label>`).join('')}</div>
         <div id="ftPrev" style="margin-top:10px"></div>
         <div class="acoes-r" style="margin-top:12px"><button class="btn sol" data-gerar>Salvar e abrir o relatório</button><button class="btn zap" data-zap>WhatsApp</button></div>
-        ${hist.length ? `<div class="secao-t" style="margin-top:16px"><h2 style="font-size:16px">Contas anteriores</h2></div><table>${hist.map((h) => { const r = U.periodoFatura(u, g, h); return `<tr><td>${esc(h.referencia || h.leitura_fim)}</td><td>${brl(r.economia)} de economia</td><td><button class="link" data-abrir="${h.id}">abrir</button> · <button class="link" data-editar="${h.id}">editar</button></td></tr>`; }).join('')}</table>` : ''}</div>`;
+        ${hist.length ? `<div class="secao-t" style="margin-top:16px"><h2 style="font-size:16px">Contas anteriores</h2></div><table>${hist.map((h) => { const r = U.periodoFatura(u, g, h); return `<tr><td>${unids.length ? esc(nomeUn(h.unidade_id)) + ' · ' : ''}${esc(h.referencia || h.leitura_fim)}</td><td>${brl(r.economia)} de economia</td><td><button class="link" data-abrir="${h.id}">abrir</button> · <button class="link" data-editar="${h.id}">editar</button></td></tr>`; }).join('')}</table>` : ''}</div>`;
       prever();
     };
-    const ler = () => { ov.querySelectorAll('[data-ft]').forEach((i) => { const v = i.type === 'number' ? (i.value === '' ? null : +i.value) : i.value.trim(); if (i.dataset.ft === 'iluminacao') f.dados = { ...(f.dados || {}), iluminacao: v }; else f[i.dataset.ft] = v; }); };
+    const ler = () => { const un = ov.querySelector('#ftUn'); if (un) f.unidade_id = +un.value || 0; ov.querySelectorAll('[data-ft]').forEach((i) => { const v = i.type === 'number' ? (i.value === '' ? null : +i.value) : i.value.trim(); if (i.dataset.ft === 'iluminacao') f.dados = { ...(f.dados || {}), iluminacao: v }; else f[i.dataset.ft] = v; }); };
     const prever = () => {
       ler(); const el = ov.querySelector('#ftPrev'); if (!el) return;
       if (!f.leitura_ini || !f.leitura_fim || f.leitura_fim <= f.leitura_ini) { el.innerHTML = '<p class="mini">Coloque as duas datas de leitura para ver a economia.</p>'; return; }
@@ -1635,6 +1640,7 @@
     desenhar(); document.body.appendChild(ov);
     ov.oninput = prever;
     ov.onchange = async (e) => {
+      if (e.target.id === 'ftUn') { ler(); desenhar(); return; }
       if (e.target.id !== 'ftArq') return; const arq = e.target.files[0]; if (!arq) return;
       const av = ov.querySelector('#ftAviso'); av.textContent = 'lendo a conta…';
       try {
@@ -1648,20 +1654,59 @@
     ov.onclick = async (e) => {
       if (e.target === ov || e.target.closest('[data-x]')) return ov.remove();
       if (e.target.closest('[data-ler]')) return ov.querySelector('#ftArq').click();
-      const ab = e.target.closest('[data-abrir]'); if (ab) return U.relatorioFatura(u, g, hist.find((h) => String(h.id) === ab.dataset.abrir), hist);
+      const ab = e.target.closest('[data-abrir]'); if (ab) { const fx = hist.find((h) => String(h.id) === ab.dataset.abrir); return U.relatorioFatura(u, g, fx, hist.filter((h) => (h.unidade_id || 0) === (fx.unidade_id || 0))); }
       const ed = e.target.closest('[data-editar]'); if (ed) { f = { ...hist.find((h) => String(h.id) === ed.dataset.editar) }; f.dados = f.dados || {}; return desenhar(); }
       const gerar = e.target.closest('[data-gerar]'), zap = e.target.closest('[data-zap]');
       if (!gerar && !zap) return;
       ler();
       if (!f.leitura_ini || !f.leitura_fim || f.leitura_fim <= f.leitura_ini) return toast('Coloque as datas de leitura da conta');
       if (!f.valor_pago && f.valor_pago !== 0) return toast('Coloque o valor da conta');
-      if (!U.periodoFatura(u, g, f).geracao) return toast('Sem geração da plataforma nesse período: digite a geração do app do inversor');
+      if (!(+f.unidade_id > 0) && !U.periodoFatura(u, g, f).geracao) return toast('Sem geração da plataforma nesse período: digite a geração do app do inversor');
       let salvo = f;
       try { salvo = await B.salvarFatura(f); } catch (err) { toast('Não salvou: ' + String(err.message).slice(0, 80)); }
-      const todas = [salvo, ...hist.filter((h) => h.leitura_fim !== salvo.leitura_fim)];
+      const todas = [salvo, ...hist.filter((h) => (h.unidade_id || 0) === (salvo.unidade_id || 0) && h.leitura_fim !== salvo.leitura_fim)];
       if (gerar) U.relatorioFatura(u, g, salvo, todas);
       else window.open('https://wa.me/55' + String(u.whatsapp || '').replace(/\D/g, '').replace(/^55/, '') + '?text=' + encodeURIComponent(U.mensagemFatura(u, g, salvo)), '_blank', 'noopener');
       ov.remove(); formFatura(u);
+    };
+  }
+  /* link do app do cliente: a usina, a geração, as contas e o rateio, sem login */
+  function appCliente(u) {
+    const url = new URL('cliente.html?t=' + encodeURIComponent(u.token || u.id), location.href).href;
+    const msg = `Olá ${String(u.cliente_nome).split(' ')[0]}! Aqui você acompanha a sua usina solar a qualquer hora: geração do dia, do mês, as contas de luz e a economia ☀️\n${url}`;
+    const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:80;background:#0009;display:grid;place-items:center;padding:16px';
+    ov.innerHTML = `<div class="painel" style="max-width:520px;width:100%"><div class="entre"><span class="rotulo" style="color:var(--sol)">App do cliente · ${esc(u.cliente_nome)}</span><button class="link" data-x>fechar</button></div>
+      <p class="mini" style="margin:10px 0">Link só desta usina. O cliente vê a geração, as contas lançadas e o rateio, sem precisar de senha.</p>
+      <input type="text" readonly value="${esc(url)}" style="width:100%" id="acLink">
+      <div class="acoes-r" style="margin-top:10px;flex-wrap:wrap"><button class="btn vidro" data-copiar>Copiar link</button><a class="btn vidro" href="${esc(url)}" target="_blank" rel="noopener">Abrir</a>${u.whatsapp ? `<a class="btn zap" href="https://wa.me/55${String(u.whatsapp).replace(/\D/g, '').replace(/^55/, '')}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Mandar no WhatsApp</a>` : ''}</div></div>`;
+    document.body.appendChild(ov);
+    ov.onclick = (e) => { if (e.target === ov || e.target.closest('[data-x]')) return ov.remove(); if (e.target.closest('[data-copiar]')) { navigator.clipboard.writeText(url).then(() => toast('Link copiado')).catch(() => { $('#acLink').select(); }); } };
+  }
+  /* rateio: unidades consumidoras que recebem os créditos da usina (% de cada uma, como no cadastro da CPFL) */
+  async function formRateio(u) {
+    let lista = await B.unidades(u.id).catch(() => []);
+    const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:80;background:#0009;display:grid;place-items:center;padding:16px';
+    const desenhar = () => {
+      const soma = lista.reduce((t, x) => t + (+x.percentual || 0), 0);
+      ov.innerHTML = `<div class="painel" style="max-width:720px;width:100%;max-height:92vh;overflow:auto"><div class="entre"><span class="rotulo" style="color:var(--sol)">Rateio de créditos · ${esc(u.cliente_nome)}</span><button class="link" data-x>fechar</button></div>
+        <p class="mini" style="margin:8px 0">Cadastre as unidades (UC) que recebem créditos da usina e o % de cada uma, igual à lista de rateio da CPFL. Marque a geradora (onde a usina está).</p>
+        <table><tr><th>UC (instalação)</th><th>Nome</th><th>Titular</th><th class="v">%</th><th>Geradora</th><th></th></tr>
+          ${lista.map((x, i) => `<tr><td><input data-r="${i}" data-k="uc" value="${esc(x.uc || '')}" style="width:120px"></td><td><input data-r="${i}" data-k="apelido" value="${esc(x.apelido || '')}" placeholder="ex.: Loja centro" style="width:140px"></td><td><input data-r="${i}" data-k="titular" value="${esc(x.titular || '')}" style="width:140px"></td>
+            <td class="v"><input data-r="${i}" data-k="percentual" type="number" step="0.01" min="0" max="100" value="${x.percentual ?? ''}" style="width:70px"></td><td><input type="checkbox" data-r="${i}" data-k="geradora" ${x.geradora ? 'checked' : ''}></td><td><button class="link" data-del="${i}">tirar</button></td></tr>`).join('')}</table>
+        <p class="mini" style="margin:8px 0;${Math.abs(soma - 100) > 0.01 && lista.length ? 'color:var(--laranja)' : ''}">Soma: ${n(soma, 2)}%${lista.length && Math.abs(soma - 100) > 0.01 ? ' (a CPFL exige 100%)' : ''}</p>
+        <div class="acoes-r"><button class="btn vidro" data-mais>＋ Unidade</button><button class="btn sol" data-salvar>Salvar rateio</button></div></div>`;
+    };
+    const ler = () => ov.querySelectorAll('[data-r]').forEach((i) => { const x = lista[+i.dataset.r]; x[i.dataset.k] = i.type === 'checkbox' ? i.checked : i.type === 'number' ? (i.value === '' ? null : +i.value) : i.value.trim(); });
+    desenhar(); document.body.appendChild(ov);
+    ov.oninput = () => { ler(); const soma = lista.reduce((t, x) => t + (+x.percentual || 0), 0); const p = ov.querySelector('p.mini:last-of-type'); if (p) p.textContent = 'Soma: ' + n(soma, 2) + '%' + (Math.abs(soma - 100) > 0.01 ? ' (a CPFL exige 100%)' : ''); };
+    ov.onclick = async (e) => {
+      if (e.target === ov || e.target.closest('[data-x]')) return ov.remove();
+      if (e.target.closest('[data-mais]')) { ler(); lista.push({ usina_id: u.id, uc: '', apelido: '', titular: '', percentual: null, geradora: !lista.length }); return desenhar(); }
+      const del = e.target.closest('[data-del]'); if (del) { ler(); const x = lista.splice(+del.dataset.del, 1)[0]; if (x && x.id) await B.apagarUnidade(x.id).catch(() => {}); return desenhar(); }
+      if (e.target.closest('[data-salvar]')) {
+        ler(); if (lista.some((x) => !x.uc)) return toast('Preencha o número da UC de todas as unidades');
+        try { lista = await Promise.all(lista.map((x) => B.salvarUnidade({ ...x, usina_id: u.id }))); toast('Rateio salvo'); ov.remove(); } catch (err) { toast('Não salvou: ' + String(err.message).slice(0, 80)); }
+      }
     };
   }
   function formUsina(u) {
@@ -1670,13 +1715,15 @@
     ov.innerHTML = `<div class="painel" style="max-width:560px;width:100%;max-height:92vh;overflow:auto"><div class="entre"><span class="rotulo" style="color:var(--sol)">${u.id ? 'Editar usina' : 'Cadastrar usina'}</span><button class="link" data-x>fechar</button></div>
       <div class="grade g2" style="margin-top:10px">${campo('cliente_nome', 'Cliente')}${campo('whatsapp', 'WhatsApp')}${campo('cidade', 'Cidade')}${campo('kwp', 'Potência (kWp)', 'number')}
         <label class="campo"><span>Marca do inversor</span><select data-f="marca">${window.Usinas.MARCAS.map((m) => `<option ${m === u.marca ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
-        ${campo('plataforma_id', 'ID da usina na plataforma')}${campo('ligada_em', 'Ligada em', 'date')}${campo('esperado_mes', 'Geração prometida (kWh/mês)', 'number')}${campo('tarifa_kwh', 'Tarifa (R$/kWh)', 'number')}</div>
+        ${campo('plataforma_id', 'ID da usina na plataforma')}${campo('ligada_em', 'Ligada em', 'date')}${campo('esperado_mes', 'Geração prometida (kWh/mês)', 'number')}${campo('tarifa_kwh', 'Tarifa (R$/kWh)', 'number')}${campo('email', 'E-mail do cliente', 'email')}</div>
+      <label class="alternar" style="margin-top:8px"><span><b>Plano de monitoramento</b><br><span class="sutil">recebe o relatório da conta por e-mail todo mês</span></span><input type="checkbox" id="usPlano" ${u.plano ? 'checked' : ''}></label>
       <div class="acoes-r" style="margin-top:12px"><button class="btn sol" data-salvar>Salvar</button></div></div>`;
     document.body.appendChild(ov);
     ov.onclick = async (e) => {
       if (e.target === ov || e.target.closest('[data-x]')) return ov.remove();
       if (!e.target.closest('[data-salvar]')) return;
       const novoU = { ...u }; ov.querySelectorAll('[data-f]').forEach((i) => { novoU[i.dataset.f] = i.type === 'number' ? (i.value === '' ? null : +i.value) : i.value.trim(); });
+      novoU.plano = ov.querySelector('#usPlano').checked ? 'mensal' : null;
       if (!novoU.cliente_nome || !novoU.kwp) { toast('Preencha cliente e potência'); return; }
       if (!novoU.esperado_mes) novoU.esperado_mes = Math.round(novoU.kwp * ((D.cidades[novoU.cidade] || D.cidades['Ribeirão Preto']).hsp) * 30 * P().pr);
       try { await B.salvarUsina(novoU); ov.remove(); toast('Usina salva'); usinasPag(); } catch (err) { toast('Não salvou: ' + err.message.slice(0, 80)); }

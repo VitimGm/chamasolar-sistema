@@ -219,7 +219,7 @@
     geracao(id) { return (geracaoPor[id] || []).slice(); },
     leitura(id) { return leituraPor[id] || null; },
     async salvarUsina(u) {
-      const campos = ['orcamento_id', 'cliente_nome', 'whatsapp', 'cidade', 'kwp', 'marca', 'plataforma_id', 'ligada_em', 'esperado_mes', 'tarifa_kwh', 'ativo', 'obs'];
+      const campos = ['orcamento_id', 'cliente_nome', 'whatsapp', 'email', 'plano', 'cidade', 'kwp', 'marca', 'plataforma_id', 'ligada_em', 'esperado_mes', 'tarifa_kwh', 'ativo', 'obs'];
       const corpo = Object.fromEntries(campos.filter((c) => u[c] !== undefined).map((c) => [c, u[c] === '' ? null : u[c]]));
       const r = u.id ? await api('sol_usinas?id=eq.' + u.id, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify(corpo) })
         : await api('sol_usinas', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(corpo) });
@@ -260,12 +260,18 @@
     async treino(limite = 300) { return api('sol_robo_treino?select=id,em,lote,cenario,ok,segundos,valor_kit,rs_wp,etapa,erro&order=em.desc&limit=' + limite); },
     async faturas(usinaId) { return api('sol_faturas?select=*&usina_id=eq.' + usinaId + '&order=leitura_fim.desc'); },
     async salvarFatura(f) {
-      const campos = ['usina_id', 'referencia', 'leitura_ini', 'leitura_fim', 'consumo_rede', 'injetada', 'saldo_creditos', 'valor_pago', 'tarifa', 'geracao_manual', 'dados'];
+      const campos = ['usina_id', 'unidade_id', 'referencia', 'leitura_ini', 'leitura_fim', 'consumo_rede', 'injetada', 'saldo_creditos', 'valor_pago', 'tarifa', 'geracao_manual', 'dados'];
       const corpo = Object.fromEntries(campos.filter((c) => f[c] !== undefined).map((c) => [c, f[c] === '' ? null : f[c]]));
-      const r = await api('sol_faturas?on_conflict=usina_id,leitura_fim', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=representation' }, body: JSON.stringify(corpo) });
+      const r = await api('sol_faturas?on_conflict=usina_id,unidade_id,leitura_fim', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=representation' }, body: JSON.stringify(corpo) });
       aviso('Conta salva ✓'); return r[0];
     },
     async apagarFatura(id) { await api('sol_faturas?id=eq.' + id, { method: 'DELETE' }); },
+    /* rateio: unidades consumidoras que recebem os créditos da usina */
+    async unidades(usinaId) { return api('sol_unidades?select=*&usina_id=eq.' + usinaId + '&order=geradora.desc,id.asc'); },
+    async salvarUnidade(x) { const c = ['usina_id', 'uc', 'apelido', 'titular', 'endereco', 'percentual', 'geradora']; const corpo = Object.fromEntries(c.filter((k) => x[k] !== undefined).map((k) => [k, x[k] === '' ? null : x[k]]));
+      const r = x.id ? await api('sol_unidades?id=eq.' + x.id, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify(corpo) }) : await api('sol_unidades', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(corpo) }); return r[0]; },
+    async apagarUnidade(id) { await api('sol_unidades?id=eq.' + id, { method: 'DELETE' }); },
+    async portalCliente(t) { return api('rpc/sol_portal_cliente', { method: 'POST', body: JSON.stringify({ p_token: t }) }, true); },
     /* erro do robô: fica gravado com print e tela para análise */
     async registrarErroRobo(r) {
       const d = r.diag || {}; const print = d.print || null; delete d.print;
@@ -324,6 +330,7 @@
     const t = await token().catch(() => null);
     let ehSolar = false;
     if (t) ehSolar = await api('rpc/eh_solar', { method: 'POST', body: '{}' }).catch(() => false);
+    if (pagina === 'cliente') return; // app do cliente: só a função pública sol_portal_cliente, pelo link
     if (pagina === 'proposta' && qs.get('t') && !(ehSolar && qs.get('v') === '1')) {
       if (!(await Banco.carregarPublica(qs.get('t')).catch(() => false))) Banco.orcamentos = () => [];
       return;

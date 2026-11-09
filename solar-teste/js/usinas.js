@@ -95,19 +95,21 @@
     const diasComDado = new Set(doP.map((l) => l.dia)).size;
     const daPlataforma = doP.reduce((t, l) => t + Number(l.kwh), 0);
     let geracao = Number(f.geracao_manual) || 0, origem = 'informada';
-    if (!geracao && diasComDado) { geracao = diasComDado >= dias * 0.9 ? daPlataforma : (daPlataforma / diasComDado) * dias; origem = diasComDado >= dias * 0.9 ? 'plataforma' : 'estimada'; }
+    const benef = +f.unidade_id > 0; // unidade que só recebe créditos da usina (rateio): não tem geração própria
+    if (benef) { geracao = Number(f.injetada) || 0; origem = 'creditos'; }
+    else if (!geracao && diasComDado) { geracao = diasComDado >= dias * 0.9 ? daPlataforma : (daPlataforma / diasComDado) * dias; origem = diasComDado >= dias * 0.9 ? 'plataforma' : 'estimada'; }
     const injetada = Number(f.injetada) || 0, rede = Number(f.consumo_rede) || 0;
     const tarifa = Number(f.tarifa) || Number(u.tarifa_kwh) || D.parametros.tarifaKwh;
     const ilum = Number((f.dados || {}).iluminacao) || 0, pago = Number(f.valor_pago) || 0;
-    const autoconsumo = Math.max(geracao - injetada, 0);
+    const autoconsumo = benef ? 0 : Math.max(geracao - injetada, 0);
     const consumoCasa = rede + autoconsumo;
     const semSolar = consumoCasa * tarifa + ilum;
     const economia = Math.max(semSolar - pago, 0);
     const esperado = (Number(u.esperado_mes) || 0) / 30 * dias;
-    return { ini, fim, dias, doP, diasComDado, daPlataforma, geracao, origem, injetada, rede, tarifa, ilum, pago, autoconsumo, consumoCasa, semSolar, economia,
+    return { benef, ini, fim, dias, doP, diasComDado, daPlataforma, geracao, origem, injetada, rede, tarifa, ilum, pago, autoconsumo, consumoCasa, semSolar, economia,
       pctSol: consumoCasa ? Math.min(geracao / consumoCasa, 1) : 0, pctConta: semSolar ? economia / semSolar : 0,
       saldo: Number(f.saldo_creditos) || 0, saldoR: (Number(f.saldo_creditos) || 0) * tarifa, ano: economia * 365 / dias,
-      desempenho: esperado && geracao ? geracao / esperado : null, melhor: doP.reduce((m, l) => (Number(l.kwh) > (m ? Number(m.kwh) : -1) ? l : m), null) };
+      desempenho: !benef && esperado && geracao ? geracao / esperado : null, melhor: doP.reduce((m, l) => (Number(l.kwh) > (m ? Number(m.kwh) : -1) ? l : m), null) };
   }
   const CSS_REL = `
     .heroi{background:linear-gradient(135deg,#ff6700,#ffb000);color:#fff;border-radius:22px;padding:26px 26px 22px;margin:6px 0 18px}
@@ -148,12 +150,15 @@
       <p class="mini">Mesmo com a usina sempre fica um valor mínimo na conta: a taxa de disponibilidade da CPFL e a iluminação pública.</p>
       <h2>O caminho da sua energia</h2>
       <div class="fluxo">
-        <div><div class="ic">☀️</div><b>${n(r.geracao)} kWh</b><span>o sol gerou no período${r.origem === 'estimada' ? ' (estimado: faltaram dias na plataforma)' : ''}</span></div>
+        ${r.benef ? `<div><div class="ic">☀️</div><b>${n(r.injetada)} kWh</b><span>créditos que vieram da sua usina</span></div>
+        <div><div class="ic">🏠</div><b>${n(r.rede)} kWh</b><span>esta unidade consumiu no período</span></div>
+        <div><div class="ic">🔋</div><b>${n(r.saldo)} kWh</b><span>de créditos guardados para as próximas contas</span></div>`
+        : `<div><div class="ic">☀️</div><b>${n(r.geracao)} kWh</b><span>o sol gerou no período${r.origem === 'estimada' ? ' (estimado: faltaram dias na plataforma)' : ''}</span></div>
         <div><div class="ic">🏠</div><b>${n(r.autoconsumo)} kWh</b><span>sua casa usou na hora, direto do telhado</span></div>
-        <div><div class="ic">🔌</div><b>${n(r.injetada)} kWh</b><span>sobrou e foi para a rede, virando crédito</span></div>
+        <div><div class="ic">🔌</div><b>${n(r.injetada)} kWh</b><span>sobrou e foi para a rede, virando crédito</span></div>`}
       </div>
       <div class="anel"><div class="d" style="background:conic-gradient(#ff6700 0 ${pctSolGraus}deg,#e3e6ec ${pctSolGraus}deg 360deg)"><i>${n(r.pctSol * 100)}%</i></div>
-        <div><b>O sol produziu o equivalente a ${n(r.pctSol * 100)}% da energia que a sua casa usou.</b><br><span class="mini">A casa consumiu ${n(r.consumoCasa)} kWh no período: ${n(r.autoconsumo)} do telhado na hora e ${n(r.rede)} da rede, pagos com os créditos.</span>
+        <div><b>${r.benef ? `Os créditos da usina cobriram ${n(r.pctSol * 100)}% do consumo desta unidade.` : `O sol produziu o equivalente a ${n(r.pctSol * 100)}% da energia que a sua casa usou.`}</b>${r.benef ? '' : `<br><span class="mini">A casa consumiu ${n(r.consumoCasa)} kWh no período: ${n(r.autoconsumo)} do telhado na hora e ${n(r.rede)} da rede, pagos com os créditos.</span>`}
         ${r.saldo ? `<br><span class="mini">Você ainda tem <b>${n(r.saldo)} kWh</b> guardados em créditos (cerca de ${brl(r.saldoR)}), que abatem as próximas contas.</span>` : ''}</div></div>
       <h2>Geração dia a dia</h2>
       <div style="display:flex;align-items:flex-end;gap:2px;height:120px;border-bottom:1px solid #e3e6ec">${barras || '<p class="mini">Sem leitura diária da plataforma neste período.</p>'}</div>
