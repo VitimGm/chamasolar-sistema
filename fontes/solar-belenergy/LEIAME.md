@@ -25,6 +25,9 @@ No sistema: Novo orçamento → passo 4 "Kit Belenergy". Dá para montar até 3 
 | `cotador.mjs` | Robô que conduz o Personalize seu Gerador no seu PC e responde ao sistema em `http://127.0.0.1:8787`. |
 | `robo.mjs` | Leitura do catálogo avulso (estoque, preço por Wp). Serve só de referência; **não** é o preço do orçamento. |
 
+## Versão 2026-11-09h
+- Forma de pagamento mapeada: caixa "Forma de pagamento:" → janela com Pix / Boleto Antecipado / Financiamentos / Cartão De Crédito. Escolhe Boleto Antecipado (senão Pix) e salva.
+
 ## Versão 2026-11-09g
 - Para salvar: escolhe a forma de pagamento (Boleto; se não houver, Pix) e o frete padrão passa a ser "Belenus Entrega no Cliente".
 
