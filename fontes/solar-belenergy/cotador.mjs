@@ -47,7 +47,7 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
-const VERSAO = '2026-11-09b'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+const VERSAO = '2026-11-09c'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
 /* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
    Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
 const voando = new Map(); let ultimoFim = Date.now();
@@ -306,6 +306,28 @@ async function liberarLayout(ms = 12000) {
   }
   return (await campo.count()) > 0 && !(await travado());
 }
+/* Microinversor com cabo próprio (ex.: Hoymiles/Enphase): na tela de componentes CC o portal pede
+   "Tipo de conexão" e "Tensão de atendimento" e só lista os itens depois do FILTRAR (mapeado em 08/11/2026). */
+async function preencherFiltroCC() {
+  if (!(await pg.getByText(/Tipo d[oe] conex[aã]o/i).count().catch(() => 0))) return false;
+  const sels = pg.locator('mat-select:visible'), n = await sels.count();
+  const escolhidos = [];
+  for (let i = 0; i < n; i++) {
+    const s0 = sels.nth(i);
+    if (!(await s0.evaluate((e) => e.classList.contains('mat-select-empty')).catch(() => true))) continue;
+    await s0.click({ timeout: 5000 }).catch(() => {});
+    const ops = pg.locator('mat-option'); await ops.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+    const textos = (await ops.allInnerTexts().catch(() => [])).map((t) => t.trim());
+    let k = textos.findIndex((t) => /mono/i.test(t)); if (k < 0) k = textos.findIndex((t) => /127\s*\/\s*220/.test(t)); if (k < 0) k = textos.findIndex((t) => /220/.test(t)); if (k < 0) k = 0;
+    if (textos.length) { await ops.nth(k).click({ timeout: 4000 }).catch(() => {}); escolhidos.push(textos[k]); } else await pg.keyboard.press('Escape').catch(() => {});
+    await aguardarPortal(5000);
+  }
+  const f = botao(/^\s*FILTRAR\s*$/i);
+  if (await f.count()) { await f.click({ timeout: 8000 }).catch(() => {}); await esperarLinhas('.', 25000).catch(() => {}); }
+  AVISOS.push(`Microinversor com cabo próprio: o robô escolheu ${escolhidos.join(' · ') || 'a conexão padrão'} na tela de componentes CC (confira no portal).`);
+  console.log('Componentes CC do micro: ' + (escolhidos.join(' · ') || 'padrão'));
+  return true;
+}
 async function fecharModal() {
   const x = pg.locator('mat-dialog-container button, mat-dialog-container mat-icon').filter({ hasText: /^\s*close\s*$/i }).first();
   if (await x.count()) await x.click({ timeout: 2000 }).catch(() => {});
@@ -507,6 +529,7 @@ async function passoInterno(etapa, e = {}) {
   if (etapa === 4 || etapa === 5) {
     await aguardarPortal(); await ajustarItens(e.itens);
     const tp = Date.now(); await proximo();
+    if (etapa === 4) await preencherFiltroCC(); // micro com cabo próprio: escolhe conexão e tensão e filtra
     const a = await esperarApi(etapa === 4 ? 'outros:sug' : 'outrosac:sug', tp, 20000);
     await esperarLinhas('.', a ? 6000 : 20000).catch(() => {});
     return { etapa: etapa + 1, opcoes: { itens: (await linhas('Código:')).map((x) => ({ sku: x.sku, nome: x.nome, qtd: x.qtd })) } };
