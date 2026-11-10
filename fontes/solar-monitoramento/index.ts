@@ -319,20 +319,20 @@ async function solarz(cred: Record<string, string>, amostra: Record<string, unkn
   // os POST de lista aceitam os filtros no corpo (JSON); se o servidor pedir na URL, tenta assim
   const post = async (rota: string, corpo: Record<string, unknown>, rotulo: string) => {
     let { r, j } = await jfetch(base + rota, { method: "POST", headers: H, body: JSON.stringify(corpo) }, amostra, rotulo);
-    if (r.status === 400 || r.status === 415) ({ r, j } = await jfetch(base + rota + "?" + new URLSearchParams(Object.entries(corpo).map(([k, v]) => [k, String(v)])), { method: "POST", headers: H }, amostra, rotulo + "_q"));
+    if (r.status === 400 || r.status === 415) { amostra[rotulo + "_erro"] = JSON.stringify(j).slice(0, 300); ({ r, j } = await jfetch(base + rota + "?" + new URLSearchParams(Object.entries(corpo).map(([k, v]) => [k, String(v)])), { method: "POST", headers: H }, amostra, rotulo + "_q")); }
     if (r.status === 401 || r.status === 403) throw new Error("SolarZ recusou o Usuário de API (confira usuário e senha em Parâmetros → Acessos → SolarZ).");
-    if (!r.ok) throw new Error(`SolarZ ${rota}: HTTP ${r.status}`);
+    if (!r.ok) throw new Error(`SolarZ ${rota}: HTTP ${r.status} ${JSON.stringify(j || {}).slice(0, 200)}`);
     return j;
   };
   const marcaDe: Record<string, { marca: string; nome: string }> = {};
-  for (let pag = 0; pag < 40; pag++) {
-    const d = await post("/plant/list/simple", { page: pag, pageSize: 100 }, "sz_simples");
+  for (let pag = 1; pag <= 40; pag++) { // páginas começam em 1 (e os números vão como texto)
+    const d = await post("/plant/list/simple", { page: String(pag), pageSize: "100" }, "sz_simples");
     for (const x of (d && d.content) || []) { const c = Array.isArray(x.coletas) ? x.coletas[0] : x.coletas; marcaDe[String(x.id)] = { marca: marcaSZ(c && c.apiNome), nome: (c && c.nomeUsinaPortal) || x.denominacao || "" }; }
     if (!d || d.last || !(d.content || []).length) break;
   }
   const plantas: (Planta & { marcaReal: string; nomePortal: string })[] = [];
-  for (let pag = 0; pag < 40; pag++) {
-    const d = await post("/plant/list", { page: pag, pageSize: 100 }, "sz_lista");
+  for (let pag = 1; pag <= 40; pag++) {
+    const d = await post("/plant/list", { page: String(pag), pageSize: "100" }, "sz_lista");
     for (const x of (d && d.content) || []) {
       const id = String(x.id), m = marcaDe[id] || { marca: "Outra", nome: x.name };
       plantas.push({ id, nome: x.name || m.nome, kwp: Number(x.installedPower) || 0, status: x.status && x.status.status ? String(x.status.status) : "", dias: [], marcaReal: m.marca, nomePortal: m.nome || x.name });
@@ -396,8 +396,8 @@ Deno.serve(async (req) => {
       if (!ok) return resp({ erro: "não autorizado" }, 401);
     }
     const corpo = await req.json().catch(() => ({}));
-    const temSZ = !corpo.marca && !!(await rest("rpc/sol_ler_credencial", { method: "POST", body: JSON.stringify({ p_marca: "SolarZ" }) }).catch(() => null));
-    const marcas: string[] = corpo.marca ? [corpo.marca] : temSZ ? ["SolarZ"] : Object.keys(LEITORES).filter((m) => m !== "SolarZ");
+    // todas as plataformas com acesso guardado (o SolarZ, enquanto existir, completa as que ainda não têm leitura direta)
+    const marcas: string[] = corpo.marca ? [corpo.marca] : Object.keys(LEITORES);
     const resultado: Record<string, unknown> = {};
     for (const marca of marcas) {
       const amostra: Record<string, unknown> = {};

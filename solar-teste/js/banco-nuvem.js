@@ -288,6 +288,12 @@
       const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.erro || 'HTTP ' + r.status);
       await Banco.carregar(); return j.resultado || {};
     },
+    /* relatório mensal por e-mail: {teste:'email'} manda só um exemplo */
+    async relatorioMensal(corpo) {
+      const t = await token(); if (!t) throw new Error('sem-login');
+      const r = await fetch(SB + '/functions/v1/sol-relatorio-mensal', { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify(corpo || {}) });
+      const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.erro || 'HTTP ' + r.status); return j;
+    },
     /* acessos das plataformas: só escrita (ficam no cofre do Supabase, ninguém lê pelo site) */
     async guardarCredencial(marca, dados) { await api('rpc/sol_guardar_credencial', { method: 'POST', body: JSON.stringify({ p_marca: marca, p_dados: dados }) }); aviso('Acesso guardado ✓'); return true; },
     async credenciaisStatus() { return api('rpc/sol_credenciais_status', { method: 'POST', body: '{}' }); },

@@ -1284,13 +1284,14 @@
           <div class="grade g2">${[['percentual', 'Percentual (imposto + lucro + comissão) %', 100], ['maoDeObraPorPlaca', 'Mão de obra por placa (R$)', 1], ['art', 'ART (R$)', 1], ['custoKm', 'Deslocamento (R$/km)', 1], ['eng0', 'Engenharia até 10 kWp (R$)', 1], ['eng1', 'Engenharia até 30 kWp (R$)', 1], ['eng2', 'Engenharia acima de 30 kWp (R$)', 1], ['kmIdaVolta', 'Contar o km ida e volta (1 = sim)', 1]].map(([k, r, m]) => { const G = { percentual: 0.365, maoDeObraPorPlaca: 100, art: 70, custoKm: 1, kmIdaVolta: 0, eng: [300, 500, 700], ...(p.groner || {}) }; const v = /^eng\d$/.test(k) ? G.eng[+k.slice(3)] : G[k]; return `<label class="campo"><span>${r}</span><input type="number" step="any" data-gr="${k}" data-m="${m}" value="${+(v * m).toFixed(3)}"></label>`; }).join('')}</div></div>
         ${p.kwpPrevistosMes > 0 ? `<div class="painel"><span class="rotulo">Ponto de equilíbrio</span><p style="margin:8px 0 4px">Para pagar ${brl(p.custoFixoMes)} de custo fixo, a meta é vender <b>${n(p.kwpPrevistosMes)} kWp por mês</b>.</p><p class="sutil" style="margin:0">≈ ${Math.ceil(p.kwpPrevistosMes / 4.3)} obras de 4,3 kWp ou ${Math.ceil(p.kwpPrevistosMes / 10)} de 10 kWp. Vendendo menos, o custo fixo não fecha; vendendo mais, a margem vira lucro.</p></div>` : ''}${B.nuvem ? `<div class="painel"><span class="rotulo">Acessos das plataformas de monitoramento</span>
           <p class="sutil" style="margin:8px 0">Fica guardado no cofre do banco. Depois de salvo, ninguém consegue ver a senha pelo site: só o robô de leitura diária usa.</p>
-          <div class="grade g2"><label class="campo"><span>Marca</span><select id="crMarca">${['SolarZ', ...Usinas.MARCAS.filter((m) => m !== 'Outra'), 'Google Maps'].map((m) => `<option>${m}</option>`).join('')}</select></label>
+          <div class="grade g2"><label class="campo"><span>Marca</span><select id="crMarca">${['SolarZ', 'E-mail', ...Usinas.MARCAS.filter((m) => m !== 'Outra'), 'Google Maps'].map((m) => `<option>${m}</option>`).join('')}</select></label>
             <label class="campo"><span>Usuário / e-mail da plataforma</span><input id="crUser" type="text" autocomplete="off"></label>
             <label class="campo"><span>Senha</span><input id="crSenha" type="password" autocomplete="new-password"></label>
             <label class="campo"><span>Chave de API / App ID (se tiver)</span><input id="crChave" type="text" autocomplete="off"></label>
             <label class="campo"><span>Segredo da API / App Secret (se tiver)</span><input id="crSegredo" type="password" autocomplete="new-password"></label>
             <label class="campo"><span>Observação (ex.: servidor, empresa)</span><input id="crObs" type="text"></label></div>
-          <div class="acoes-r" style="margin-top:8px"><button class="btn sol pequeno" id="crSalvar">Guardar acesso</button><span class="mini" id="crStatus">carregando…</span></div></div>` : ''}<div class="painel"><span class="rotulo">Formulário de captação (bio do Instagram, Google, WhatsApp)</span><p class="sutil" style="margin:6px 0 8px">Quem preencher vira lead novo na hora, já com a conta estimada e o tipo de cliente, e aparece no Meu dia como "Primeira resposta".</p>
+          <div class="acoes-r" style="margin-top:8px"><button class="btn sol pequeno" id="crSalvar">Guardar acesso</button><span class="mini" id="crStatus">carregando…</span></div>
+          <div class="acoes-r" style="margin-top:10px;border-top:1px dashed var(--linha);padding-top:10px"><span class="mini" style="flex:1">Relatório mensal por e-mail (clientes com plano): guarde o acesso em <b>E-mail</b> (usuário = seu e-mail, senha = senha da caixa na Hostinger).</span><input id="emTeste" type="email" placeholder="seu e-mail para o teste" style="max-width:230px"><button class="btn vidro pequeno" id="emEnviar">Enviar teste para mim</button></div></div>` : ''}<div class="painel"><span class="rotulo">Formulário de captação (bio do Instagram, Google, WhatsApp)</span><p class="sutil" style="margin:6px 0 8px">Quem preencher vira lead novo na hora, já com a conta estimada e o tipo de cliente, e aparece no Meu dia como "Primeira resposta".</p>
         <div class="entrada-ag"><input type="text" readonly id="capLink" value="${esc(new URL('captacao.html', location.href).href)}"></div>
         <div class="acoes-r" style="margin-top:8px"><button class="btn vidro pequeno" id="capCopiar">Copiar link</button><a class="btn vidro pequeno" target="_blank" rel="noopener" href="captacao.html">Ver como o cliente vê</a></div></div>
       <div class="painel" id="depPainel"><div class="entre"><span class="rotulo">Depoimentos e casos reais (Instagram)</span><button class="btn vidro pequeno" id="depNovo">＋ Adicionar</button></div>
@@ -1358,6 +1359,12 @@
     if ($('#crSalvar')) {
       const status = () => B.credenciaisStatus().then((l) => { $('#crStatus').textContent = l.length ? 'Guardados: ' + l.map((x) => x.marca + ' (' + new Date(x.atualizado_em).toLocaleDateString('pt-BR') + ')').join(', ') : 'Nenhum acesso guardado ainda.'; }).catch(() => { $('#crStatus').textContent = ''; });
       status();
+      $('#emEnviar').onclick = async () => {
+        const para = $('#emTeste').value.trim(); if (!/@/.test(para)) { toast('Digite o e-mail para o teste'); return; }
+        $('#emEnviar').disabled = true;
+        try { const j = await B.relatorioMensal({ teste: para }); toast(j.enviados ? 'Teste enviado para ' + para : 'Não enviou: ' + ((j.erros || [])[0] || 'sem usina com plano')); } catch (e) { toast('Não enviou: ' + e.message.slice(0, 100)); }
+        $('#emEnviar').disabled = false;
+      };
       $('#crSalvar').onclick = async () => {
         const dados = { usuario: $('#crUser').value.trim(), senha: $('#crSenha').value, chave: $('#crChave').value.trim(), segredo: $('#crSegredo').value, obs: $('#crObs').value.trim() };
         if (!dados.usuario && !dados.chave) { toast('Preencha usuário ou chave de API'); return; }

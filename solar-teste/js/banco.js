@@ -160,6 +160,7 @@
     async atualizarMonitoramento() { throw new Error('No teste não há leitura das plataformas. Use a versão no Chamae.'); },
     async guardarCredencial() { throw new Error('No teste os acessos não são guardados. Use a versão no Chamae.'); },
     async credenciaisStatus() { return []; },
+    async relatorioMensal() { throw new Error('No teste o e-mail não é enviado. Use a versão no Chamae.'); },
     rascunho: { ler: () => ler('rascunho', null), gravar: (v) => gravar('rascunho', v), etapa: () => ler('etapa', 0), gravarEtapa: (e) => gravar('etapa', e) },
   };
 
