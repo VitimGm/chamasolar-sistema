@@ -15,12 +15,19 @@
   const iso = (d) => d.toISOString().slice(0, 10);
 
   /* ---------- situação da usina no mês ---------- */
+  /* esperado por mês: o cadastrado, ou kWp × sol da cidade × desempenho × 30 dias */
+  function esperadoDe(u) {
+    if (Number(u.esperado_mes) > 0) return Number(u.esperado_mes);
+    const kwp = Number(u.kwp) || 0; if (kwp < 0.3 || kwp > 5000) return 0;
+    const cid = (D.cidades || {})[u.cidade] || {}, hsp = cid.hsp || 5.3, pr = (D.parametros && D.parametros.pr) || 0.776;
+    return Math.round(kwp * hsp * pr * 30);
+  }
   function situacao(u, linhas, ref = new Date()) {
     const mes = iso(ref).slice(0, 7);
     const doMes = linhas.filter((l) => l.dia.startsWith(mes));
     const total = doMes.reduce((s, l) => s + Number(l.kwh), 0);
     const diasComDado = new Set(doMes.map((l) => l.dia)).size;
-    const esperadoDia = (Number(u.esperado_mes) || 0) / 30;
+    const esperadoMes = esperadoDe(u), esperadoDia = esperadoMes / 30;
     const esperadoAteAgora = esperadoDia * diasComDado;
     const pct = esperadoAteAgora ? total / esperadoAteAgora : null;
     const ultimo = linhas.reduce((m, l) => (l.dia > m ? l.dia : m), '');
@@ -29,9 +36,9 @@
     const tarifa = Number(u.tarifa_kwh) || D.parametros.tarifaKwh;
     let alerta = null;
     if (diasSemDado === null) alerta = 'Sem leitura ainda';
-    else if (diasSemDado >= 3) alerta = `Sem dados há ${diasSemDado} dias: inversor desligado ou sem internet?`;
+    else if (diasSemDado >= 2) alerta = `Sem dados há ${diasSemDado} dias: inversor desligado ou sem internet?`;
     else if (pct !== null && diasComDado >= 5 && pct < 0.75) alerta = `Gerando ${n(pct * 100)}% do esperado: sujeira, sombra ou defeito?`;
-    return { mes, total, diasComDado, esperadoMes: Number(u.esperado_mes) || 0, pct, ultimo, diasSemDado, acumulado, economiaMes: total * tarifa, economiaTotal: acumulado * tarifa, alerta };
+    return { mes, total, diasComDado, esperadoMes, pct, ultimo, diasSemDado, acumulado, economiaMes: total * tarifa, economiaTotal: acumulado * tarifa, alerta };
   }
 
   /* ---------- leitura de planilha exportada da plataforma ---------- */
@@ -105,7 +112,7 @@
     const consumoCasa = rede + autoconsumo;
     const semSolar = consumoCasa * tarifa + ilum;
     const economia = Math.max(semSolar - pago, 0);
-    const esperado = (Number(u.esperado_mes) || 0) / 30 * dias;
+    const esperado = esperadoDe(u) / 30 * dias;
     return { benef, ini, fim, dias, doP, diasComDado, daPlataforma, geracao, origem, injetada, rede, tarifa, ilum, pago, autoconsumo, consumoCasa, semSolar, economia,
       pctSol: consumoCasa ? Math.min(geracao / consumoCasa, 1) : 0, pctConta: semSolar ? economia / semSolar : 0,
       saldo: Number(f.saldo_creditos) || 0, saldoR: (Number(f.saldo_creditos) || 0) * tarifa, ano: economia * 365 / dias,
@@ -179,5 +186,5 @@
     return `Oi ${nome}! Aqui é o ${D.empresa.vendedor}, da Chama Solar ☀️\n\nFiz o raio-x da sua conta de ${f.referencia || MESES[+r.fim.slice(5, 7) - 1]}:\n☀️ Sua usina gerou ${n(r.geracao)} kWh\n🏠 O sol produziu o equivalente a ${n(r.pctSol * 100)}% do que a casa usou\n💰 Sem a usina a conta seria ${brl(r.semSolar)}. Você pagou ${brl(r.pago)}: economia de ${brl(r.economia)}!\n${r.saldo ? `🔋 Ainda tem ${n(r.saldo)} kWh de crédito guardado.\n` : ''}\nTe mando o relatório completo em PDF. Conhece alguém pagando caro de luz? Me indica, tem presente de agradecimento 🎁`;
   }
 
-  raiz.Usinas = { MARCAS, situacao, lerPlanilha, relatorio, mensagem, iso, periodoFatura, relatorioFatura, mensagemFatura };
+  raiz.Usinas = { MARCAS, situacao, esperadoDe, lerPlanilha, relatorio, mensagem, iso, periodoFatura, relatorioFatura, mensagemFatura };
 })(window);

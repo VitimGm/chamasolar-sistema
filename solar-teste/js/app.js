@@ -1404,8 +1404,8 @@
   function usinasPag() {
     const U = window.Usinas, lista = B.usinas().filter((u) => u.ativo !== false);
     const lei = (u) => (B.leitura ? B.leitura(u.id) : null);
-    const info = lista.map((u) => { const g = B.geracao(u.id), s = U.situacao(u, g), l = lei(u), off = !!(l && String(l.status) === '4');
-      const est = s.alerta ? 'atencao' : off ? 'semcom' : s.pct === null ? 'semleitura' : 'bem'; return { u, g, s, l, off, est }; });
+    const info = lista.map((u) => { const g = B.geracao(u.id), s = U.situacao(u, g), l = lei(u);
+      const est = s.diasSemDado === null ? 'semleitura' : s.diasSemDado >= 2 ? 'semcom' : s.alerta ? 'atencao' : 'bem', off = est === 'semcom'; return { u, g, s, l, off, est }; });
     const marcas = Object.entries(info.reduce((m, x) => { const k = String(x.u.marca || 'Sem marca'); m[k] = (m[k] || 0) + 1; return m; }, {})).sort((a, b2) => b2[1] - a[1]);
     if (usF.marca && !marcas.some(([m]) => m === usF.marca)) usF.marca = '';
     const daMarca = (x) => !usF.marca || String(x.u.marca || 'Sem marca') === usF.marca;
@@ -1422,9 +1422,9 @@
     const linha = ({ u, s, l, off, est }) => { const ab = usF.aberta === String(u.id);
       return `<div class="us-l ${ab ? 'aberta' : ''}"><button class="us-cab" data-usab="${u.id}"><i style="background:${COR[est]}" title="${ROT[est]}"></i>
           <span class="us-n"><b>${esc(u.cliente_nome)}</b><small>${esc(u.cidade || u.marca || '')} · ${n(u.kwp, 2)} kWp</small></span>
-          <span class="us-b"><span><em style="width:${Math.min((s.pct || 0) * 100, 100)}%;background:${s.pct !== null && s.pct < 0.75 ? 'var(--laranja)' : 'var(--verde-claro)'}"></em></span><small>${s.pct === null ? (off ? 'sem comunicação' : 'sem leitura') : `${n(s.pct * 100)}% · ${n(s.total)} kWh`}</small></span><span class="us-s">›</span></button>
+          <span class="us-b"><span><em style="width:${Math.min((s.pct || 0) * 100, 100)}%;background:${s.pct !== null && s.pct < 0.75 ? 'var(--laranja)' : 'var(--verde-claro)'}"></em></span><small>${off ? `sem dados há ${s.diasSemDado} dias` : s.diasSemDado === null ? 'nunca leu geração' : s.pct === null ? `${n(s.total)} kWh no mês · conferir kWp` : `${n(s.pct * 100)}% do esperado · ${n(s.total)} kWh`}</small></span><span class="us-s">›</span></button>
         ${ab ? `<div class="us-d">${s.alerta ? `<p class="aviso" style="margin:0 0 8px">⚠️ ${esc(s.alerta)}</p>` : ''}
-          <div class="numeros4"><div><span>Este mês</span><b>${s.pct === null ? '–' : n(s.total) + ' kWh'}</b></div><div><span>Esperado</span><b>${n(u.esperado_mes)} kWh/mês</b></div><div><span>Economia no mês</span><b>${s.pct === null ? '–' : brl(s.economiaMes)}</b></div><div><span>Desde a instalação</span><b>${l ? n(l.total_kwh) + ' kWh' : '–'}</b></div></div>
+          <div class="numeros4"><div><span>Este mês</span><b>${s.diasSemDado === null ? '–' : n(s.total) + ' kWh'}</b></div><div><span>Esperado</span><b>${n(s.esperadoMes)} kWh/mês${Number(u.esperado_mes) > 0 ? '' : ' (estimado)'}</b></div><div><span>Economia no mês</span><b>${s.pct === null ? '–' : brl(s.economiaMes)}</b></div><div><span>Desde a instalação</span><b>${l ? n(l.total_kwh) + ' kWh' : '–'}</b></div></div>
           <p class="mini" style="margin:8px 0">${esc(u.marca)}${u.plataforma_id ? ' · id ' + esc(u.plataforma_id) : ''}${l ? ` · ${off ? '<b style="color:#ff5c5c">inversor sem comunicação</b>' : `comunicando${+l.potencia_w > 0 ? ' (' + n(l.potencia_w) + ' W na leitura)' : ''}`}` : ''}${s.ultimo ? ' · última leitura ' + s.ultimo.split('-').reverse().join('/') : ''}${u.whatsapp ? '' : ' · <b>sem WhatsApp cadastrado</b>'}</p>
           <div class="acoes-r" style="flex-wrap:wrap"><button class="btn sol pequeno" data-us="conta" data-id="${u.id}">💡 Relatório da conta</button><button class="btn vidro pequeno" data-us="rel" data-id="${u.id}">Relatório do mês</button><button class="btn vidro pequeno" data-us="app" data-id="${u.id}">📱 App do cliente</button><button class="btn vidro pequeno" data-us="rateio" data-id="${u.id}">🔀 Rateio de créditos</button>${u.whatsapp ? `<button class="btn zap pequeno" data-us="zap" data-id="${u.id}">WhatsApp</button>` : ''}<button class="btn vidro pequeno" data-us="imp" data-id="${u.id}">Importar planilha</button><button class="btn vidro pequeno" data-us="ed" data-id="${u.id}">Editar</button></div></div>` : ''}</div>`; };
     app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Usinas</h1><p class="sutil">${lista.length} usinas · ${n(lista.reduce((t, u) => t + Number(u.kwp), 0), 1)} kWp · ${n(totalMes)} kWh no mês</p></div>

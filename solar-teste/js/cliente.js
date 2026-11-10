@@ -33,12 +33,12 @@
     // 12 meses
     const meses = []; const ref = new Date(hoje + 'T12:00:00');
     for (let i = 11; i >= 0; i--) { const dt = new Date(ref.getFullYear(), ref.getMonth() - i, 1); const k = dt.toISOString().slice(0, 7); meses.push({ k, rot: MES[dt.getMonth()], kwh: soma((x) => x.dia.startsWith(k)) }); }
-    const esp = Number(u.esperado_mes) || 0, maxM = Math.max(...meses.map((m) => m.kwh), esp, 1);
+    const esp = U.esperadoDe ? U.esperadoDe(u) : Number(u.esperado_mes) || 0, maxM = Math.max(...meses.map((m) => m.kwh), esp, 1);
     const mesSel = est.mes || mesAt, dias = g.filter((x) => x.dia.startsWith(mesSel)), maxD = Math.max(...dias.map((x) => x.kwh), 1);
     const nome = String(u.nome || '').split(' ')[0];
     const unid = d.unidades || [], fat = d.faturas || [];
     const ultimaDe = (id) => fat.filter((f) => (f.unidade_id || 0) === id).sort((a, b) => b.leitura_fim.localeCompare(a.leitura_fim))[0];
-    const uObj = { cliente_nome: u.nome, tarifa_kwh: u.tarifa_kwh, esperado_mes: u.esperado_mes, kwp: u.kwp };
+    const uObj = { cliente_nome: u.nome, tarifa_kwh: u.tarifa_kwh, esperado_mes: esp, kwp: u.kwp };
     const ecoDe = (f) => (f ? U.periodoFatura(uObj, g, f) : null);
     const linhasUnid = [{ id: 0, apelido: 'Usina (unidade geradora)', geradora: true, percentual: null }, ...unid.filter((x) => !x.geradora)];
     const zap = `https://wa.me/${D.empresa.whatsapp}?text=${encodeURIComponent('Olá! Sou ' + (u.nome || '') + ' e quero falar sobre a minha usina.')}`;

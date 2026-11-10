@@ -303,7 +303,7 @@ async function hoymiles(cred: Record<string, string>, amostra: Record<string, un
     if (lista.length < 100) break;
   }
   for (const p of plantas) {
-    try { const d = await post("/pvm-data/api/0/station/data/count_station_real_data", { sid: Number(p.id) }); p.total = Number(d && d.total_eq) / 1000; p.pot = Number(d && d.real_power); }
+    try { const d = await post("/pvm-data/api/0/station/data/count_station_real_data", { sid: Number(p.id) }); p.total = Number(d && d.total_eq) / 1000; p.pot = Number(d && d.real_power); const hj = Number(d && d.today_eq); if (Number.isFinite(hj) && hj > 0) p.dias.push({ dia: new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10), kwh: Math.round(hj / 10) / 100 }); if (!amostra.hoymiles_campos && d) amostra.hoymiles_campos = Object.keys(d).slice(0, 20); }
     catch (e) { amostra["erro_" + p.id] = String(e).slice(0, 120); }
   }
   return plantas; // total_eq vem em Wh: a geração do dia sai da diferença do total
@@ -363,6 +363,14 @@ async function auxsol(_c: Record<string, string>, _a: Record<string, unknown>): 
 
 const LEITORES: Record<string, (c: Record<string, string>, a: Record<string, unknown>) => Promise<Planta[]>> = { Growatt: growattAuto, Solis: solis, Deye: deye, Huawei: huawei, Sungrow: sungrow, Hoymiles: hoymiles, Auxsol: auxsol, SolarZ: solarz };
 
+// descarta dias impossíveis (ex.: o total acumulado lido como se fosse do dia): no máximo 15 kWh por kWp por dia
+async function plausiveis(linhas: { usina_id: number; dia: string; kwh: number; origem: string }[]) {
+  const ids = [...new Set(linhas.map((l) => l.usina_id))]; if (!ids.length) return linhas;
+  const kwp: Record<number, number> = {};
+  for (let i = 0; i < ids.length; i += 150) (await rest(`sol_usinas?select=id,kwp&id=in.(${ids.slice(i, i + 150).join(",")})`)).forEach((u: any) => { kwp[u.id] = Number(u.kwp) || 0; });
+  return linhas.filter((l) => { const k = kwp[l.usina_id] || 0, teto = k >= 2 && k < 5000 ? Math.max(k * 15, 100) : 20000; return Number.isFinite(l.kwh) && l.kwh >= 0 && l.kwh <= teto; });
+}
+
 // SolarZ: cada usina entra com a marca real; se já existe (importada direto da marca, mesmo nome), usa a mesma
 async function gravarSolarZ(plantas: (Planta & { marcaReal: string; nomePortal: string })[], amostra: Record<string, unknown>) {
   const norm = (t: string) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
@@ -375,7 +383,8 @@ async function gravarSolarZ(plantas: (Planta & { marcaReal: string; nomePortal: 
   const depois = novas.length ? await rest("sol_usinas?select=id,plataforma_id&plataforma_id=like.sz:*") : [];
   for (const u of depois) porSz[u.plataforma_id.slice(3)] = u.id;
   const idDe = (p: Planta & { marcaReal: string; nomePortal: string }) => porSz[p.id] || porNome[p.marcaReal + "|" + norm(p.nomePortal)] || porNome[p.marcaReal + "|" + norm(p.nome)];
-  const linhas = plantas.flatMap((p) => { const uid = idDe(p); return uid ? p.dias.map((d) => ({ usina_id: uid, dia: d.dia, kwh: d.kwh, origem: "api" })) : []; });
+  const linhas0 = plantas.flatMap((p) => { const uid = idDe(p); return uid ? p.dias.map((d) => ({ usina_id: uid, dia: d.dia, kwh: d.kwh, origem: "api" })) : []; });
+  const linhas = await plausiveis(linhas0);
   for (let i = 0; i < linhas.length; i += 500) await rest("sol_geracao?on_conflict=usina_id,dia", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(linhas.slice(i, i + 500)) });
   amostra.ligadasPeloNome = plantas.filter((p) => !porSz[p.id] && idDe(p)).length;
   return { usinas: plantas.length, novas: novas.length, dias: linhas.length };
@@ -429,7 +438,8 @@ Deno.serve(async (req) => {
           await rest("sol_usina_leituras?on_conflict=usina_id,dia", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(leit) });
           amostra.leituras = leit.length;
         }
-        for (let i = 0; i < linhas.length; i += 500) await rest("sol_geracao?on_conflict=usina_id,dia", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(linhas.slice(i, i + 500)) });
+        const boas = await plausiveis(linhas as any); amostra.descartados = linhas.length - boas.length;
+        for (let i = 0; i < boas.length; i += 500) await rest("sol_geracao?on_conflict=usina_id,dia", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(boas.slice(i, i + 500)) });
         resultado[marca] = { usinas: plantas.length, dias: linhas.length };
         await rest("sol_monitoramento_execucoes", { method: "POST", body: JSON.stringify({ marca, ok: true, resumo: { usinas: plantas.length, dias: linhas.length, ms: Date.now() - inicio, amostra } }) });
       } catch (e) {
