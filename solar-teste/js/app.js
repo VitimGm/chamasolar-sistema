@@ -200,7 +200,7 @@
     const FP = [['avista', 'À vista (PIX/transferência)'], ['financiamento', 'Financiamento'], ['cartao', 'Cartão'], ['entrada', 'Entrada + parcelas']];
     const ov = modal(`<div class="entre"><span class="rotulo" style="color:var(--verde-claro)">✅ Fechou com ${esc(String(o.nome || '').split(' ')[0])}</span><button class="link" data-fechar>cancelar</button></div>
       ${ops.length ? `<p class="mini" style="margin:8px 0 4px">Qual opção ele comprou?</p><div style="display:grid;gap:6px">${ops.map((op, i) => `<label class="entre" style="border:1px solid var(--linha);border-radius:12px;padding:10px;cursor:pointer;gap:8px"><span><input type="radio" name="gOp" value="${i}" ${i === esc0 ? 'checked' : ''}> <b>${esc(op.nivel)}</b> · ${n(op.dim.kwpReal, 2)} kWp · ${op.dim.placas}× ${op.modulo.potenciaW} W</span><b>${brl(op.preco.precoFinal)}</b></label>`).join('')}</div>` : '<p class="mini" style="margin:8px 0">Este orçamento não tem opções calculadas. Informe o valor fechado:</p>'}
-      <div class="grade g2" style="margin-top:10px"><label class="campo"><span>Valor fechado (R$)</span><input type="number" step="any" id="gValor" placeholder="${ops[esc0] ? Math.round(ops[esc0].preco.precoFinal) : ''}"></label>
+      <div class="grade g2" style="margin-top:10px"><label class="campo"><span>Valor fechado (R$)</span><input type="number" step="any" id="gValor" placeholder="${o._pGroner ? Math.round((o.formaPagamento === 'avista' && o._pGroner.avista) || o._pGroner.valor || 0) : ops[esc0] ? Math.round(ops[esc0].preco.precoFinal) : ''}"></label>
         <label class="campo"><span>Forma de pagamento</span><select id="gPag">${FP.map(([v, t]) => `<option value="${v}" ${o.formaPagamento === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label></div>
       <div class="grade g2" style="margin-top:6px"><label class="campo"><span>Data do fechamento</span><input type="date" id="gData" value="${esc(String(o.ganhoEm || new Date(Date.now() - 3 * 3600e3).toISOString()).slice(0, 10))}" max="${new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10)}"></label>
         <label class="campo"><span>Observação (opcional)</span><input type="text" id="gObs" placeholder="ex.: desconto de 3% à vista"></label></div>
@@ -210,8 +210,9 @@
     ov.querySelector('#gOk').onclick = () => {
       const i = +((ov.querySelector('[name=gOp]:checked') || {}).value ?? esc0); o.opcaoEscolhida = i; o.formaPagamento = ov.querySelector('#gPag').value;
       const dt = ov.querySelector('#gData').value; o.status = 'ganho'; o.ganhoEm = dt ? dt + 'T12:00:00.000Z' : o.ganhoEm || new Date().toISOString(); if (!o.enviadoEm || o.enviadoEm > o.ganhoEm) o.enviadoEm = o.ganhoEm;
-      const c = compraDe(o) || { data: o.ganhoEm, descricao: 'Venda', valorTotal: 0, formaPagamento: o.formaPagamento };
+      const c = (o._pGroner && window.Groner ? Groner.paraCompra(o._pGroner, o.formaPagamento) : null) || compraDe(o) || { data: o.ganhoEm, descricao: 'Venda', valorTotal: 0, formaPagamento: o.formaPagamento };
       const vm = +ov.querySelector('#gValor').value; if (vm > 0) c.valorTotal = vm; c.data = o.ganhoEm; c.formaPagamento = o.formaPagamento; if (ov.querySelector('#gObs').value.trim()) c.obs = ov.querySelector('#gObs').value.trim();
+      if (o._pGroner) { o.kwpAlvo = o._pGroner.kwp; delete o._pGroner; }
       o.compras = [c, ...(o.compras || []).slice(1)]; o.valorFechado = c.valorTotal;
       o.posVenda = { ...(o.posVenda || {}), contrato: (o.posVenda || {}).contrato || o.ganhoEm.slice(0, 10) };
       o.arquivado = false; B.salvar(o); B.interacao && B.interacao(o.id, 'nota', `Fechou em ${o.ganhoEm.slice(0, 10).split('-').reverse().join('/')}: ${c.descricao || ''} · ${brl(c.valorTotal)} · ${o.formaPagamento}`);
@@ -258,7 +259,7 @@
   }
   async function painelArquivos(o, el) {
     let lista = []; try { lista = (await B.arquivosCliente(o.id)) || []; } catch { /* sem nuvem */ }
-    const PASTAS = ['Contratos e procurações', 'Documentos pessoais', 'Contas de luz', 'Visita técnica', 'Projeto', 'Financeiro', 'Outros'];
+    const PASTAS = ['Contratos e procurações', 'Propostas', 'Documentos pessoais', 'Contas de luz', 'Visita técnica', 'Projeto', 'Financeiro', 'Outros'];
     const grupos = {}; lista.forEach((a) => { (grupos[a.pasta] = grupos[a.pasta] || []).push(a); });
     const ico = (a) => /pdf/.test(a.tipo) ? '📄' : /image/.test(a.tipo) ? '🖼️' : /zip/.test(a.tipo) ? '🗜️' : /video/.test(a.tipo) ? '🎬' : '📎';
     el.innerHTML = `<div class="entre"><span class="rotulo">📁 Documentos e fotos (${lista.length})</span><label class="btn vidro pequeno" style="cursor:pointer">＋ Enviar arquivo<input type="file" id="arqEnv" multiple hidden></label></div>
@@ -441,7 +442,8 @@
       const nota = $('#compraNota'); if (nota) nota.onchange = () => { o.compraNota = nota.value; B.salvar(o); toast('Anotação salva'); };
       const ger = $('#compraGerar'); if (ger) ger.onclick = () => { const c = compraDe(o); if (!c) { toast('Este orçamento não tem kit para puxar'); return; } o.compras = [c]; B.salvar(o); ficha(id); };
     }
-    { const ab = document.createElement('div'); ab.className = 'painel entra'; ab.id = 'arqBox'; ab.innerHTML = '<span class="rotulo">📁 Documentos e fotos</span><p class="mini">carregando…</p>'; const ref1 = app.querySelector('#compraBox') || app.querySelector('.painel'); if (ref1) ref1.after(ab); painelArquivos(o, ab); }
+    { const gb = document.createElement('div'); gb.className = 'painel entra'; gb.id = 'gronerBox'; const refG = app.querySelector('#compraBox') || app.querySelector('.painel'); if (refG) refG.after(gb); painelGroner(o, gb, () => ficha(id)); }
+    { const ab = document.createElement('div'); ab.className = 'painel entra'; ab.id = 'arqBox'; ab.innerHTML = '<span class="rotulo">📁 Documentos e fotos</span><p class="mini">carregando…</p>'; const ref1 = app.querySelector('#gronerBox') || app.querySelector('#compraBox') || app.querySelector('.painel'); if (ref1) ref1.after(ab); painelArquivos(o, ab); }
     if ($('#fGanho')) $('#fGanho').onclick = () => fecharGanho(o, () => ficha(id));
     if ($('#fPerda')) $('#fPerda').onclick = () => marcarPerda(o, () => ficha(id));
     $('#fNova').onclick = () => { const n = novaPropostaDe(o); toast(`Nova proposta para ${o.nome}: os dados do cliente já vieram`); location.hash = '#novo'; void n; };
@@ -1477,6 +1479,42 @@
       else if (b.dataset.us === 'imp') { alvo = u.id; arq.click(); }
       else formUsina(u);
     });
+  }
+  /* ======================= PROPOSTAS DA GRONER (PDF lido e guardado na ficha) ======================= */
+  const TELHADO_GR = [[/colonial|cer[âa]mic|portuguesa|romana|francesa/i, 'ceramico'], [/fibro/i, 'fibrocimento'], [/met[áa]lic|zinco|trapez/i, 'metalico'], [/laje/i, 'laje'], [/solo/i, 'solo']];
+  function painelGroner(o, el, depois) {
+    const ps = (o.propostasGroner || []).slice().sort((a, b) => String(b.data).localeCompare(String(a.data)) || String(b.numero).localeCompare(String(a.numero)));
+    const g = o.groner || {};
+    const PAGF = { avista: 'à vista', financiamento: 'financiamento', cartao: 'cartão' };
+    el.innerHTML = `<div class="entre"><span class="rotulo">📄 Propostas da Groner (${ps.length})</span><label class="btn vidro pequeno" style="cursor:pointer">＋ Ler PDF da Groner<input type="file" id="grPdf" accept="application/pdf" multiple hidden></label></div>
+      ${g.negocio ? `<p class="mini" style="margin:6px 0 0">Negócio nº <b>${esc(g.negocio)}</b> na Groner · ${esc(g.etapa || '')}${g.status ? ' · ' + esc(g.status) : ''}${+g.valor ? ` · último valor ${brl(+g.valor)}${+g.valorProduto ? ` (kit ${brl(+g.valorProduto)}, serviço ${brl(+g.valorServico || 0)})` : ''}` : ''}</p>` : ''}
+      ${ps.length ? `<div class="gr-lista">${ps.map((p, i) => `<div class="gr-p">
+          <div class="entre"><b>Proposta ${esc(p.numero)} · ${esc(String(p.data || '').split('-').reverse().join('/'))}</b><span class="gr-kwp">${n(p.kwp, 2)} kWp</span></div>
+          <div class="gr-eq">${p.placas}× ${esc((p.modulos[0] || {}).nome || '')}<br>${esc(p.inversorResumo || '')}<br><span class="mini">${esc(p.estrutura || '')}${p.geracaoMes ? ` · gera ${n(p.geracaoMes)} kWh/mês` : ''}${p.consumoMes ? ` · consumo ${n(p.consumoMes)} kWh` : ''}</span></div>
+          <div class="gr-val"><div><span>Valor</span><b>${p.valor ? brl(p.valor) : '–'}</b></div><div><span>À vista</span><b>${p.avista ? brl(p.avista) : '–'}</b></div><div><span>12× cartão</span><b>${p.parcela12 ? brl(p.parcela12, 2) : '–'}</b></div><div><span>Conta</span><b>${p.contaAntes ? brl(p.contaAntes) + ' → ' + brl(p.contaDepois || 0) : '–'}</b></div></div>
+          <div class="acoes-r" style="margin-top:8px">${p.caminho ? `<button class="btn vidro pequeno" data-grab="${i}">Abrir PDF</button>` : ''}<button class="btn vidro pequeno" data-grcot="${i}">🤖 Cotar igual na Belenergy</button>${o.status !== 'ganho' ? `<button class="btn sol pequeno" data-grfe="${i}">✅ Fechou esta</button>` : ''}<button class="link" data-grdel="${i}">tirar</button></div></div>`).join('')}</div>`
+        : `<p class="mini" style="margin:6px 0 0">Baixe o PDF da proposta na Groner e solte aqui: o sistema lê número, data, kWp, placas, inversor, estrutura e os valores (cheio, à vista, 12×), guarda o PDF em Documentos → Propostas e deixa pronto para cotar igual ou dar ganho.</p>`}`;
+    const lista = ps; // índices da lista ordenada
+    el.querySelector('#grPdf').onchange = async (ev) => {
+      const fs = [...ev.target.files]; let k = 0;
+      for (const f of fs) {
+        try {
+          const p = await Groner.lerArquivo(f);
+          if (o.nome && p.cliente && !String(o.nome).toLowerCase().split(' ')[0].includes(String(p.cliente).toLowerCase().split(' ')[0]) && !confirm(`O PDF é do cliente "${p.cliente}", não de "${o.nome}". Guardar mesmo assim?`)) continue;
+          try { const r = await B.enviarArquivo(o.id, 'Propostas', f); const a = Array.isArray(r) ? r[0] : r; if (a && a.caminho) p.caminho = a.caminho; } catch { /* sem nuvem: guarda só os dados */ }
+          o.propostasGroner = [...(o.propostasGroner || []).filter((x) => x.numero !== p.numero), p]; k++;
+        } catch (e) { toast(e.message); }
+      }
+      if (k) { B.salvar(o); B.interacao && B.interacao(o.id, 'nota', `Leu ${k} proposta(s) da Groner`); toast(`${k} proposta(s) da Groner guardada(s)`); painelGroner(o, el, depois); }
+    };
+    el.querySelectorAll('[data-grab]').forEach((b) => b.onclick = async () => { try { window.open(await B.linkArquivo(lista[+b.dataset.grab].caminho), '_blank', 'noopener'); } catch (e) { toast(e.message); } });
+    el.querySelectorAll('[data-grdel]').forEach((b) => b.onclick = () => { const p = lista[+b.dataset.grdel]; if (!confirm(`Tirar a proposta ${p.numero} desta ficha? (o PDF continua em Documentos)`)) return; o.propostasGroner = (o.propostasGroner || []).filter((x) => x.numero !== p.numero); B.salvar(o); painelGroner(o, el, depois); });
+    const prepara = (p) => { o.kwpAlvo = p.kwp; const t = TELHADO_GR.find(([re]) => re.test(p.estrutura || '')); if (t) o.telhado = t[1]; if (p.consumoMes > 0 && !(o.consumos || []).some((c) => +c > 0)) o.consumos = Array(12).fill(p.consumoMes); if (/micro/i.test(p.inversorResumo || '')) o.cotarQuais = 'micro'; else o.cotarQuais = 'inversor'; };
+    el.querySelectorAll('[data-grcot]').forEach((b) => b.onclick = async () => {
+      const p = lista[+b.dataset.grcot]; prepara(p); B.salvar(o);
+      if (await mandarParaRobo(o)) toast(`Pedido no robô: ${n(p.kwp, 2)} kWp, ${o.cotarQuais === 'micro' ? 'microinversor' : 'inversor string'}, ${p.estrutura || 'mesmo telhado'}. A cotação aparece aqui quando o robô terminar.`);
+    });
+    el.querySelectorAll('[data-grfe]').forEach((b) => b.onclick = () => { const p = lista[+b.dataset.grfe]; prepara(p); o._pGroner = p; if (p.avista) o.formaPagamento = o.formaPagamento || 'avista'; fecharGanho(o, depois); });
   }
   /* ======================= RELATÓRIO DE VENDAS (por período, mês a mês) ======================= */
   const vF = { de: null, ate: null, busca: '' };
