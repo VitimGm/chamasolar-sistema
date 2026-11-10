@@ -47,7 +47,7 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
-const VERSAO = '2026-11-09h'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+const VERSAO = '2026-11-10a'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
 /* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
    Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
 const voando = new Map(); let ultimoFim = Date.now();
@@ -278,13 +278,19 @@ function estruturasDaApi() {
   }
   return est;
 }
+/* Campos da tela de estrutura. Em 10/11/2026 a Belenergy trocou o componente: antes ".form-control" + ".combo-option",
+   agora ".combo__trigger" (aria-disabled) + lista nova. Os dois jeitos valem. */
+const CAMPO_COMBO = '.combo__trigger, [aria-haspopup="listbox"], .form-control';
+const OPCAO_COMBO = '.combo-option, .combo__option, .combo__opcao, .combo__item, [role="option"], .combo li';
+const opcoesCombo = async (caixa) => { const dentro = caixa.locator(OPCAO_COMBO); if (await dentro.first().isVisible().catch(() => false)) return dentro; return pg.locator('[role="listbox"] [role="option"], .combo__option, .combo-option, .cdk-overlay-container [role="option"]').locator('visible=true'); };
+const campoTravado = async (campo) => { const c = (await campo.getAttribute('class').catch(() => '')) || ''; const a = await campo.getAttribute('aria-disabled').catch(() => null); return /desabilitado|disabled/.test(c) || a === 'true'; };
 /* Listas da tela de estrutura (componente "combo" do portal): abre, escolhe pelo texto (sem acento/caixa) e confere */
 async function combo(seletor, alvo, igual = (a, b) => a === b) {
   const caixa = pg.locator(seletor).first(); if (!(await caixa.count())) return null;
-  const campo = caixa.locator('.form-control').first();
+  const campo = caixa.locator(CAMPO_COMBO).first();
   for (let t = 0; t < 3; t++) {
-    const ops = caixa.locator('.combo-option');
-    if (!(await ops.first().isVisible().catch(() => false))) { await campo.click({ timeout: 5000 }).catch(() => {}); await ops.first().waitFor({ state: 'visible', timeout: 3000 }).catch(() => {}); }
+    let ops = await opcoesCombo(caixa);
+    if (!(await ops.first().isVisible().catch(() => false))) { await campo.click({ timeout: 5000 }).catch(() => {}); await pausa(500); ops = await opcoesCombo(caixa); await ops.first().waitFor({ state: 'visible', timeout: 3000 }).catch(() => {}); }
     const textos = (await ops.allInnerTexts().catch(() => [])).map((x) => x.replace(/\s+/g, ' ').trim());
     if (!textos.length) continue;
     let i = textos.findIndex((x) => igual(semAcento(x), semAcento(alvo)));
@@ -292,6 +298,7 @@ async function combo(seletor, alvo, igual = (a, b) => a === b) {
     if (i < 0) { await pg.keyboard.press('Escape').catch(() => {}); return { achou: false, opcoes: textos }; }
     await ops.nth(i).click({ timeout: 4000 }).catch(() => {}); await pausa(350);
     const agora = (await campo.innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+    if (!agora && i >= 0) return { achou: true, texto: textos[i], opcoes: textos }; // campo novo sem texto legível: confia no clique
     if (semAcento(agora) === semAcento(textos[i])) return { achou: true, texto: textos[i], opcoes: textos };
   }
   return { achou: false, opcoes: [] };
@@ -299,8 +306,8 @@ async function combo(seletor, alvo, igual = (a, b) => a === b) {
 /* Ao voltar da confirmação o arranjo fica travado ("desabilitado") até clicar em MODIFICAR LAYOUT.
    A tela demora a montar: espera o campo e o botão, clica e confere que destravou. */
 async function liberarLayout(ms = 12000) {
-  const campo = pg.locator('app-tipo-de-estrutura .form-control').first();
-  const travado = async () => /desabilitado/.test((await campo.getAttribute('class').catch(() => '')) || '');
+  const campo = pg.locator('app-tipo-de-estrutura').locator(CAMPO_COMBO).first();
+  const travado = () => campoTravado(campo);
   const fim = Date.now() + ms;
   while (Date.now() < fim) {
     if (!(await campo.count())) { await pausa(300); continue; }
@@ -308,7 +315,8 @@ async function liberarLayout(ms = 12000) {
     const b = botao(/MODIFICAR LAYOUT/i);
     if (await b.count()) { await b.click({ timeout: 4000 }).catch(() => {}); await pausa(700); } else await pausa(400);
   }
-  return (await campo.count()) > 0 && !(await travado());
+  if (await campo.count()) return !(await travado());
+  return (await pg.getByText(/Tipo de estrutura/i).count().catch(() => 0)) > 0; // tela diferente: deixa o passo seguinte tentar
 }
 /* Microinversor com cabo próprio (ex.: Hoymiles/Enphase): na tela de componentes CC o portal pede
    "Tipo de conexão" e "Tensão de atendimento" e só lista os itens depois do FILTRAR (mapeado em 08/11/2026). */
@@ -466,8 +474,9 @@ async function passoInterno(etapa, e = {}) {
     ESTR = estruturasDaApi();
     if (!ESTR) { // jeito antigo: abre a lista de tipos e lê os nomes
       const tipos = [];
-      await pg.locator('app-tipo-de-estrutura .form-control').first().click().catch(() => {}); await pausa(600);
-      for (const t of await pg.locator('app-tipo-de-estrutura .combo-option').allInnerTexts().catch(() => [])) if (t.trim()) tipos.push(t.replace(/\s+/g, ' ').trim());
+      const cx = pg.locator('app-tipo-de-estrutura').first();
+      await cx.locator(CAMPO_COMBO).first().click().catch(() => {}); await pausa(600);
+      for (const t of await (await opcoesCombo(cx)).allInnerTexts().catch(() => [])) if (t.trim()) tipos.push(t.replace(/\s+/g, ' ').trim());
       await pg.keyboard.press('Escape').catch(() => {});
       return { etapa: 3, opcoes: { estruturas: Object.fromEntries(tipos.map((t) => [t, []])), orientacoes: ['Retrato', 'Paisagem'], sugestao: { linhas: 1, modulosPorLinha: 0 }, detalhesSobDemanda: true } };
     }
@@ -691,8 +700,9 @@ async function detalhes(tipo) {
 async function detalhesInterno(tipo) {
   const rt = await combo('app-tipo-de-estrutura', tipo, (a, b) => chaveTipo(a) === chaveTipo(b));
   if (!rt || !rt.achou) await listaCustom('Tipo de estrutura', tipo);
-  await pg.locator('app-detalhes-estrutura .form-control').first().click({ timeout: 4000 }).catch(() => {}); await pausa(700);
-  let t = (await pg.locator('app-detalhes-estrutura .combo-option').allInnerTexts().catch(() => [])).map((x) => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const cxd = pg.locator('app-detalhes-estrutura').first();
+  await cxd.locator(CAMPO_COMBO).first().click({ timeout: 4000 }).catch(() => {}); await pausa(700);
+  let t = (await (await opcoesCombo(cxd)).allInnerTexts().catch(() => [])).map((x) => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
   if (!t.length) t = await pg.evaluate(() => [...document.querySelectorAll('*')].filter((e) => e.children.length === 0 && /^Modelo /.test((e.innerText || '').trim())).map((e) => e.innerText.trim()));
   await pg.keyboard.press('Escape'); return [...new Set(t)];
 }

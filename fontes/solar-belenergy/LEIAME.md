@@ -25,6 +25,9 @@ No sistema: Novo orçamento → passo 4 "Kit Belenergy". Dá para montar até 3 
 | `cotador.mjs` | Robô que conduz o Personalize seu Gerador no seu PC e responde ao sistema em `http://127.0.0.1:8787`. |
 | `robo.mjs` | Leitura do catálogo avulso (estoque, preço por Wp). Serve só de referência; **não** é o preço do orçamento. |
 
+## Versão 2026-11-10a
+- A Belenergy trocou o campo "Tipo de estrutura" (agora `.combo__trigger`). O robô não achava o campo antigo e dava "arranjo travado / Modificar layout". Agora reconhece os dois jeitos.
+
 ## Versão 2026-11-09h
 - Forma de pagamento mapeada: caixa "Forma de pagamento:" → janela com Pix / Boleto Antecipado / Financiamentos / Cartão De Crédito. Escolhe Boleto Antecipado (senão Pix) e salva.
 
