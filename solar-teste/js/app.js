@@ -2407,7 +2407,7 @@
   }
   /* pedido para o robô do escritório (mesmo do passo 4): potência pela estimativa, uma linha por opção */
   function pedidoRobo(o) {
-    let est = null; try { est = C.opcoes(o, P())[0]; } catch { /* sem consumo */ } const kwp = est ? +est.dim.kwpNecessario.toFixed(2) : 0, quais = o.cotarQuais || 'ambos';
+    let est = null; try { est = C.opcoes(o, P())[0]; } catch { /* sem consumo */ } const kwp = +o.kwpAlvo > 0 ? +(+o.kwpAlvo).toFixed(2) : est ? +est.dim.kwpNecessario.toFixed(2) : 0, quais = o.cotarQuais || 'ambos';
     const base = { salvar: true, kwp, ligacao: { mono: 'MONOFÁSICO', bi: 'BIFÁSICO', tri: 'TRIFÁSICO' }[o.ligacao] || 'BIFÁSICO', cidade: o.cidade || 'Ribeirão Preto', frete: P().freteRobo || 'Belenus Entrega no Cliente',
       estruturaTipo: TIPO_ESTR[o.telhado], fixacao: FIXACAO[o.telhado] ? o.fixacao || FIXACAO[o.telhado][0][0] : null, arranjo: arranjoDoOrc(o), grupoA: o.grupo === 'A',
       // o robô do escritório não lê os Parâmetros: vão junto no pedido (escolha do módulo e do inversor)
