@@ -40,7 +40,8 @@
       consumoMedio: consumo, ligacao: o.grupo === 'A' ? 'tri' : o.ligacao, hsp, orientacao, telhado: o.telhado || 'ceramico',
       distanciaKm: Number(o.distanciaKm) || 0, trocaPadrao: !!o.trocaPadrao, areaDisponivel: Number(o.areaDisponivel) || 0,
       formaPagamento: o.formaPagamento || 'financiamento', comissaoParceria: (Number(o.comissaoParceria) || 0) / 100,
-      kitFaturadoDireto: !!o.kitFaturadoDireto, descontoPct: (Number(o.descontoPct) || 0) / 100,
+      // regra da empresa (10/11/2026): o kit é sempre faturado direto pela Belenus ao cliente; só no cartão a Chama Solar vende tudo
+      kitFaturadoDireto: (o.formaPagamento || 'financiamento') !== 'cartao', descontoPct: (Number(o.descontoPct) || 0) / 100,
       // ajustes do vendedor neste orçamento (todos opcionais)
       margemManual: o.margemManual === '' || o.margemManual == null || !Number.isFinite(+o.margemManual) ? undefined : +o.margemManual / 100,
       custosExtras: Array.isArray(o.custosExtras) ? o.custosExtras : [], custosAjustados: o.custosAjustados || {},

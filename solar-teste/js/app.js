@@ -88,7 +88,7 @@
     const wMod = p.moduloRefW || 685, placas = Math.max(Math.ceil((alvo / (e.hsp * 30 * p.pr)) * 1000 / wMod - 0.05), 2);
     const kwp = (placas * wMod) / 1000, ger = kwp * e.hsp * 30 * p.pr;
     const kit = (p.kitRefWp || 1.35) * kwp * 1000;
-    const pr = M.precificar({ ...e, kit, placas, kwp, formaPagamento: 'avista', comissaoParceria: 0, kitFaturadoDireto: false, descontoPct: 0 }, p);
+    const pr = M.precificar({ ...e, kit, placas, kwp, formaPagamento: 'avista', comissaoParceria: 0, kitFaturadoDireto: true, descontoPct: 0 }, p);
     const eco = M.economia({ ...e, geracaoMes: ger, investimento: pr.precoFinal, anoInicio: p.anoBase }, p);
     const arred = (v) => Math.round(v / 100) * 100;
     return { kwp, placas, ger, min: arred(pr.precoFinal * 0.95), max: arred(pr.precoFinal * 1.07), eco, parcela: M.parcelaPrice(pr.precoFinal, p.financiamento.jurosMes, p.financiamento.prazos[p.financiamento.prazos.length - 1]), prazo: p.financiamento.prazos[p.financiamento.prazos.length - 1] };
@@ -1172,13 +1172,16 @@
     const comG = M.precificar({ ...C.entrada(orc), kit: op.kit, placas: op.dim.placas, kwp: op.dim.kwpReal, precoAlvo: g.preco, freteNoKit: fNoKit }, p);
     const nossa = modo === 'chama' ? pr : M.precificar({ ...C.entrada(orc), precoModo: 'chama', kit: op.kit, placas: op.dim.placas, kwp: op.dim.kwpReal, freteNoKit: fNoKit }, p); // a nossa fórmula, mesmo quando o preço foi fixado
     const AJUSTAVEIS = ['terceiro', 'projeto', 'art', 'materialCa', 'frete', 'deslocamento', 'padrao'];
+    let outroPg = null; // o mesmo kit pago do outro jeito: cartão (Chama vende tudo) × Pix/financiamento (kit direto)
+    if (modo === 'chama') { try { const eo = C.entrada({ ...orc, formaPagamento: orc.formaPagamento === 'cartao' ? 'avista' : 'cartao' }); outroPg = M.precificar({ ...eo, kit: op.kit, placas: op.dim.placas, kwp: op.dim.kwpReal, freteNoKit: fNoKit }, p); } catch { outroPg = null; } }
     const linhasBase = pr.linhas.filter((l) => !l.extra);
     el.innerHTML = `<div class="lado"><div>
       <div class="painel grade">
-        <div class="campo"><span>Forma de pagamento</span><div class="chips">${[['financiamento', 'Financiamento'], ['avista', 'À vista / Pix'], ['cartao', 'Cartão 12x']].map(([v, t]) => `<button class="chip ${orc.formaPagamento === v ? 'sel' : ''}" data-pg="${v}">${t}</button>`).join('')}</div></div>
+        <div class="campo"><span>Forma de pagamento</span><div class="chips">${[['financiamento', 'Financiamento'], ['avista', 'À vista / Pix'], ['cartao', 'Cartão 12x (tudo)']].map(([v, t]) => `<button class="chip ${orc.formaPagamento === v ? 'sel' : ''}" data-pg="${v}">${t}</button>`).join('')}</div>
+          <p class="mini" style="margin:6px 0 0">${pr.kitDireto ? `Kit faturado <b>direto pela Belenus</b> ao cliente (${brl(pr.kitDireto)}): imposto, taxa e nota da Chama Solar só no serviço (${brl(pr.notaChamaSolar)}).` : `No cartão a <b>Chama Solar vende tudo</b> (kit + serviço numa nota só): imposto de ${pct(pr.percentuais.impostos)} e taxa do cartão de ${pct(pr.percentuais.pagamento)} sobre o total.`} ${outroPg ? `${pr.kitDireto ? 'Se for tudo no cartão' : 'No Pix ou financiamento (kit direto)'}: <b>${brl(outroPg.precoFinal)}</b> (${outroPg.precoFinal >= pr.precoFinal ? '+' : '−'}${brl(Math.abs(outroPg.precoFinal - pr.precoFinal))}).` : ''}</p></div>
         <div class="grade g2"><label class="campo"><span>Comissão de parceiro (%)</span><input type="number" id="f-com" step="0.5" value="${orc.comissaoParceria}"></label>
         ${modo === 'chama' ? `<label class="campo"><span>Desconto: ${n(orc.descontoPct, 1)}% de ${pct(p.reservaNegociacao, 0)}</span><input type="range" id="f-desc" min="0" max="${p.reservaNegociacao * 100}" step="0.5" value="${orc.descontoPct}"></label>` : '<span class="mini" style="align-self:end">Com o preço fixado, o desconto fica de fora: a margem é o que sobra.</span>'}</div>
-        <label class="alternar"><span><b>Kit faturado direto pela Belenergy</b><br><span class="sutil">imposto só no serviço (validar com o contador)</span></span><input type="checkbox" id="f-dir" ${orc.kitFaturadoDireto ? 'checked' : ''}></label></div>
+        </div>
       <div class="painel grade" id="ajPreco"><span class="rotulo">Ajustar o preço · só você vê</span>
         <div class="chips">${[['chama', 'Nossa fórmula'], ['groner', 'Preço da Groner'], ['manual', 'Digitar o preço']].map(([v, t]) => `<button class="chip ${modo === v ? 'sel' : ''}" data-pmodo="${v}">${t}</button>`).join('')}</div>
         ${modo === 'chama' ? `<label class="campo"><span>Margem desta proposta (%)<small style="display:block;font-weight:400;opacity:.75">tabela: ${n(pr.margemTabela * 100, 1)}% para ${n(op.dim.kwpReal, 2)} kWp${pr.margemManual ? ' · <button class="link" id="f-mg-limpar">voltar à tabela</button>' : ''}</small></span><input type="number" id="f-margem" step="0.5" placeholder="${n(pr.margemTabela * 100, 1)}" value="${pr.margemManual ? +(orc.margemManual) : ''}"></label>` : ''}
@@ -1199,7 +1202,7 @@
         <tr><td>Margem (${n(mg * 100, 1)}%${pr.precoAlvo ? ', o que sobrou' : pr.margemManual ? ', digitada' : ''})</td><td class="v" style="color:${corMg}">${brl(pr.decomp.margem)}</td></tr>
         <tr><td>Reserva de negociação restante</td><td class="v">${brl(pr.decomp.reservaRestante)}</td></tr>
         <tr class="total"><td>Preço ao cliente${modo === 'groner' ? ' (Groner)' : modo === 'manual' && pr.precoAlvo ? ' (digitado)' : ''}</td><td class="v">${brl(pr.precoFinal)}</td></tr>
-        ${orc.kitFaturadoDireto ? `<tr class="sub"><td>↳ Nota Belenergy (kit)</td><td class="v">${brl(pr.kitDireto)}</td></tr><tr class="sub"><td>↳ Nota Chama Solar</td><td class="v">${brl(pr.notaChamaSolar)}</td></tr>` : ''}
+        ${pr.kitDireto ? `<tr class="sub"><td>↳ Nota Belenus (kit, direto ao cliente)</td><td class="v">${brl(pr.kitDireto)}</td></tr><tr class="sub"><td>↳ Nota Chama Solar</td><td class="v">${brl(pr.notaChamaSolar)}</td></tr>` : ''}
         <tr><td><b>Sobra para a empresa</b></td><td class="v"><b class="${pr.lucroLiquido < 0 ? '' : 'grad'}" style="${pr.lucroLiquido < 0 ? 'color:var(--vermelho)' : ''}">${brl(pr.lucroLiquido)}</b></td></tr></table>
         ${mg < 0 ? `<div class="aviso ruim" style="margin-top:8px">Este preço fica <b>abaixo do custo</b>: prejuízo de ${brl(-pr.decomp.margem)} antes da reserva.</div>` : mg < 0.05 ? '<div class="aviso" style="margin-top:8px">Margem abaixo de 5%: confira se vale fechar assim.</div>' : ''}</div></div>
       <div><div class="painel"><span class="rotulo">Preço × mercado</span><div style="margin-top:8px"><span class="semaforo ${pr.semaforo}">${NOME_SEMAFORO[pr.semaforo]}</span></div>
@@ -1223,7 +1226,6 @@
     el.querySelectorAll('[data-pmodo]').forEach((b) => b.onclick = () => { orc.precoModo = b.dataset.pmodo; if (orc.precoModo !== 'chama') orc.descontoPct = 0; salvarR(); novo(); });
     $('#f-com').onchange = (e) => { orc.comissaoParceria = +e.target.value || 0; salvarR(); novo(); };
     if ($('#f-desc')) $('#f-desc').onchange = (e) => { orc.descontoPct = +e.target.value; salvarR(); novo(); };
-    $('#f-dir').onchange = (e) => { orc.kitFaturadoDireto = e.target.checked; salvarR(); novo(); };
     if ($('#f-margem')) $('#f-margem').onchange = (e) => { const v = String(e.target.value).replace(',', '.'); orc.margemManual = v === '' ? null : +v; salvarR(); novo(); };
     if ($('#f-mg-limpar')) $('#f-mg-limpar').onclick = () => { orc.margemManual = null; salvarR(); novo(); };
     if ($('#f-preco')) $('#f-preco').onchange = (e) => { orc.precoManual = { ...(orc.precoManual || {}), [op.nivel]: +e.target.value || 0 }; salvarR(); novo(); };
