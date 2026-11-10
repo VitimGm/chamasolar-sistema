@@ -47,7 +47,7 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
-const VERSAO = '2026-11-10b'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+const VERSAO = '2026-11-10c'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
 /* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
    Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
 const voando = new Map(); let ultimoFim = Date.now();
@@ -240,12 +240,13 @@ async function ajustarItens(itens) { for (const it of itens || []) if (it.sku) a
 /* ---------- O que o próprio portal responde (o JSON que a tela usa): preços e listas exatas ----------
    Só leitura das respostas que o navegador já recebe. Nada é enviado ao portal além dos cliques da tela. */
 const API = {}; // nome → { t, json, req }
-const RX_API = /\/api\/(?:catalogo|carrinho)\/KitPersonalizado\/(Modulos|InversorFiltro|Inversor|TipoEstrutura|Estrutura|OutrosAC|Outros|Confirmar|AlterarCarrinho|BuscarCupons)\b/i;
+const RX_API = /\/api\/(?:catalogo|carrinho)\/KitPersonalizado\/(Modulos|InversorFiltro|Inversor|TipoEstrutura|Estrutura|OutrosAC|Outros|Confirmar|AlterarCarrinho|BuscarCupons|SalvarOrcamentoCliente)\b/i;
 pg.on('response', async (r) => {
   const m = r.url().match(RX_API); if (!m || r.request().method() === 'OPTIONS') return;
   let req = null; try { req = r.request().postDataJSON(); } catch { /* GET */ }
   let nome = m[1].toLowerCase(); if (nome === 'alterarcarrinho') nome = 'confirmar'; // os dois devolvem o carrinho inteiro
   if (/^(estrutura|outros|outrosac)$/.test(nome) && req && req.sugestao === 1) nome += ':sug';
+  if (nome === 'salvarorcamentocliente') { let json = null; try { json = await r.json(); } catch { /* sem corpo */ } API[nome] = { t: Date.now(), json, req, status: r.status(), ok: r.ok() && !(json && json.isSucceed === false) }; return; }
   try { const json = await r.json(); if (json && json.isSucceed !== false) API[nome] = { t: Date.now(), json, req }; } catch { /* sem corpo */ }
 });
 let apiFunciona = true; // se a 1ª leitura (módulos) falhar, o portal mudou: as outras esperas ficam curtas e vale a tela
@@ -604,8 +605,8 @@ async function passoInterno(etapa, e = {}) {
     if (cart && (+cart.acrescimoPlanoDePagamento > 0)) AVISOS.push(`O plano de pagamento do portal tem acréscimo de R$ ${(+cart.acrescimoPlanoDePagamento).toFixed(2)}.`);
     let numero = 'não salvo', pdf = null, diagSalvar = null;
     const fs = await import('node:fs');
-    const guardarPdf = async (acao, nomeArq) => {
-      const [d] = await Promise.all([pg.waitForEvent('download', { timeout: 45000 }), acao()]);
+    const guardarPdf = async (acao, nomeArq, ms = 45000) => {
+      const [d] = await Promise.all([pg.waitForEvent('download', { timeout: ms }), acao()]);
       fs.mkdirSync(path.resolve('propostas-belenergy'), { recursive: true });
       const destino = path.resolve('propostas-belenergy', nomeArq); await d.saveAs(destino);
       const buf = fs.readFileSync(destino); console.log('PDF salvo em ' + destino);
@@ -650,41 +651,56 @@ async function passoInterno(etapa, e = {}) {
       // 2) PDF antes de salvar (depois de salvar o portal vai para "Meus orçamentos")
       try { const bp = botao(/Baixar PDF|Gerar PDF|Download PDF|Baixar proposta/i); if (await bp.count()) pdf = await guardarPdf(() => bp.click(), 'cotacao-' + Date.now() + '.pdf'); }
       catch (err) { console.log('PDF antes de salvar não veio: ' + String(err.message || err).slice(0, 100)); }
-      // 3) salvar e achar o número WEB em "Meus orçamentos" (cartão com o nome da proposta)
-      const antesSalvar = await pagTxt();
-      const bs = botao(/^\s*Salvar\s*$/i);
-      let salvou = true;
+      // 3) salvar (mapeado ao vivo em 10/11/2026): o botão "Salvar" chama a API KitPersonalizado/SalvarOrcamentoCliente
+      //    e, se deu certo, o portal vai sozinho para "Meus orçamentos" (/listar/orcamentos). Só conta como salvo com a resposta da API.
+      await fecharModal().catch(() => {});
+      const bs = pg.locator('button:visible').filter({ hasText: /^\s*Salvar\s*$/i }).last();
+      let salvou = false, achado = null;
+      const tSalvar = Date.now();
       try { await bs.click({ timeout: 12000 }); }
-      catch (err) { // botão travado (portal sem forma de pagamento, nome ou outro campo): devolve o preço mesmo assim, sem salvar
-        salvou = false;
-        const desab = await bs.isDisabled().catch(() => null), vis = await bs.isVisible().catch(() => null);
-        const f = await printErro('salvar');
-        const tela = (await pagTxt()).replace(/\s+/g, ' '); const i4 = tela.search(/Forma de pagamento|Salvar/i);
-        diagSalvar = { url: pg.url(), botaoVisivel: vis, botaoDesabilitado: desab, tela: tela.slice(Math.max(0, i4 - 400), i4 + 600) };
-        AVISOS.push('Não consegui clicar em "Salvar" no portal (' + (desab ? 'botão desabilitado' : vis === false ? 'botão escondido' : 'botão não respondeu') + '). O preço veio, mas a proposta NÃO foi salva na Belenergy' + (f ? ' · print: ' + f : '') + '.');
-        console.log('Salvar falhou: ' + String(err.message || err).slice(0, 120));
+      catch (err) { console.log('Salvar: o botão não respondeu: ' + String(err.message || err).slice(0, 120)); }
+      const rs = await esperarApi('salvarorcamentocliente', tSalvar, 40000);
+      if (rs && rs.ok) {
+        salvou = true;
+        const w = JSON.stringify(rs.json || {}).match(/WEB-?0*(\d{5,})|"pedidoWeb"\s*:\s*"?(?:WEB-?)?0*(\d{5,})/i); if (w) achado = (w[1] || w[2]).padStart(9, '0');
+        console.log('Salvo na Belenergy' + (achado ? ': WEB-' + achado : ' (número WEB: vou ler em Meus orçamentos)'));
+      } else {
+        const toast = await avisoPortal().catch(() => ''); const f = await printErro('salvar');
+        const desab = await bs.isDisabled().catch(() => null);
+        diagSalvar = { url: pg.url(), api: rs ? { status: rs.status, resposta: JSON.stringify(rs.json || '').slice(0, 600) } : 'o portal não chamou SalvarOrcamentoCliente', botaoDesabilitado: desab, aviso: toast };
+        AVISOS.push('A proposta NÃO foi salva na Belenergy' + (rs ? ' (o portal recusou' + (toast ? ': ' + toast : '') + ')' : desab ? ' (botão "Salvar" desabilitado)' : ' (o clique em "Salvar" não chegou ao portal)') + '. O preço veio mesmo assim' + (f ? ' · print: ' + f : '') + '.');
+        console.log('Salvar falhou: ' + JSON.stringify(diagSalvar).slice(0, 300));
       }
-      if (salvou) { await aguardarPortal(20000); await pausa(1500); }
-      let achado = null;
-      for (let k = 0; k < 16 && !achado && salvou; k++) {
-        const t2 = (await pagTxt()) + ' ' + (await avisoPortal()) + ' ' + pg.url();
-        if (/Meus or[çc]amentos/i.test(t2)) {
-          achado = await pg.evaluate((nome) => { // cartões: "nome · WEB-0071… · Total"
-            const nos = [...document.querySelectorAll('div')].filter((d) => /WEB-\d{5,}/.test(d.innerText || '') && (d.innerText || '').length < 400);
-            const alvo = nos.filter((d) => !nome || (d.innerText || '').toLowerCase().includes(String(nome).toLowerCase().slice(0, 18))).sort((a, b) => (a.innerText || '').length - (b.innerText || '').length)[0] || nos[0];
-            if (!alvo) return null; alvo.setAttribute('data-robo-card', '1'); const m = alvo.innerText.match(/WEB-(\d{5,})/); return m ? m[1] : null;
-          }, e.nome || '');
-        } else { const w = t2.match(/\bWEB\s*[-:#nº°]*\s*(\d{5,})/i); if (w && !antesSalvar.includes(w[1])) achado = w[1]; }
-        if (!achado) await pausa(700);
+      // 4) Meus orçamentos: acha o cartão, lê o número WEB e baixa "Cotação WEB-…" (o portal monta o PDF na tela: leva 20–40 s)
+      if (salvou) {
+        await pg.waitForURL(/listar\/orcamentos|carteira\/orcamentos/, { timeout: 20000 }).catch(() => {});
+        if (!/orcamentos/.test(pg.url())) await pg.goto('https://belenus.com.br/listar/orcamentos', { waitUntil: 'domcontentloaded' }).catch(() => {});
+        const cards = pg.locator('.quotation__content__body__row');
+        await cards.first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
+        let card = null;
+        for (let k = 0; k < 20 && !card; k++) {
+          const n = await cards.count();
+          for (let i = 0; i < n && !card; i++) {
+            const t = (await cards.nth(i).innerText().catch(() => '')).replace(/\s+/g, ' ');
+            const w = (t.match(/WEB-(\d{5,})/) || [])[1];
+            if (achado ? w && +w === +achado : (e.nome && t.toLowerCase().includes(String(e.nome).toLowerCase().slice(0, 18)))) { card = cards.nth(i); if (!achado && w) achado = w; }
+          }
+          if (!card && !achado && !e.nome && n) { card = cards.first(); achado = ((await card.innerText()).match(/WEB-(\d{5,})/) || [])[1] || null; }
+          if (!card) await pausa(1000);
+        }
+        if (!card) { const t3 = await pagTxt(); diagSalvar = { url: pg.url(), tela: t3.slice(0, 1200).replace(/\s+/g, ' ') }; AVISOS.push('Salvo na Belenergy, mas não achei o cartão em "Meus orçamentos" para pegar o número WEB e o PDF.'); }
+        else {
+          try {
+            await card.locator('button.opcoes-btn').filter({ has: pg.locator('img[alt*="download" i], img[src*="download"]') }).first().click({ timeout: 8000 });
+            const baixar = pg.locator('mat-dialog-container .conteudo__documento__container').filter({ hasText: /Cota[çc][ãa]o WEB/i }).locator('img[alt*="download" i], img[src*="download"]').first();
+            await baixar.waitFor({ state: 'visible', timeout: 15000 });
+            pdf = await guardarPdf(() => baixar.click(), 'WEB-' + (achado || Date.now()) + '.pdf', 150000);
+          } catch (err) { AVISOS.push('Salvo como WEB-' + achado + ', mas o PDF não baixou: ' + String(err.message || err).slice(0, 90)); console.log('PDF do WEB não veio: ' + String(err.message || err).slice(0, 120)); }
+          await fecharModal().catch(() => {});
+        }
       }
       numero = !salvou ? 'não salvo' : achado ? 'WEB ' + achado : 'salvo (ver Meus Orçamentos)';
       if (achado && pdf) pdf.nome = 'WEB-' + achado + '.pdf';
-      if (salvou && !achado) { const t3 = await pagTxt(), i3 = t3.search(/salv|sucesso|or[çc]amento/i); diagSalvar = { url: pg.url(), tela: t3.slice(Math.max(0, i3 - 300), i3 + 900).replace(/\s+/g, ' ') }; console.log('Salvou, mas não achei o número WEB. Guardei o texto da tela.'); }
-      // 4) sem PDF ainda: baixa pelo botão de download do cartão em "Meus orçamentos"
-      if (!pdf && achado) {
-        try { const card = pg.locator('[data-robo-card="1"]').first(); const bt = card.locator('button, a').first(); if (await bt.count()) pdf = await guardarPdf(() => bt.click(), 'WEB-' + achado + '.pdf'); }
-        catch (err) { console.log('Não consegui baixar o PDF do cartão: ' + String(err.message || err).slice(0, 100)); }
-      }
       await fecharAvisos();
     }
     // "Comprar Agora" NUNCA é clicado por este robô.

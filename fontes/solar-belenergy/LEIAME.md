@@ -25,6 +25,12 @@ No sistema: Novo orçamento → passo 4 "Kit Belenergy". Dá para montar até 3 
 | `cotador.mjs` | Robô que conduz o Personalize seu Gerador no seu PC e responde ao sistema em `http://127.0.0.1:8787`. |
 | `robo.mjs` | Leitura do catálogo avulso (estoque, preço por Wp). Serve só de referência; **não** é o preço do orçamento. |
 
+## Versão 2026-11-10c (mapeado ao vivo em 10/11/2026)
+- **Salvar de verdade**: o "Salvar" do portal chama a API `KitPersonalizado/SalvarOrcamentoCliente` e vai para "Meus orçamentos" (`/listar/orcamentos`). Só conta como salvo com a resposta dessa API (antes bastava o clique, e uma cotação saiu "salva" sem estar no portal).
+- **Número WEB**: lido no cartão de "Meus orçamentos" (`.quotation__content__body__row`).
+- **PDF do WEB**: no cartão, ícone de download → janela "Baixar documentos" → "Cotação WEB-…". O portal monta o PDF na própria tela (20–40 s); o robô espera até 2,5 min. O PDF fica em `propostas-belenergy/WEB-….pdf` e vai anexado ao orçamento.
+- Pré-propostas com "Salvar" ligado: depois de salvar o portal sai da Confirmação, então a próxima estrutura é cotada do zero (mais lento, mas certo).
+
 ## Versão 2026-11-10b
 - Tira o aviso falso "Valor da tela diferente do carrinho": o carrinho é lido antes do frete, então a diferença era o frete. Agora compara só o valor dos produtos.
 
