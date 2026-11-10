@@ -1514,7 +1514,13 @@
         ${graf.modo !== 'ano' ? `<div class="us-g-nav"><button type="button" data-gn="-1" aria-label="Anterior">‹</button><b>${titulo}</b><button type="button" data-gn="1" aria-label="Próximo">›</button></div>` : `<div class="us-g-nav"><b>${titulo}</b></div>`}</div>
       <div class="us-g-barras" style="--n:${barras.length}">${esp ? `<i class="us-g-esp" style="bottom:calc(18px + ${(esp / max).toFixed(3)} * (100% - 18px))" title="Esperado: ${n(esp, graf.modo === 'dia' ? 1 : 0)} kWh"></i>` : ''}
         ${barras.map((x) => `<button type="button" title="${x.dica}" ${x.ir ? `data-gi="${x.ir}"` : ''} class="${x.tem ? (esp && !x.parcial && x.kwh < esp * 0.6 ? 'baixo' : '') : 'vazio'}"><i style="height:${x.tem ? Math.max((x.kwh / max) * 100, 2) : 1}%"></i><em>${x.rot}</em></button>`).join('')}</div>
-      <p class="mini us-g-res">Total: <b>${n(total)} kWh</b> (${brl(total * tarifa)})${espPeriodo ? ` · ${n((total / espPeriodo) * 100)}% do esperado` : ''}${melhor ? ` · melhor: ${melhor.dica}` : ''}${graf.modo !== 'dia' ? ' · toque numa barra para abrir' : ''}</p>`;
+      ${graf.modo !== 'dia' ? '<p class="mini" style="margin:8px 0 0">Toque numa barra para abrir.</p>' : ''}`;
+    const pctP = espPeriodo ? total / espPeriodo : null, rotP = graf.modo === 'dia' ? 'no mês' : graf.modo === 'mes' ? 'no ano' : 'desde a instalação';
+    el.querySelector('.us-g-cab').insertAdjacentHTML('afterend', `<div class="us-g-res">
+        <div><span>Gerou ${rotP}</span><b>${n(total)} kWh</b></div>
+        <div><span>Economia ${rotP}</span><b>${brl(total * tarifa)}</b></div>
+        <div class="${pctP === null ? '' : pctP >= 0.9 ? 'ok' : pctP >= 0.75 ? 'meio' : 'ruim'}"><span>Do esperado</span><b>${pctP === null ? '–' : n(pctP * 100) + '%'}</b></div>
+        <div><span>${graf.modo === 'dia' ? 'Melhor dia' : graf.modo === 'mes' ? 'Melhor mês' : 'Melhor ano'}</span><b>${melhor ? n(melhor.kwh, graf.modo === 'dia' ? 1 : 0) + ' kWh' : '–'}</b><small>${melhor ? melhor.dica.split(':')[0] : ''}</small></div></div>`);
     const mudarRef = (passo) => {
       if (graf.modo === 'dia') { const [a, m] = ref.split('-').map(Number), d = new Date(a, m - 1 + passo, 1); graf.ref = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
       else graf.ref = String(+ref + passo);
