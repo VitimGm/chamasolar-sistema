@@ -227,6 +227,12 @@
     /* ---------- usinas instaladas e geração diária ---------- */
     usinas() { return usinas; },
     geracao(id) { return (geracaoPor[id] || []).slice(); },
+    /* todo o histórico de uma usina (desde a instalação), em páginas */
+    async geracaoTudo(id) {
+      const todas = [];
+      for (let pag = 0; pag < 30; pag++) { const l = await api('sol_geracao?select=dia,kwh&usina_id=eq.' + Number(id) + '&order=dia.asc&limit=1000&offset=' + pag * 1000); todas.push(...l.map((g) => ({ dia: g.dia, kwh: +g.kwh }))); if (l.length < 1000) break; }
+      return todas;
+    },
     leitura(id) { return leituraPor[id] || null; },
     async salvarUsina(u) {
       const campos = ['orcamento_id', 'cliente_nome', 'whatsapp', 'email', 'plano', 'cidade', 'kwp', 'marca', 'plataforma_id', 'ligada_em', 'esperado_mes', 'tarifa_kwh', 'ativo', 'obs'];

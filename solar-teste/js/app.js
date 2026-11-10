@@ -1421,11 +1421,12 @@
     const kpi = (k, rot, val, sub, cor) => `<button class="kpi ${usF.filtro === k ? 'destaque' : ''}" data-usf="${k}" style="text-align:left;cursor:pointer;font:inherit;color:inherit"><span class="rotulo">${rot}</span><b style="${cor ? `color:${cor}` : ''}">${val}</b><span class="sutil">${sub}</span></button>`;
     const linha = ({ u, s, l, off, est }) => { const ab = usF.aberta === String(u.id);
       return `<div class="us-l ${ab ? 'aberta' : ''}"><button class="us-cab" data-usab="${u.id}"><i style="background:${COR[est]}" title="${ROT[est]}"></i>
-          <span class="us-n"><b>${esc(u.cliente_nome)}</b><small>${esc(u.cidade || u.marca || '')} · ${n(u.kwp, 2)} kWp</small></span>
+          <span class="us-n"><b>${esc(u.cliente_nome)}</b><small><span class="us-app">${esc(appDe(u).nome)}</span>${u.cidade ? ' · ' + esc(u.cidade) : ''} · ${n(u.kwp, 2)} kWp</small></span>
           <span class="us-b"><span><em style="width:${Math.min((s.pct || 0) * 100, 100)}%;background:${s.pct !== null && s.pct < 0.75 ? 'var(--laranja)' : 'var(--verde-claro)'}"></em></span><small>${off ? `sem dados há ${s.diasSemDado} dias` : s.diasSemDado === null ? 'nunca leu geração' : s.pct === null ? `${n(s.total)} kWh no mês · conferir kWp` : `${n(s.pct * 100)}% do esperado · ${n(s.total)} kWh`}</small></span><span class="us-s">›</span></button>
         ${ab ? `<div class="us-d">${s.alerta ? `<p class="aviso" style="margin:0 0 8px">⚠️ ${esc(s.alerta)}</p>` : ''}
-          <div class="numeros4"><div><span>Este mês</span><b>${s.diasSemDado === null ? '–' : n(s.total) + ' kWh'}</b></div><div><span>Esperado</span><b>${n(s.esperadoMes)} kWh/mês${Number(u.esperado_mes) > 0 ? '' : ' (estimado)'}</b></div><div><span>Economia no mês</span><b>${s.pct === null ? '–' : brl(s.economiaMes)}</b></div><div><span>Desde a instalação</span><b>${l ? n(l.total_kwh) + ' kWh' : '–'}</b></div></div>
-          <p class="mini" style="margin:8px 0">${esc(u.marca)}${u.plataforma_id ? ' · id ' + esc(u.plataforma_id) : ''}${l ? ` · ${off ? '<b style="color:#ff5c5c">inversor sem comunicação</b>' : `comunicando${+l.potencia_w > 0 ? ' (' + n(l.potencia_w) + ' W na leitura)' : ''}`}` : ''}${s.ultimo ? ' · última leitura ' + s.ultimo.split('-').reverse().join('/') : ''}${u.whatsapp ? '' : ' · <b>sem WhatsApp cadastrado</b>'}</p>
+          <div class="numeros4"><div><span>Este mês</span><b>${s.diasSemDado === null ? '–' : n(s.total) + ' kWh'}</b></div><div><span>Esperado</span><b>${n(s.esperadoMes)} kWh/mês${Number(u.esperado_mes) > 0 ? '' : ' (estimado)'}</b></div><div><span>Economia no mês</span><b>${s.pct === null ? '–' : brl(s.economiaMes)}</b></div><div><span>Desde a instalação</span><b data-total="${u.id}">${l ? n(l.total_kwh) + ' kWh' : '–'}</b></div></div>
+          <div class="us-graf" data-graf="${u.id}"><p class="sutil">carregando a geração…</p></div>
+          <p class="mini" style="margin:8px 0"><b>App: ${esc(appDe(u).nome)}</b> · ${esc(appDe(u).via)}${u.plataforma_id ? ' · id ' + esc(String(u.plataforma_id).replace(/^sz:/, '')) : ''}${l ? ` · ${off ? '<b style="color:#ff5c5c">inversor sem comunicação</b>' : `comunicando${+l.potencia_w > 0 ? ' (' + n(l.potencia_w) + ' W na leitura)' : ''}`}` : ''}${s.ultimo ? ' · última leitura ' + s.ultimo.split('-').reverse().join('/') : ''}${u.whatsapp ? '' : ' · <b>sem WhatsApp cadastrado</b>'}</p>
           <div class="acoes-r" style="flex-wrap:wrap"><button class="btn sol pequeno" data-us="conta" data-id="${u.id}">💡 Relatório da conta</button><button class="btn vidro pequeno" data-us="rel" data-id="${u.id}">Relatório do mês</button><button class="btn vidro pequeno" data-us="app" data-id="${u.id}">📱 App do cliente</button><button class="btn vidro pequeno" data-us="rateio" data-id="${u.id}">🔀 Rateio de créditos</button>${u.whatsapp ? `<button class="btn zap pequeno" data-us="zap" data-id="${u.id}">WhatsApp</button>` : ''}<button class="btn vidro pequeno" data-us="imp" data-id="${u.id}">Importar planilha</button><button class="btn vidro pequeno" data-us="ed" data-id="${u.id}">Editar</button></div></div>` : ''}</div>`; };
     app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Usinas</h1><p class="sutil">${lista.length} usinas · ${n(lista.reduce((t, u) => t + Number(u.kwp), 0), 1)} kWp · ${n(totalMes)} kWh no mês</p></div>
         <div class="linha-h"><button class="btn vidro" id="usAtu">↻ Atualizar</button><button class="btn sol" id="usNova">＋ Usina</button></div></div>
@@ -1439,7 +1440,7 @@
       <details class="painel" id="usStatus" style="margin-top:14px"><summary class="rotulo" style="cursor:pointer">Leitura das plataformas e importação</summary><div id="usStatusC"><p class="sutil" style="margin:6px 0 0">carregando…</p></div><div class="acoes-r" style="margin-top:8px"><button class="btn vidro pequeno" id="usImp">Importar planilha de uma usina</button><a class="btn vidro pequeno" href="#parametros">Editar acessos</a></div></details>
       <input type="file" id="usArq" accept=".csv,.txt,.tsv" hidden>`;
     app.querySelectorAll('[data-usf]').forEach((b2) => b2.onclick = () => { usF.filtro = usF.filtro === b2.dataset.usf && b2.dataset.usf !== 'todas' ? 'todas' : b2.dataset.usf; usF.ver = 30; usinasPag(); });
-    app.querySelectorAll('[data-usab]').forEach((b2) => b2.onclick = () => { usF.aberta = usF.aberta === b2.dataset.usab ? null : b2.dataset.usab; const y = scrollY; usinasPag(); scrollTo(0, y); });
+    app.querySelectorAll('[data-usab]').forEach((b2) => b2.onclick = () => { usF.aberta = usF.aberta === b2.dataset.usab ? null : b2.dataset.usab; graf.modo = 'dia'; graf.ref = null; const y = scrollY; usinasPag(); scrollTo(0, y); });
     const bx = $('#usBusca'); bx.oninput = () => { usF.busca = bx.value; usF.ver = 30; clearTimeout(avDeb); avDeb = setTimeout(() => { usinasPag(); const c = $('#usBusca'); c.focus(); c.setSelectionRange(c.value.length, c.value.length); }, 250); };
     $('#usOrdem').onchange = (e) => { usF.ordem = e.target.value; usinasPag(); };
     $('#usMarca').onchange = (e) => { usF.marca = e.target.value; usF.ver = 30; usinasPag(); };
@@ -1453,6 +1454,7 @@
       const linhas = Object.values(ult).map((x) => `<tr><td><b>${esc(x.marca)}</b></td><td>${x.ok ? (x.resumo && x.resumo.usinas ? '✅ ' + x.resumo.usinas + ' usina(s), ' + x.resumo.dias + ' dia(s) lidos' : '⚠️ conectou, mas a plataforma não devolveu usinas') : '❌ ' + esc(x.erro || 'erro')}</td><td class="mini">${new Date(x.em).toLocaleString('pt-BR')}</td></tr>`).join('');
       el.innerHTML = `${linhas ? `<table style="margin-top:8px">${linhas}</table>` : '<p class="sutil" style="margin:6px 0 0">Nenhuma leitura ainda. Guarde o acesso em Parâmetros e toque em Atualizar agora.</p>'}<p class="mini" style="margin:6px 0 0">Lê sozinho todo dia às 6h30.</p>`;
     }).catch(() => { const el = $('#usStatusC'); if (el) el.innerHTML = ''; });
+    app.querySelectorAll('[data-graf]').forEach((el) => graficoUsina(el, lista.find((x) => String(x.id) === el.dataset.graf)));
     $('#usNova').onclick = () => formUsina({});
     $('#usAtu').onclick = async (ev) => {
       const b = ev.target; b.disabled = true; b.textContent = 'Lendo as plataformas… (até 2 min)';
@@ -1463,13 +1465,65 @@
     app.querySelectorAll('[data-us]').forEach((b) => b.onclick = () => {
       const u = lista.find((x) => String(x.id) === b.dataset.id), g = B.geracao(u.id);
       if (b.dataset.us === 'conta') formFatura(u);
-      else if (b.dataset.us === 'rel') U.relatorio(u, g);
+      else if (b.dataset.us === 'rel') U.relatorio(u, histUs[u.id] || g, graf.ref && graf.ref.length === 7 && graf.modo === 'dia' ? new Date(graf.ref + '-15T12:00:00') : new Date());
       else if (b.dataset.us === 'app') appCliente(u);
       else if (b.dataset.us === 'rateio') formRateio(u);
       else if (b.dataset.us === 'zap') window.open('https://wa.me/55' + String(u.whatsapp || '').replace(/\D/g, '').replace(/^55/, '') + '?text=' + encodeURIComponent(U.mensagem(u, g)), '_blank', 'noopener');
       else if (b.dataset.us === 'imp') { alvo = u.id; arq.click(); }
       else formUsina(u);
     });
+  }
+  /* de qual aplicativo é a usina e por onde o sistema lê */
+  const APPS = { Growatt: 'Growatt (ShinePhone / OSS)', Hoymiles: 'Hoymiles (S-Miles Cloud)', Huawei: 'Huawei (FusionSolar)', Deye: 'Deye (Solarman)', Sungrow: 'Sungrow (iSolarCloud)', Solis: 'Solis (SolisCloud)', Auxsol: 'Auxsol (Auxsol Cloud)', Chint: 'Chint (Chint Power)', Sunweg: 'Sunweg', Solplanet: 'Solplanet', GoodWe: 'GoodWe (SEMS)', TSuness: 'TSuness' };
+  function appDe(u) {
+    const pid = String(u.plataforma_id || ''), m = String(u.marca || '');
+    const nome = APPS[m] || (m && m !== 'Outra' ? m : 'App não identificado');
+    return { nome, via: pid.startsWith('sz:') ? 'lida pelo SolarZ' : pid ? 'lida direto do fabricante' : 'lançada à mão / planilha' };
+  }
+  /* gráficos da usina: dia a dia do mês, mês a mês do ano e ano a ano, com o esperado */
+  const histUs = {}, graf = { modo: 'dia', ref: null };
+  async function graficoUsina(el, u) {
+    if (!el || !u) return;
+    const U = window.Usinas;
+    if (!histUs[u.id]) { try { histUs[u.id] = await B.geracaoTudo(u.id); } catch { histUs[u.id] = B.geracao(u.id); } }
+    const g = histUs[u.id], soma = (pref) => g.filter((x) => x.dia.startsWith(pref)).reduce((t, x) => t + x.kwh, 0);
+    const tot = $('[data-total="' + u.id + '"]'); if (tot && g.length) tot.textContent = n(g.reduce((t, x) => t + x.kwh, 0)) + ' kWh';
+    const hoje = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+    const espMes = U.esperadoDe(u), MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+    const primeiro = g.length ? g[0].dia : hoje;
+    let ref = graf.ref || hoje.slice(0, 7);
+    if (graf.modo === 'dia' && ref.length !== 7) ref = hoje.slice(0, 7);
+    if (graf.modo === 'mes') ref = ref.slice(0, 4);
+    let barras = [], titulo = '', esp = 0, tarifa = Number(u.tarifa_kwh) || (D.parametros && D.parametros.tarifaKwh) || 1;
+    if (graf.modo === 'dia') {
+      const [a, m] = ref.split('-').map(Number), nd = new Date(a, m, 0).getDate();
+      barras = Array.from({ length: nd }, (_, i) => { const d = `${ref}-${String(i + 1).padStart(2, '0')}`, x = g.find((y) => y.dia === d); return { rot: i === 0 || (i + 1) % 5 === 0 ? String(i + 1) : '', kwh: x ? x.kwh : 0, tem: !!x, dica: `${String(i + 1).padStart(2, '0')}/${String(m).padStart(2, '0')}: ${x ? n(x.kwh, 1) + ' kWh' : 'sem leitura'}` }; });
+      titulo = `${MESES[m - 1]}/${a}`; esp = espMes / 30;
+    } else if (graf.modo === 'mes') {
+      barras = MESES.map((r, i) => { const k = `${ref}-${String(i + 1).padStart(2, '0')}`, v = soma(k); return { rot: r, kwh: v, tem: v > 0, dica: `${r}/${ref}: ${n(v)} kWh`, ir: k, parcial: k >= hoje.slice(0, 7) }; });
+      titulo = ref; esp = espMes;
+    } else {
+      const a0 = +primeiro.slice(0, 4), a1 = +hoje.slice(0, 4);
+      for (let a = a0; a <= a1; a++) { const v = soma(String(a)); barras.push({ rot: String(a), kwh: v, tem: v > 0, dica: `${a}: ${n(v)} kWh`, ir: String(a), parcial: a >= +hoje.slice(0, 4) || String(a) === primeiro.slice(0, 4) }); }
+      titulo = 'desde ' + primeiro.split('-').reverse().join('/'); esp = espMes * 12;
+    }
+    const total = barras.reduce((t, x) => t + x.kwh, 0), max = Math.max(...barras.map((x) => x.kwh), esp, 1), comDado = barras.filter((x) => x.tem);
+    const melhor = comDado.reduce((a, x) => (x.kwh > (a ? a.kwh : -1) ? x : a), null);
+    const espPeriodo = graf.modo === 'dia' ? esp * comDado.length : graf.modo === 'mes' ? espMes * comDado.length : 0;
+    el.innerHTML = `<div class="us-g-cab"><div class="us-g-tabs">${[['dia', 'Dia a dia'], ['mes', 'Mês a mês'], ['ano', 'Ano a ano']].map(([k, r]) => `<button type="button" data-gm="${k}" class="${graf.modo === k ? 'sel' : ''}">${r}</button>`).join('')}</div>
+        ${graf.modo !== 'ano' ? `<div class="us-g-nav"><button type="button" data-gn="-1" aria-label="Anterior">‹</button><b>${titulo}</b><button type="button" data-gn="1" aria-label="Próximo">›</button></div>` : `<div class="us-g-nav"><b>${titulo}</b></div>`}</div>
+      <div class="us-g-barras" style="--n:${barras.length}">${esp ? `<i class="us-g-esp" style="bottom:calc(18px + ${(esp / max).toFixed(3)} * (100% - 18px))" title="Esperado: ${n(esp, graf.modo === 'dia' ? 1 : 0)} kWh"></i>` : ''}
+        ${barras.map((x) => `<button type="button" title="${x.dica}" ${x.ir ? `data-gi="${x.ir}"` : ''} class="${x.tem ? (esp && !x.parcial && x.kwh < esp * 0.6 ? 'baixo' : '') : 'vazio'}"><i style="height:${x.tem ? Math.max((x.kwh / max) * 100, 2) : 1}%"></i><em>${x.rot}</em></button>`).join('')}</div>
+      <p class="mini us-g-res">Total: <b>${n(total)} kWh</b> (${brl(total * tarifa)})${espPeriodo ? ` · ${n((total / espPeriodo) * 100)}% do esperado` : ''}${melhor ? ` · melhor: ${melhor.dica}` : ''}${graf.modo !== 'dia' ? ' · toque numa barra para abrir' : ''}</p>`;
+    const mudarRef = (passo) => {
+      if (graf.modo === 'dia') { const [a, m] = ref.split('-').map(Number), d = new Date(a, m - 1 + passo, 1); graf.ref = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+      else graf.ref = String(+ref + passo);
+      graficoUsina(el, u);
+    };
+    el.querySelectorAll('[data-gm]').forEach((b) => b.onclick = () => { graf.modo = b.dataset.gm; if (graf.modo === 'dia') graf.ref = (graf.ref || hoje).length === 4 ? graf.ref + '-' + (graf.ref === hoje.slice(0, 4) ? hoje.slice(5, 7) : '12') : graf.ref; graficoUsina(el, u); });
+    el.querySelectorAll('[data-gn]').forEach((b) => b.onclick = () => mudarRef(+b.dataset.gn));
+    el.querySelectorAll('[data-gi]').forEach((b) => b.onclick = () => { graf.ref = b.dataset.gi; graf.modo = b.dataset.gi.length === 4 ? 'mes' : 'dia'; graficoUsina(el, u); });
+    const rel = el.parentElement && el.parentElement.querySelector('[data-us="rel"]'); if (rel) rel.textContent = graf.modo === 'dia' ? `Relatório de ${titulo}` : 'Relatório do mês';
   }
   function escolher(lista, fn) {
     const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:80;background:#0009;display:grid;place-items:center;padding:16px';

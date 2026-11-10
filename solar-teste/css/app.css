@@ -307,3 +307,25 @@ body.com-barra .jarvis-bt { bottom: 96px; }
 .apv-roteiro { padding: 14px; border-radius: 14px; background: #ffffff0d; border: 1px solid var(--linha-forte); }
 .apv-roteiro p { font-size: 20px; line-height: 1.5; margin: 8px 0 0; }
 @media (max-width: 720px) { .apv-palco { grid-template-columns: 1fr; } .apv-tela { max-width: 300px; margin: 0 auto; } }
+
+/* gráficos da usina (dia a dia, mês a mês, ano a ano) */
+.us-app { color: var(--texto-2); font-weight: 600; }
+.us-graf { margin: 10px 0 4px; padding: 12px; border-radius: 14px; background: var(--vidro, #ffffff0a); border: 1px solid var(--linha); }
+.us-g-cab { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.us-g-tabs { display: flex; gap: 4px; background: #0003; padding: 3px; border-radius: 999px; }
+.us-g-tabs button { border: 0; background: none; color: var(--texto-2); font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+.us-g-tabs button.sel { background: var(--laranja); color: #fff; font-weight: 600; }
+.us-g-nav { display: flex; align-items: center; gap: 8px; }
+.us-g-nav b { min-width: 86px; text-align: center; text-transform: capitalize; }
+.us-g-nav button { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--linha); background: none; color: inherit; font-size: 18px; cursor: pointer; }
+.us-g-barras { position: relative; display: flex; align-items: flex-end; gap: 2px; height: 180px; padding-bottom: 18px; }
+.us-g-barras button { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; background: none; border: 0; padding: 0; position: relative; cursor: default; }
+.us-g-barras button[data-gi] { cursor: pointer; }
+.us-g-barras button i { display: block; border-radius: 4px 4px 1px 1px; background: var(--verde-claro, #4cd07d); transition: opacity .15s; }
+.us-g-barras button.baixo i { background: var(--laranja); }
+.us-g-barras button.vazio i { background: var(--linha); }
+.us-g-barras button:hover i { opacity: .75; }
+.us-g-barras button em { position: absolute; bottom: -17px; left: 50%; transform: translateX(-50%); font-style: normal; font-size: 10px; color: var(--texto-3); white-space: nowrap; }
+.us-g-esp { position: absolute; left: 0; right: 0; border-top: 2px dashed #ffffff8c; pointer-events: none; z-index: 1; }
+.us-g-res { margin: 10px 0 0; }
+@media (max-width: 560px) { .us-g-barras { height: 150px; gap: 1px; } .us-g-barras button em { font-size: 9px; } }
