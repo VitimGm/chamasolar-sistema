@@ -1163,7 +1163,7 @@
   }
 
   function passo5(el) {
-    const p = P(), ops5 = C.opcoes(orc, p), op = ops5[C.indiceOpcao(orc, ops5)], pr = op.preco, sem = p.semaforo, g = op.groner;
+    const p = P(), ops5 = C.opcoes(orc, p), op = ops5[C.indiceOpcao(orc, ops5)], pr = op.preco, sem = pr.semaforoRef || p.semaforo, g = op.groner;
     const pos = (v) => Math.min(Math.max((v - 1.8) / 1.7, 0), 1) * 100;
     const modo = orc.precoModo || 'chama', extras = Array.isArray(orc.custosExtras) ? orc.custosExtras : [], aj = orc.custosAjustados || {};
     const mg = pr.percentuais.margem, corMg = mg < 0 ? 'var(--vermelho)' : mg < 0.05 ? 'var(--amarelo)' : 'inherit';
@@ -1206,11 +1206,11 @@
         ${pr.kitDireto ? `<tr class="sub"><td>↳ Nota Belenus (kit, direto ao cliente)</td><td class="v">${brl(pr.kitDireto)}</td></tr><tr class="sub"><td>↳ Nota Chama Solar</td><td class="v">${brl(pr.notaChamaSolar)}</td></tr>` : ''}
         <tr><td><b>Sobra para a empresa</b></td><td class="v"><b class="${pr.lucroLiquido < 0 ? '' : 'grad'}" style="${pr.lucroLiquido < 0 ? 'color:var(--vermelho)' : ''}">${brl(pr.lucroLiquido)}</b></td></tr></table>
         ${mg < 0 ? `<div class="aviso ruim" style="margin-top:8px">Este preço fica <b>abaixo do custo</b>: prejuízo de ${brl(-pr.decomp.margem)} antes da reserva.</div>` : mg < 0.05 ? '<div class="aviso" style="margin-top:8px">Margem abaixo de 5%: confira se vale fechar assim.</div>' : ''}</div></div>
-      <div><div class="painel"><span class="rotulo">Preço × mercado</span><div style="margin-top:8px"><span class="semaforo ${pr.semaforo}">${NOME_SEMAFORO[pr.semaforo]}</span></div>
+      <div><div class="painel"><span class="rotulo">Preço × mercado${sem.micro ? ' · régua do microinversor' : ''}</span><div style="margin-top:8px"><span class="semaforo ${pr.semaforo}">${NOME_SEMAFORO[pr.semaforo]}</span></div>
         <div class="regua" style="background:linear-gradient(90deg,var(--verde) 0 ${pos(sem.verdeAte)}%,var(--amarelo) ${pos(sem.verdeAte)}% ${pos(sem.amareloAte)}%,var(--vermelho) ${pos(sem.amareloAte)}%)">
           <span class="ponteiro" style="left:${Math.min(Math.max(pos(pr.rsPorWp), 8), 92)}%">R$ ${n(pr.rsPorWp, 2)}/Wp</span>
           <div class="marcas"><span style="left:0;transform:none">1,80</span><span style="left:${pos(sem.verdeAte)}%">${n(sem.verdeAte, 2)}</span><span style="left:${pos(sem.amareloAte)}%">${n(sem.amareloAte, 2)}</span><span style="left:100%;transform:translateX(-100%)">3,50</span></div></div>
-        <p class="mini">Média nacional residencial: R$ ${n(sem.referencia, 2)}/Wp (1º tri 2026).</p></div>
+        <p class="mini">${sem.micro ? `Microinversor: as vendas da Chama com micro ficaram em R$ ${n(sem.referencia, 2)}/Wp (mediana). Com inversor string a régua é outra.` : `Média do mercado residencial: R$ ${n(sem.referencia, 2)}/Wp.`}</p></div>
       <div class="painel"><span class="rotulo">Nossa precificação × Groner · ${esc(op.nivel)}</span>
         <table style="margin-top:8px"><tr><th></th><th class="v">Nossa${modo !== 'chama' ? ' (fórmula)' : ''}</th><th class="v">Groner</th></tr>
           ${(() => { const val = (id) => (nossa.linhas.find((l) => l.id === id) || {}).valor || 0;
@@ -1262,6 +1262,7 @@
     ['Formas de pagamento', [['taxaPagamento.avista', 'Taxa à vista (%)', 100], ['taxaPagamento.financiamento', 'Taxa no financiamento (%)', 100], ['taxaPagamento.cartao', 'Taxa no cartão se faltar a tabela (%)', 100], ['cartao.parcelas', 'Parcelas no cartão (padrão)', 1], ['financiamento.jurosMes', 'Juros do financiamento (% ao mês)', 100]]],
     ['Taxas do cartão · Cielo com antecipação D+1 (%)', [['cartao.debito', 'Débito', 100], ...Array.from({ length: 18 }, (_, i) => [`cartao.taxas.${i + 1}`, i ? `Crédito ${i + 1}x` : 'Crédito à vista', 100])]],
     ['Semáforo do preço (R$/Wp)', [['semaforo.verdeAte', 'Verde até (R$/Wp)', 1], ['semaforo.amareloAte', 'Amarelo até (R$/Wp)', 1], ['semaforo.referencia', 'Média do mercado (R$/Wp)', 1]]],
+    ['Semáforo do microinversor (R$/Wp)', [['semaforoMicro.verdeAte', 'Verde até (R$/Wp)', 1], ['semaforoMicro.amareloAte', 'Amarelo até (R$/Wp)', 1], ['semaforoMicro.referencia', 'Referência micro (R$/Wp)', 1]]],
     ['Serviços avulsos', [['manutencaoPorPlaca', 'Manutenção por placa (R$)', 1], ['margemAvulso', 'Margem de ampliação e troca (%)', 100]]],
     ['Robô Belenergy', [['kwpMaxKit', 'kWp máximo por kit (acima disso cota kits iguais)', 1]]],
     ['Conversão e retorno', [['tarifaKwh', 'Tarifa padrão (R$/kWh)', 1], ['margemGeracao', 'Margem de geração (%)', 100], ['perdaOrientacao', 'Perda de segurança da orientação (%)', 100], ['reajusteAnual', 'Reajuste ao ano (%)', 100], ['simultaneidade', 'Simultaneidade (%)', 100], ['validadeDias', 'Validade da cotação (dias)', 1], ['manutencaoAnual', 'Manutenção/ano (R$)', 1], ['pr', 'PR (eficiência)', 1], ['degradacaoAnual', 'Degradação das placas ao ano (%)', 100], ['taxaDesconto', 'Taxa do VPL (%)', 100], ['fioB.valorKwh', 'Fio B (R$/kWh)', 1]]],

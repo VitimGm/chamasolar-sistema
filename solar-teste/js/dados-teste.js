@@ -65,6 +65,9 @@
 
     // Semáforo de mercado (R$/Wp) — média nacional residencial 1º tri 2026: R$ 2,45
     semaforo: { verdeAte: 2.60, amareloAte: 3.00, referencia: 2.45 },
+    // Microinversor: régua própria. Vendas da Chama com micro de 5 a 10 kWp (Groner 2025–26): mediana R$ 2,52/Wp, metade entre 2,41 e 2,60;
+    // com inversor string no mesmo porte: mediana 2,37. O micro custa mais no kit (placa a placa).
+    semaforoMicro: { verdeAte: 2.65, amareloAte: 2.90, referencia: 2.54 },
 
     // Economia
     tarifaKwh: 0.98,                    // CPFL com impostos — TESTE

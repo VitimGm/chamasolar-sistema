@@ -187,7 +187,7 @@
     }
     const totalFinal = total * (1 - desconto);
     const rsPorWp = totalFinal / (entrada.kwp * 1000);
-    const sem = p.semaforo;
+    const sem = (entrada.micro && p.semaforoMicro) || p.semaforo; // micro tem régua própria
     const cor = rsPorWp <= sem.verdeAte ? 'verde' : rsPorWp <= sem.amareloAte ? 'amarelo' : 'vermelho';
     // O desconto sai inteiro da nota da Chama Solar (o kit direto tem preço fixo do distribuidor)
     const base = entrada.kitFaturadoDireto ? totalFinal - K : totalFinal;
@@ -205,7 +205,7 @@
       precoCheio: arred(total), descontoPct: desconto, precoFinal: arred(totalFinal),
       notaChamaSolar: arred(base),
       kitDireto: entrada.kitFaturadoDireto ? arred(K) : 0,
-      rsPorWp: arred(rsPorWp, 2), semaforo: cor,
+      rsPorWp: arred(rsPorWp, 2), semaforo: cor, semaforoRef: { ...sem, micro: !!(entrada.micro && p.semaforoMicro) },
       lucroLiquido: arred(totalFinal * margem + (totalFinal * rs - total * desconto)),
       decomp: Object.fromEntries(Object.entries(decomp).map(([k, v]) => [k, arred(v)])),
     };
@@ -298,7 +298,7 @@
     const relacao = inversor.potenciaKw ? kwpReal / inversor.potenciaKw : 0;
     // frete que já veio dentro do valor do kit (entrega da Belenergy ou kit digitado com frete incluso) não entra de novo
     const freteNoKit = freteDentroDoKit(k);
-    const ent = { ...orc, kit: k.valorKit, placas, kwp: kwpReal, freteNoKit }, groner = precoGroner(ent, p);
+    const ent = { ...orc, kit: k.valorKit, placas, kwp: kwpReal, freteNoKit, micro: /micro/i.test(`${k.inversor.tipo || ''} ${k.nivel || ''} ${k.inversor.nome || ''}`) }, groner = precoGroner(ent, p);
     const preco = precificar({ ...ent, precoAlvo: precoAlvoDe(orc, k.nivel, groner) }, p);
     const eco = economia({ ...orc, geracaoMes, investimento: preco.precoFinal, anoInicio: p.anoBase }, p);
     const areaM2 = arred(placas * modulo.areaM2, 1);
@@ -322,7 +322,7 @@
       const kit = arred(
         dim.placas * modulo.preco + inv.inversor.preco + dim.placas * catalogo.estrutura[orc.telhado] + (bateria ? bateria.preco : 0)
       );
-      const ent = { ...orc, kit, placas: dim.placas, kwp: dim.kwpReal }, groner = precoGroner(ent, p);
+      const ent = { ...orc, kit, placas: dim.placas, kwp: dim.kwpReal, micro: /micro/i.test(`${nivel.nome || ''} ${invs.map((i) => i.tipo || i.nome || '').join(' ')}`) }, groner = precoGroner(ent, p);
       const preco = precificar({ ...ent, precoAlvo: precoAlvoDe(orc, nivel.nome, groner) }, p);
       const eco = economia({ ...orc, geracaoMes: dim.geracaoMes, investimento: preco.precoFinal, anoInicio: p.anoBase }, p);
       const areaM2 = arred(dim.placas * modulo.areaM2, 1);
