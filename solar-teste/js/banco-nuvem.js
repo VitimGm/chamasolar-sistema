@@ -161,7 +161,7 @@
     trazer(o) { if (!orcs.some((x) => x.id === o.id)) orcs.unshift(o); return o; },
     /* documentos e fotos de cada cliente (Storage privado sol-arquivos) */
     async arquivosCliente(orc) { return api('sol_cliente_arquivos?select=id,pasta,nome,caminho,tipo,tamanho,criado,origem&orc_codigo=eq.' + encodeURIComponent(orc) + '&order=pasta.asc,criado.asc'); },
-    async linkArquivo(caminho) { const t = await token(); const r = await fetch(SB + '/storage/v1/object/sign/sol-arquivos/' + caminho.split('/').map(encodeURIComponent).join('/'), { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ expiresIn: 3600 }) }); const j = await r.json(); if (!r.ok) throw new Error(j.message || 'sem link'); return SB + '/storage/v1' + j.signedURL; },
+    async linkArquivo(caminho, validade = 3600) { const t = await token(); const r = await fetch(SB + '/storage/v1/object/sign/sol-arquivos/' + caminho.split('/').map(encodeURIComponent).join('/'), { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ expiresIn: validade }) }); const j = await r.json(); if (!r.ok) throw new Error(j.message || 'sem link'); return SB + '/storage/v1' + j.signedURL; },
     async enviarArquivo(orc, pasta, arq) {
       const t = await token(), limpo = (x) => String(x).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9._ -]+/g, '').replace(/\s+/g, '_').slice(0, 90) || 'arquivo';
       const caminho = `${orc}/${limpo(pasta)}/${Date.now().toString(36)}_${limpo(arq.name)}`;

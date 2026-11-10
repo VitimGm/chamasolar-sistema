@@ -335,3 +335,13 @@ body.com-barra .jarvis-bt { bottom: 96px; }
 .us-g-res .ok b { color: var(--verde-claro, #4cd07d); } .us-g-res .meio b { color: #ffc24d; } .us-g-res .ruim b { color: var(--laranja); }
 @media (max-width: 560px) { .us-g-res { grid-template-columns: 1fr 1fr; } .us-g-res b { font-size: 18px; } }
 @media (max-width: 560px) { .us-g-barras { height: 150px; gap: 1px; } .us-g-barras button em { font-size: 9px; } }
+
+/* relatório de vendas: barras por mês */
+.vd-barras { display: flex; align-items: flex-end; gap: 6px; height: 150px; padding: 18px 0 20px; margin-top: 6px; }
+.vd-barras a { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; position: relative; color: inherit; text-decoration: none; }
+.vd-barras a i { display: block; border-radius: 6px 6px 2px 2px; background: var(--laranja); }
+.vd-barras a:hover i { opacity: .8; }
+.vd-barras a b { text-align: center; font-size: 12px; margin-bottom: 3px; }
+.vd-barras a em { position: absolute; bottom: -18px; left: 0; right: 0; text-align: center; font-style: normal; font-size: 11px; color: var(--texto-3); white-space: nowrap; }
+.vd-tab th, .vd-tab td { padding: 8px 12px 8px 0; vertical-align: top; }
+.vd-tab td:last-child, .vd-tab th:last-child { padding-right: 0; }

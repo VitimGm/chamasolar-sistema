@@ -202,17 +202,19 @@
       ${ops.length ? `<p class="mini" style="margin:8px 0 4px">Qual opção ele comprou?</p><div style="display:grid;gap:6px">${ops.map((op, i) => `<label class="entre" style="border:1px solid var(--linha);border-radius:12px;padding:10px;cursor:pointer;gap:8px"><span><input type="radio" name="gOp" value="${i}" ${i === esc0 ? 'checked' : ''}> <b>${esc(op.nivel)}</b> · ${n(op.dim.kwpReal, 2)} kWp · ${op.dim.placas}× ${op.modulo.potenciaW} W</span><b>${brl(op.preco.precoFinal)}</b></label>`).join('')}</div>` : '<p class="mini" style="margin:8px 0">Este orçamento não tem opções calculadas. Informe o valor fechado:</p>'}
       <div class="grade g2" style="margin-top:10px"><label class="campo"><span>Valor fechado (R$)</span><input type="number" step="any" id="gValor" placeholder="${ops[esc0] ? Math.round(ops[esc0].preco.precoFinal) : ''}"></label>
         <label class="campo"><span>Forma de pagamento</span><select id="gPag">${FP.map(([v, t]) => `<option value="${v}" ${o.formaPagamento === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label></div>
-      <label class="campo" style="margin-top:6px"><span>Observação (opcional)</span><input type="text" id="gObs" placeholder="ex.: desconto de 3% à vista, instala em dezembro"></label>
+      <div class="grade g2" style="margin-top:6px"><label class="campo"><span>Data do fechamento</span><input type="date" id="gData" value="${esc(String(o.ganhoEm || new Date(Date.now() - 3 * 3600e3).toISOString()).slice(0, 10))}" max="${new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10)}"></label>
+        <label class="campo"><span>Observação (opcional)</span><input type="text" id="gObs" placeholder="ex.: desconto de 3% à vista"></label></div>
+      <p class="mini" style="margin:4px 0 0">Fechou antes e esqueceu de marcar? Escolha a data real: a venda entra no mês certo do relatório.</p>
       <button class="btn sol" id="gOk" style="width:100%;margin-top:12px">Confirmar: cliente fechou</button>`);
     ov.querySelectorAll('[name=gOp]').forEach((r) => r.onchange = () => { const op = ops[+r.value]; if (op) ov.querySelector('#gValor').placeholder = Math.round(op.preco.precoFinal); });
     ov.querySelector('#gOk').onclick = () => {
       const i = +((ov.querySelector('[name=gOp]:checked') || {}).value ?? esc0); o.opcaoEscolhida = i; o.formaPagamento = ov.querySelector('#gPag').value;
-      o.status = 'ganho'; o.ganhoEm = o.ganhoEm || new Date().toISOString(); if (!o.enviadoEm) o.enviadoEm = o.ganhoEm;
-      const c = compraDe(o) || { data: new Date().toISOString(), descricao: 'Venda', valorTotal: 0, formaPagamento: o.formaPagamento };
-      const vm = +ov.querySelector('#gValor').value; if (vm > 0) c.valorTotal = vm; c.formaPagamento = o.formaPagamento; if (ov.querySelector('#gObs').value.trim()) c.obs = ov.querySelector('#gObs').value.trim();
+      const dt = ov.querySelector('#gData').value; o.status = 'ganho'; o.ganhoEm = dt ? dt + 'T12:00:00.000Z' : o.ganhoEm || new Date().toISOString(); if (!o.enviadoEm || o.enviadoEm > o.ganhoEm) o.enviadoEm = o.ganhoEm;
+      const c = compraDe(o) || { data: o.ganhoEm, descricao: 'Venda', valorTotal: 0, formaPagamento: o.formaPagamento };
+      const vm = +ov.querySelector('#gValor').value; if (vm > 0) c.valorTotal = vm; c.data = o.ganhoEm; c.formaPagamento = o.formaPagamento; if (ov.querySelector('#gObs').value.trim()) c.obs = ov.querySelector('#gObs').value.trim();
       o.compras = [c, ...(o.compras || []).slice(1)]; o.valorFechado = c.valorTotal;
-      o.posVenda = { ...(o.posVenda || {}), contrato: (o.posVenda || {}).contrato || new Date().toISOString().slice(0, 10) };
-      o.arquivado = false; B.salvar(o); B.interacao && B.interacao(o.id, 'nota', `Fechou: ${c.descricao || ''} · ${brl(c.valorTotal)} · ${o.formaPagamento}`);
+      o.posVenda = { ...(o.posVenda || {}), contrato: (o.posVenda || {}).contrato || o.ganhoEm.slice(0, 10) };
+      o.arquivado = false; B.salvar(o); B.interacao && B.interacao(o.id, 'nota', `Fechou em ${o.ganhoEm.slice(0, 10).split('-').reverse().join('/')}: ${c.descricao || ''} · ${brl(c.valorTotal)} · ${o.formaPagamento}`);
       ov.remove(); toast(`🎉 Venda registrada: ${brl(c.valorTotal)}. ${o.nome} já está em Clientes, com o pós-venda começando.`); depois && depois();
     };
   }
@@ -282,6 +284,7 @@
           <div><h1 style="font-size:clamp(22px,4vw,30px);margin:0">${esc(o.nome)}</h1>
             <div class="sutil">${esc(o.id)} · ${esc(o.cidade)} · origem ${esc(o.origem || '—')} · criado ${tempoRel(o.criadoEm)}</div>
             <div class="linha-h" style="margin-top:8px"><select id="status" style="width:auto;padding:7px 10px;font-size:14px">${STATUS.map(([s, r]) => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${r}</option>`).join('')}</select>${o.status !== 'ganho' ? '<button class="btn sol pequeno" id="fGanho">✅ Fechou</button>' : ''}${o.status !== 'perdido' && o.status !== 'ganho' ? '<button class="btn vidro pequeno" id="fPerda">❌ Perdeu</button>' : ''}<button class="btn vidro pequeno" id="fNova" title="Outra proposta para o mesmo cliente (ex.: outro tamanho, bateria, outro endereço)">＋ Nova proposta</button><button class="btn vidro pequeno" id="fExcluir">🗑 Excluir</button>
+            ${o.status === 'ganho' ? `<label class="mini" style="display:inline-flex;align-items:center;gap:6px">fechado em <input type="date" id="fGanhoEm" value="${esc(String(o.ganhoEm || '').slice(0, 10))}" max="${new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10)}" style="width:auto;padding:5px 8px;font-size:13px"></label>` : ''}
             ${o.status === 'perdido' ? `<input type="text" id="motivo" placeholder="Motivo da perda" value="${esc(o.motivoPerda)}" style="flex:1;min-width:180px;padding:7px 10px;font-size:14px">` : ''}</div></div>
         </div>
         <div class="proxima" style="margin-top:14px"><div class="ic">${acao.icone}</div><div><span class="rotulo" style="color:var(--sol)">Próxima melhor ação</span><div style="font-weight:600;margin-top:4px">${esc(acao.texto)}</div></div></div>${alertasPrecoHtml(o)}
@@ -313,7 +316,7 @@
           <button class="btn vidro pequeno" id="docVideo">🎥 Vídeo da proposta${o.videoApresentacao ? ' ✓' : ''}</button>
           <span id="anexosBel"></span>
           ${(o.kitsFechados || []).filter((k) => k && /WEB/.test(k.numeroBelenergy || '')).map((k) => `<span class="chip">${esc(k.nivel)}: ${esc(k.numeroBelenergy)}</span>`).join(' ')}
-          ${o.status === 'ganho' ? '<button class="btn vidro pequeno" id="virarUsina">Cadastrar usina</button>' : ''}
+          ${o.status === 'ganho' ? '<button class="btn sol pequeno" id="docOS">🛠️ Ordem de serviço (instalador)</button><button class="btn vidro pequeno" id="virarUsina">Cadastrar usina</button>' : ''}
         </div>
         <details style="margin-top:10px"><summary class="link">Dados do cliente para contrato e procuração</summary>
           <div class="grade g2" style="margin-top:10px">${[['documento', 'CPF ou CNPJ'], ['rua', 'Rua / estrada'], ['numero', 'Número'], ['bairro', 'Bairro'], ['cep', 'CEP'], ['cidade', 'Cidade (se diferente)'], ['instalacao', 'Nº da instalação na CPFL'], ['rg', 'RG'], ['estadoCivil', 'Estado civil'], ['profissao', 'Profissão'], ['condicao', 'Condição de pagamento (Anexo 1)'], ['garantiaModulo', 'Garantia do módulo (anos, ficha técnica)'], ['garantiaEficiencia', 'Garantia de desempenho do módulo (anos)'], ['degradacao', 'Perda de potência ao ano (ex.: 0,4%)'], ['garantiaInversor', 'Garantia do inversor (anos, ficha técnica)']]
@@ -377,6 +380,7 @@
       el.querySelectorAll('[data-anexo]').forEach((b) => b.onclick = async () => { const a = await B.anexo(b.dataset.anexo); if (!a) return toast('Anexo não encontrado'); const bin = atob(a.conteudo_b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); window.open(URL.createObjectURL(new Blob([u8], { type: a.tipo })), '_blank'); }); }).catch(() => {});
     $('#docPdf').onclick = () => { if (!podeEnviar(o)) return; Documentos.proposta(o, p, o.status !== 'novo' ? link : null); B.interacao(o.id, 'nota', 'Gerou a proposta em PDF'); };
     if ($('#enviarZap')) $('#enviarZap').addEventListener('click', (e) => { if (!podeEnviar(o)) e.preventDefault(); });
+    if ($('#docOS')) $('#docOS').onclick = () => ordemServico(o, p);
     if ($('#docLaudo')) $('#docLaudo').onclick = () => { Documentos.laudo(o, p); B.interacao(o.id, 'nota', 'Gerou o laudo técnico do 3D'); };
     $('#docVideo').onclick = () => { if (!window.Apresentacao) return toast('Recarregue a página para usar o vídeo.'); if (!podeEnviar(o)) return; Apresentacao.abrir(o, { aoSalvar: (x) => { B.salvar(x); B.interacao(o.id, 'nota', 'Colocou o vídeo de apresentação na proposta'); toast('Vídeo na proposta ✓'); } }); };
     $('#docContrato').onclick = () => Documentos.contrato(o, p);
@@ -443,7 +447,8 @@
     $('#fNova').onclick = () => { const n = novaPropostaDe(o); toast(`Nova proposta para ${o.nome}: os dados do cliente já vieram`); location.hash = '#novo'; void n; };
     $('#fExcluir').onclick = (ev) => { const b = ev.currentTarget; if (!b.dataset.c) { b.dataset.c = 1; b.textContent = 'Tocar de novo para excluir'; setTimeout(() => { if (b.isConnected) { b.textContent = '🗑 Excluir'; delete b.dataset.c; } }, 4000); return; }
       o.apagado = true; o.apagadoEm = new Date().toISOString(); B.salvar(o); toast(`${o.nome} foi para a lixeira (Arquivo → Lixeira). Dá para restaurar.`); location.hash = '#painel'; };
-    $('#status').onchange = (e) => { o.status = e.target.value; if (o.status === 'perdido') { const q = new Date(Date.now() + 90 * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `Retomar ${o.nome} (perdido há 90 dias: preço e momento mudam)`, ref: o.id, quando: q.toISOString() }); toast('Perdido: retomada agendada em 90 dias. Anote o motivo.'); } if (o.status !== 'novo' && !o.enviadoEm) o.enviadoEm = new Date().toISOString(); if (o.status === 'ganho' && !o.ganhoEm) o.ganhoEm = new Date().toISOString(); if (o.status === 'ganho' && !(o.compras || []).length) { const c = compraDe(o); if (c) { o.compras = [c]; o.valorFechado = c.valorTotal; } } B.salvar(o); ficha(id); };
+    if ($('#fGanhoEm')) $('#fGanhoEm').onchange = (e) => { if (!e.target.value) return; o.ganhoEm = e.target.value + 'T12:00:00.000Z'; if (o.compras && o.compras[0]) o.compras[0].data = o.ganhoEm; B.salvar(o); B.interacao(o.id, 'nota', 'Data do fechamento ajustada para ' + e.target.value.split('-').reverse().join('/')); toast('Data do fechamento salva: ' + e.target.value.split('-').reverse().join('/')); };
+    $('#status').onchange = (e) => { if (e.target.value === 'ganho' && o.status !== 'ganho') { e.target.value = o.status; fecharGanho(o, () => ficha(id)); return; } o.status = e.target.value; if (o.status === 'perdido') { const q = new Date(Date.now() + 90 * 864e5); q.setHours(9, 0, 0, 0); novoLembrete({ texto: `Retomar ${o.nome} (perdido há 90 dias: preço e momento mudam)`, ref: o.id, quando: q.toISOString() }); toast('Perdido: retomada agendada em 90 dias. Anote o motivo.'); } if (o.status !== 'novo' && !o.enviadoEm) o.enviadoEm = new Date().toISOString(); if (o.status === 'ganho' && !o.ganhoEm) o.ganhoEm = new Date().toISOString(); if (o.status === 'ganho' && !(o.compras || []).length) { const c = compraDe(o); if (c) { o.compras = [c]; o.valorFechado = c.valorTotal; } } B.salvar(o); ficha(id); };
     const mot = $('#motivo'); if (mot) mot.onchange = (e) => { o.motivoPerda = e.target.value; B.salvar(o); toast('Motivo salvo'); };
   }
 
@@ -1473,6 +1478,147 @@
       else formUsina(u);
     });
   }
+  /* ======================= RELATÓRIO DE VENDAS (por período, mês a mês) ======================= */
+  const vF = { de: null, ate: null, busca: '' };
+  function vendaDe(o) {
+    const c = (o.compras || [])[0] || {};
+    let op = null; try { const ops = C.opcoes(o, P()); op = ops[o.opcaoEscolhida ?? 1] || ops[0]; } catch { /* sem consumo */ }
+    const kwp = (o.compras || []).reduce((t, x) => t + (+x.kwp || 0), 0) || (op ? op.dim.kwpReal : 0);
+    const valor = (o.compras || []).reduce((t, x) => t + (+x.valorTotal || 0), 0) || +o.valorFechado || (op ? op.preco.precoFinal : 0);
+    const data = String(o.ganhoEm || (o.aceite && o.aceite.em) || c.data || o.atualizadoEm || o.criadoEm || '').slice(0, 10);
+    return { o, data, semData: !o.ganhoEm, kwp, valor, placas: c.placas || (op ? op.dim.placas : 0), placaW: c.placaW || (op ? op.modulo.potenciaW : 0), inversor: c.inversor || (op && op.inversor ? op.inversor.nome : ''), pagamento: c.formaPagamento || o.formaPagamento || '' };
+  }
+  function vendasPag() {
+    const hoje = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+    if (!vF.ate) vF.ate = hoje.slice(0, 7);
+    if (!vF.de) { const d = new Date(+hoje.slice(0, 4), +hoje.slice(5, 7) - 12, 1); vF.de = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+    const todos = (B.todos ? B.todos() : B.orcamentos()).filter((o) => !o.apagado && !AVULSO_V(o));
+    const vendas = todos.filter((o) => o.status === 'ganho').map(vendaDe).filter((v) => v.data && v.data.slice(0, 7) >= vF.de && v.data.slice(0, 7) <= vF.ate)
+      .filter((v) => !vF.busca || [v.o.nome, v.o.cidade, v.o.origem, v.inversor].join(' ').toLowerCase().includes(vF.busca.toLowerCase()))
+      .sort((a, b) => b.data.localeCompare(a.data));
+    const meses = {}; vendas.forEach((v) => { (meses[v.data.slice(0, 7)] = meses[v.data.slice(0, 7)] || []).push(v); });
+    const MES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+    const nomeMes = (k) => { const t = `${MES[+k.slice(5, 7) - 1]} de ${k.slice(0, 4)}`; return t[0].toUpperCase() + t.slice(1); };
+    const tot = (l) => ({ q: l.length, kwp: l.reduce((t, v) => t + v.kwp, 0), valor: l.reduce((t, v) => t + v.valor, 0) });
+    const T = tot(vendas), chaves = Object.keys(meses).sort().reverse();
+    const maxV = Math.max(...chaves.map((k) => tot(meses[k]).valor), 1);
+    const todosMeses = []; for (let d = new Date(+vF.de.slice(0, 4), +vF.de.slice(5, 7) - 1, 1), fim = vF.ate; ; d.setMonth(d.getMonth() + 1)) { const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; if (k > fim || todosMeses.length > 120) break; todosMeses.push(k); }
+    const PAG = { avista: 'À vista', financiamento: 'Financiamento', cartao: 'Cartão', entrada: 'Entrada + parcelas' };
+    const linhaV = (v) => `<tr><td>${v.data.split('-').reverse().join('/')}${v.semData ? ' <span class="mini" title="Sem data de fechamento: usei a data do aceite ou da compra">≈</span>' : ''}</td><td><a href="#lead-${esc(v.o.id)}" style="color:inherit"><b>${esc(v.o.nome)}</b></a><br><span class="mini">${esc(v.o.cidade || '')}${v.o.origem ? ' · ' + esc(v.o.origem) : ''}</span></td>
+      <td class="v">${n(v.kwp, 2)} kWp<br><span class="mini">${v.placas ? v.placas + '× ' + (v.placaW || '') + ' W' : ''}</span></td><td class="mini">${esc(String(v.inversor || '').replace(/INVERSOR( DE CORRENTE)?/i, '').trim().slice(0, 42))}</td><td class="mini">${esc(PAG[v.pagamento] || v.pagamento || '')}</td><td class="v"><b>${brl(v.valor)}</b></td></tr>`;
+    app.innerHTML = `${cabCelular()}<div class="cab entra"><div><h1>Relatório de vendas</h1><p class="sutil">Clientes fechados por período, mês a mês</p></div>
+        <div class="linha-h"><button class="btn vidro" id="vRetro">＋ Dar ganho com data antiga</button><button class="btn vidro" id="vCsv">⬇ Planilha (CSV)</button><button class="btn sol" id="vImp">🖨 Imprimir / PDF</button></div></div>
+      <div class="painel entra us-barra" style="grid-template-columns:auto auto 1fr"><label class="campo"><span>De</span><input type="month" id="vDe" value="${vF.de}"></label><label class="campo"><span>Até</span><input type="month" id="vAte" value="${vF.ate}" max="${hoje.slice(0, 7)}"></label>
+        <label class="campo"><span>Buscar</span><input type="search" id="vBusca" placeholder="cliente, cidade, origem, inversor" value="${esc(vF.busca)}"></label></div>
+      <div class="chips" style="margin:8px 0">${[['Este mês', 0, 0], ['Mês passado', 1, 1], ['Últimos 3 meses', 2, 0], ['Últimos 12 meses', 11, 0], ['Este ano', 'ano', 0]].map(([r, a, b]) => `<button class="chip" data-vper="${a}|${b}">${r}</button>`).join('')}</div>
+      <div class="kpis entra"><div class="kpi destaque"><span class="rotulo">Vendido no período</span><b>${brl(T.valor)}</b><span class="sutil">${T.q} contrato(s)</span></div>
+        <div class="kpi"><span class="rotulo">kWp vendidos</span><b>${n(T.kwp, 1)}</b><span class="sutil">${T.q ? n(T.kwp / T.q, 1) + ' kWp por venda' : '–'}</span></div>
+        <div class="kpi"><span class="rotulo">Ticket médio</span><b>${T.q ? brl(T.valor / T.q) : '–'}</b><span class="sutil">${T.kwp ? brl(T.valor / T.kwp / 1000, 2) + ' por Wp' : ''}</span></div>
+        <div class="kpi"><span class="rotulo">Média por mês</span><b>${chaves.length ? brl(T.valor / chaves.length) : '–'}</b><span class="sutil">${chaves.length} mês(es) com venda</span></div></div>
+      ${todosMeses.length > 1 ? `<div class="painel entra" style="margin-top:12px"><span class="rotulo">Vendas por mês (valor)</span><div class="vd-barras">${todosMeses.map((k) => { if (!meses[k]) return `<a title="${nomeMes(k)}: sem venda"><b>0</b><i style="height:2%;opacity:.3"></i><em>${MES[+k.slice(5, 7) - 1].slice(0, 3)}/${k.slice(2, 4)}</em></a>`; const t = tot(meses[k]); return `<a href="#vm-${k}" title="${nomeMes(k)}: ${brl(t.valor)} · ${t.q} venda(s) · ${n(t.kwp, 1)} kWp"><b>${t.q}</b><i style="height:${Math.max(t.valor / maxV * 100, 3)}%"></i><em>${MES[+k.slice(5, 7) - 1].slice(0, 3)}/${k.slice(2, 4)}</em></a>`; }).join('')}</div></div>` : ''}
+      ${chaves.map((k) => { const t = tot(meses[k]); return `<div class="painel entra" id="vm-${k}" style="margin-top:12px"><div class="entre"><h2 style="margin:0">${nomeMes(k)}</h2><span><b>${brl(t.valor)}</b> <span class="mini">· ${t.q} venda(s) · ${n(t.kwp, 1)} kWp</span></span></div>
+          <div style="overflow-x:auto"><table class="vd-tab" style="margin-top:8px"><tr><th>Fechou em</th><th>Cliente</th><th class="v">Sistema</th><th>Inversor</th><th>Pagamento</th><th class="v">Valor</th></tr>${meses[k].map(linhaV).join('')}</table></div></div>`; }).join('') || '<div class="painel" style="margin-top:12px"><p class="sutil">Nenhuma venda nesse período.</p></div>'}
+      <p class="mini" style="margin:10px 2px">≈ = venda sem data de fechamento registrada (usei a data do aceite, da compra ou da última alteração). Abra o cliente e acerte em "fechado em".</p>`;
+    const per = (de, ate) => { vF.de = de; vF.ate = ate; vendasPag(); };
+    $('#vDe').onchange = (e) => per(e.target.value || vF.de, vF.ate); $('#vAte').onchange = (e) => per(vF.de, e.target.value || vF.ate);
+    const bx = $('#vBusca'); bx.oninput = () => { vF.busca = bx.value; clearTimeout(avDeb); avDeb = setTimeout(() => { vendasPag(); const c = $('#vBusca'); c.focus(); c.setSelectionRange(c.value.length, c.value.length); }, 300); };
+    app.querySelectorAll('[data-vper]').forEach((b) => b.onclick = () => { const [a, z] = b.dataset.vper.split('|'), ym = (k) => { const d = new Date(+hoje.slice(0, 4), +hoje.slice(5, 7) - 1 - k, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }; if (a === 'ano') per(hoje.slice(0, 4) + '-01', hoje.slice(0, 7)); else per(ym(+a), ym(+z)); });
+    $('#vCsv').onclick = () => {
+      const q = (x) => '"' + String(x ?? '').replace(/"/g, '""') + '"', num = (v, c = 2) => (Number(v) || 0).toFixed(c).replace('.', ',');
+      const csv = ['Mês;Fechou em;Cliente;Cidade;Origem;kWp;Placas;Placa (W);Inversor;Pagamento;Valor (R$)', ...vendas.map((v) => [v.data.slice(0, 7), v.data.split('-').reverse().join('/'), q(v.o.nome), q(v.o.cidade), q(v.o.origem), num(v.kwp), v.placas || '', v.placaW || '', q(v.inversor), q(PAG[v.pagamento] || v.pagamento), num(v.valor)].join(';'))].join('\r\n');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })); a.download = `vendas_${vF.de}_a_${vF.ate}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    };
+    $('#vImp').onclick = () => {
+      const corpo = `<h1>Relatório de vendas</h1><p class="mini">De ${nomeMes(vF.de)} a ${nomeMes(vF.ate)}${vF.busca ? ` · filtro “${esc(vF.busca)}”` : ''}</p>
+        <table><tr><td>Vendido no período</td><td class="v"><b>${brl(T.valor)}</b></td></tr><tr><td>Contratos</td><td class="v">${T.q}</td></tr><tr><td>kWp vendidos</td><td class="v">${n(T.kwp, 1)} kWp</td></tr><tr><td>Ticket médio</td><td class="v">${T.q ? brl(T.valor / T.q) : '–'}</td></tr></table>
+        ${chaves.map((k) => { const t = tot(meses[k]); return `<h2>${nomeMes(k)} · ${brl(t.valor)} · ${t.q} venda(s) · ${n(t.kwp, 1)} kWp</h2><table><tr><th>Data</th><th>Cliente</th><th>Cidade</th><th class="v">kWp</th><th>Pagamento</th><th class="v">Valor</th></tr>${meses[k].map((v) => `<tr><td>${v.data.split('-').reverse().join('/')}</td><td>${esc(v.o.nome)}</td><td>${esc(v.o.cidade || '')}</td><td class="v">${n(v.kwp, 2)}</td><td>${esc(PAG[v.pagamento] || v.pagamento || '')}</td><td class="v">${brl(v.valor)}</td></tr>`).join('')}</table>`; }).join('')}`;
+      Documentos.abrir(Documentos.pagina('Relatório de vendas', corpo));
+    };
+    $('#vRetro').onclick = () => {
+      const cand = todos.filter((o) => o.status !== 'ganho');
+      const ov = modal(`<div class="entre"><span class="rotulo">Dar ganho com data antiga</span><button class="link" data-fechar>fechar</button></div>
+        <p class="mini" style="margin:6px 0">Procure o cliente que você fechou e não marcou (inclui o Arquivo). Depois escolha a opção, o valor e a data real do fechamento.</p>
+        <input type="search" id="rtB" placeholder="nome, cidade ou telefone" style="width:100%"><div id="rtL" style="margin-top:8px;max-height:52vh;overflow:auto"></div>`);
+      const lista = () => { const q = ov.querySelector('#rtB').value.toLowerCase().replace(/\s+/g, ' ').trim(), qd = q.replace(/\D/g, '');
+        const l = cand.filter((o) => !q || String(o.nome || '').toLowerCase().includes(q) || String(o.cidade || '').toLowerCase().includes(q) || (qd.length >= 4 && String(o.whatsapp || '').replace(/\D/g, '').includes(qd))).slice(0, 40);
+        ov.querySelector('#rtL').innerHTML = l.map((o) => `<button class="entre" data-rt="${esc(o.id)}" style="width:100%;text-align:left;background:none;border:0;border-top:1px dashed var(--linha);padding:9px 2px;color:inherit;font:inherit;cursor:pointer"><span><b>${esc(o.nome)}</b> <span class="mini">${esc(o.cidade || '')} · ${esc(o.id)}</span></span><span class="mini">${o.arquivado ? 'arquivo · ' : ''}${esc((STATUS.find((x) => x[0] === o.status) || [, o.status])[1])}</span></button>`).join('') || '<p class="sutil">Ninguém encontrado.</p>';
+        ov.querySelectorAll('[data-rt]').forEach((b) => b.onclick = () => { const o = cand.find((x) => x.id === b.dataset.rt); ov.remove(); if (o) { o.arquivado = false; fecharGanho(o, () => vendasPag()); } }); };
+      ov.querySelector('#rtB').oninput = lista; lista(); ov.querySelector('#rtB').focus();
+    };
+  }
+  const AVULSO_V = (o) => !!o && (o.tipo === 'servico' || o.tipo === 'manutencao' || o.tipo === 'ampliacao');
+
+  /* ======================= ORDEM DE SERVIÇO para o instalador (sem nenhum preço) ======================= */
+  async function ordemServico(o, p) {
+    const c = (o.compras || [])[0] || compraDe(o) || {};
+    const p3 = o.projeto3d || {}, r = p3.resultado || {}, M = (p3.layout && p3.layout.modulo) || {};
+    const k = o.contrato || {}, e = Documentos.empresaDe(p);
+    let op = null; try { const ops = C.opcoes(o, P()); op = ops[o.opcaoEscolhida ?? 1] || ops[0]; } catch { /* sem consumo */ }
+    const end = [k.rua, k.numero ? 'nº ' + k.numero : '', k.bairro].filter(Boolean).join(', ');
+    const cidade = k.cidade || o.cidade || '', cep = k.cep || o.cep || '';
+    const enderecoTxt = [end, cidade, cep ? 'CEP ' + cep : ''].filter(Boolean).join(' · ') || p3.endereco || '';
+    const temGeo = Number.isFinite(+p3.lat) && Number.isFinite(+p3.lng) && Math.abs(+p3.lat) > 0.01;
+    const mapa = temGeo ? `https://www.google.com/maps/search/?api=1&query=${(+p3.lat).toFixed(6)},${(+p3.lng).toFixed(6)}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([end, cidade, cep].filter(Boolean).join(', '))}`;
+    const fone = String(o.whatsapp || '').replace(/\D/g, '');
+    const ar = arranjoDoOrc(o), num = 'OS-' + String(o.id || '').replace(/^ORC-?/i, '');
+    const placaNome = c.placa || (op && op.modulo && op.modulo.nome) || M.nome || '', placas = c.placas || r.placas || (op && op.dim.placas) || '', placaW = c.placaW || (op && op.modulo.potenciaW) || '';
+    const kwp = c.kwp || r.kwp || (op && op.dim.kwpReal) || 0, inv = c.inversor || (op && op.inversor && op.inversor.nome) || '';
+    const fm = window.Fichas ? Fichas.buscar('modulos', placaNome) : null, fi = window.Fichas ? Fichas.buscar('inversores', inv) : null;
+    // arquivos do cliente (projeto, visita técnica) com link válido por 7 dias
+    let anexos = []; try { const l = (await B.arquivosCliente(o.id)) || []; for (const a of l.filter((x) => /Projeto|Visita/i.test(x.pasta))) { try { anexos.push({ nome: a.nome, pasta: a.pasta, url: await B.linkArquivo(a.caminho, 7 * 86400) }); } catch { /* sem link */ } } } catch { /* sem nuvem */ }
+    const linhaF = (rot, v, un = '') => (v != null && v !== '' ? `<tr><td>${rot}</td><td class="v">${typeof v === 'number' ? n(v, v % 1 ? 2 : 0) : esc(v)}${un}</td></tr>` : '');
+    const fichaMod = fm ? `<table>${linhaF('Potência', fm.potW || placaW, ' W')}${linhaF('Voc (circuito aberto)', fm.voc, ' V')}${linhaF('Vmp (máxima potência)', fm.vmp, ' V')}${linhaF('Isc (curto-circuito)', fm.isc, ' A')}${linhaF('Imp', fm.imp, ' A')}${linhaF('Coef. temperatura Voc', fm.coefVoc, ' %/°C')}${linhaF('Dimensões', fm.c && fm.l ? `${n(fm.c * (fm.c < 10 ? 1000 : 1))} × ${n(fm.l * (fm.l < 10 ? 1000 : 1))} mm` : null)}${linhaF('Peso', fm.peso, ' kg')}</table>` : M.c ? `<p class="mini">Dimensões usadas no projeto: ${n(M.c * 1000)} × ${n(M.l * 1000)} mm. Confira a ficha do fabricante.</p>` : '<p class="mini">Ficha da placa não cadastrada: confira o datasheet do fabricante.</p>';
+    const fichaInv = fi ? `<table>${linhaF('Tipo', fi.tipo === 'micro' ? 'Microinversor' : 'Inversor string')}${linhaF('Entradas MPPT', fi.mppts)}${linhaF('Strings por MPPT', fi.strPorMppt)}${linhaF('Entradas (micro)', fi.entradas)}${linhaF('Tensão máxima CC', fi.vMax, ' V')}${linhaF('Faixa MPPT', fi.vMinMppt && fi.vMaxMppt ? `${n(fi.vMinMppt)} a ${n(fi.vMaxMppt)} V` : null)}${linhaF('Corrente máx. por MPPT', fi.iMax, ' A')}${linhaF('Isc máx. por MPPT', fi.iscMax, ' A')}</table>` : '<p class="mini">Ficha do inversor não cadastrada: confira o datasheet do fabricante.</p>';
+    const mp = r.mppt, cab = Array.isArray(r.cabos) ? r.cabos : [];
+    const ponto = (az) => { const d = ((+az % 360) + 360) % 360; return ['Norte', 'Nordeste', 'Leste', 'Sudeste', 'Sul', 'Sudoeste', 'Oeste', 'Noroeste'][Math.round(d / 45) % 8]; };
+    const blocos = (r.porBloco || []).map((b) => `<tr><td>${esc(b.nome || 'Telhado')}</td><td>${ponto(b.az)} · ${n(Math.tan((b.incl || 0) * Math.PI / 180) * 100)}%</td><td class="v">${b.placas}</td></tr>`).join('');
+    const TEL = { ceramico: 'Telha cerâmica / colonial', fibrocimento: 'Fibrocimento', metalico: 'Telha metálica', laje: 'Laje', solo: 'Solo' };
+    const itens = (c.itens || []).filter((i) => i.nome);
+    const corpo = `<div class="entre" style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><h1 style="margin:0">Ordem de serviço · instalação</h1><b style="font:800 16pt Exo,sans-serif;color:#ff6700">${esc(num)}</b></div>
+      <p class="mini">Emitida em ${new Date().toLocaleDateString('pt-BR')}${o.ganhoEm ? ' · contrato de ' + new Date(o.ganhoEm).toLocaleDateString('pt-BR') : ''} · responsável: ${esc(D.empresa.vendedor || e.nome || 'Chama Solar')} (${esc(D.empresa.telefone || '')})</p>
+      <h2>Cliente e local da obra</h2>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:14px;align-items:start"><table>
+        <tr><td>Cliente</td><td><b>${esc(o.nome || '')}</b></td></tr>
+        ${fone ? `<tr><td>Telefone / WhatsApp</td><td>${esc(o.whatsapp)}</td></tr>` : ''}
+        <tr><td>Endereço</td><td>${enderecoTxt ? esc(enderecoTxt) : '<span class="lac">preencher em "Dados do cliente para contrato"</span>'}</td></tr>
+        ${k.instalacao ? `<tr><td>Nº da instalação (CPFL)</td><td>${esc(k.instalacao)}</td></tr>` : ''}
+        ${temGeo ? `<tr><td>Coordenadas</td><td>${(+p3.lat).toFixed(6)}, ${(+p3.lng).toFixed(6)}</td></tr>` : ''}
+        <tr><td>Mapa</td><td><a href="${mapa}">Abrir no Google Maps</a></td></tr>
+        <tr><td>Ligação</td><td>${esc({ mono: 'Monofásica', bi: 'Bifásica', tri: 'Trifásica' }[o.ligacao] || o.ligacao || '')}${o.trocaPadrao ? ' · <b>com troca do padrão de entrada</b>' : ''}</td></tr>
+        <tr><td>Telhado / estrutura</td><td>${esc(TEL[o.telhado] || o.telhado || '')}${o.fixacao ? ' · fixação ' + esc(o.fixacao) : ''}</td></tr></table>
+        <div class="qr" style="margin:0;flex-direction:column;text-align:center"><div id="qr"></div><span class="mini">Aponte a câmera<br>para abrir o mapa</span></div></div>
+      <h2>Sistema a instalar</h2>
+      <table><tr><td>Potência</td><td class="v"><b>${n(kwp, 2)} kWp</b></td></tr>
+        <tr><td>Placas</td><td class="v"><b>${placas}×</b> ${esc(placaNome)}${placaW ? ` (${placaW} W)` : ''}</td></tr>
+        <tr><td>Inversor</td><td class="v"><b>${esc(inv)}</b></td></tr>
+        ${c.numeroBelenergy ? `<tr><td>Pedido do kit (Belenergy)</td><td class="v">${esc(c.numeroBelenergy)}</td></tr>` : ''}</table>
+      ${itens.length ? `<h2>Lista de material do kit</h2><table><tr><th>Item</th><th class="v">Qtd</th></tr>${itens.map((i) => `<tr><td>${esc(i.nome)}${i.grupo ? ` <span class="mini">· ${esc(i.grupo)}</span>` : ''}</td><td class="v">${esc(String(i.qtd || ''))}</td></tr>`).join('')}</table><p class="mini">Confira o material na entrega e avise na hora se faltar algo.</p>` : ''}
+      <h2>Ficha técnica</h2><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div><b class="mini">PLACA</b>${fichaMod}</div><div><b class="mini">INVERSOR</b>${fichaInv}</div></div>
+      <h2>Layout das placas</h2>
+      ${p3.fotos && (p3.fotos.topo || p3.fotos.d3) ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0">${p3.fotos.topo ? `<figure style="margin:0"><img src="${p3.fotos.topo}" alt="Vista de cima" style="width:100%;border-radius:6px"><figcaption class="mini">Vista de cima</figcaption></figure>` : ''}${p3.fotos.d3 ? `<figure style="margin:0"><img src="${p3.fotos.d3}" alt="Vista 3D" style="width:100%;border-radius:6px"><figcaption class="mini">Vista 3D</figcaption></figure>` : ''}</div>` : '<p class="mini">Sem projeto 3D salvo: combine a posição das placas com o responsável antes de começar.</p>'}
+      ${blocos ? `<table><tr><th>Água / telhado</th><th>Direção · inclinação</th><th class="v">Placas</th></tr>${blocos}</table>` : ''}
+      <p class="mini">Arranjo: ${ar.fileiras && ar.fileiras.length ? `${ar.fileiras.length} fileira(s) (${ar.fileiras.join(' + ')} placas)` : ar.linhas ? ar.linhas + ' linha(s)' : 'a definir no local'} · orientação ${esc(ar.orientacao || 'retrato')}${ar.aguas > 1 ? ' · ' + ar.aguas + ' águas' : ''}${M.c ? ` · placa ${n(M.c * 1000)} × ${n(M.l * 1000)} mm` : ''}</p>
+      ${mp && mp.mppts && mp.mppts.length ? `<h2>Ligação elétrica (MPPT e strings)</h2><table><tr><th>MPPT</th><th>Água</th><th class="v">Placas</th><th class="v">Strings</th><th class="v">Placas por string</th><th class="v">Tensão no frio</th></tr>${mp.mppts.map((m) => `<tr><td>${m.n}</td><td>${esc(m.agua || '')}</td><td class="v">${m.placas}</td><td class="v">${m.strings}</td><td class="v">${esc(Array.isArray(m.porString) ? m.porString.join(' + ') : m.porString || '')}</td><td class="v">${m.vFrio ? n(m.vFrio) + ' V' : '—'}</td></tr>`).join('')}</table>${(mp.avisos || []).length ? `<p class="aviso">${mp.avisos.map(esc).join('; ')}</p>` : ''}` : ''}
+      ${cab.length ? `<h2>Cabeamento estimado</h2><table><tr><th>Cabo</th><th class="v">Metros</th></tr>${(() => { const s = (cab.find((x) => x.nivel === (op && op.nivel)) || cab[0]); const z = s.seguro || s.frog || {}; return `${z.vermelho != null ? `<tr><td>CC vermelho</td><td class="v">${n(z.vermelho)} m</td></tr>` : ''}${z.preto != null ? `<tr><td>CC preto</td><td class="v">${n(z.preto)} m</td></tr>` : ''}${s.caM != null ? `<tr><td>CA</td><td class="v">${n(s.caM)} m</td></tr>` : ''}`; })()}</table><p class="mini">Estimativa do projeto: confira as distâncias no local.</p>` : ''}
+      ${o.osObs || o.compraNota ? `<h2>Observações da obra</h2><p>${esc(o.osObs || o.compraNota).replace(/\n/g, '<br>')}</p>` : ''}
+      ${anexos.length ? `<h2>Arquivos do projeto</h2><ul>${anexos.map((a) => `<li><a href="${a.url}">${esc(a.nome)}</a> <span class="mini">· ${esc(a.pasta)}</span></li>`).join('')}</ul><p class="mini">Links válidos por 7 dias.</p>` : ''}
+      <h2>Checklist da instalação</h2>
+      <table>${['Fotos do telhado e do padrão ANTES de começar', 'Material conferido com a lista do kit', 'Estrutura fixada e vedada (sem risco de goteira)', 'Placas no layout do projeto, com espaço de grampo e corredor', 'Strings ligadas como na tabela de MPPT, polaridade conferida', 'Tensão de cada string medida e anotada (V)', 'Aterramento das placas, da estrutura e do inversor', 'String box / proteções CC e CA instaladas e identificadas', 'Inversor ligado no Wi-Fi do cliente e aparecendo no app do fabricante', 'Placas de advertência e etiquetas colocadas', 'Fotos DEPOIS: placas, inversor, string box, padrão e quadro', 'Local limpo e cliente orientado (como ver a geração no app)'].map((t) => `<tr><td style="width:26px">☐</td><td>${t}</td></tr>`).join('')}</table>
+      <table style="margin-top:10px"><tr><td>Tensões das strings</td><td>MPPT 1: ______ V &nbsp; MPPT 2: ______ V &nbsp; MPPT 3: ______ V &nbsp; MPPT 4: ______ V</td></tr><tr><td>Nº de série do inversor</td><td>____________________________</td></tr><tr><td>Início / fim da obra</td><td>____/____/______ &nbsp;a&nbsp; ____/____/______</td></tr></table>
+      <div style="margin-top:44px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:26px"><div style="border-top:1px solid #333;padding-top:6px" class="mini">${esc(e.razao || 'Chama Solar')}<br>Responsável</div><div style="border-top:1px solid #333;padding-top:6px" class="mini">Instalador<br>Nome e documento</div><div style="border-top:1px solid #333;padding-top:6px" class="mini">Cliente<br>Obra recebida em ___/___/____</div></div>`;
+    Documentos.abrir(Documentos.pagina('Ordem de serviço ' + num + ' · ' + (o.nome || ''), corpo, { qr: mapa }));
+    B.interacao && B.interacao(o.id, 'nota', 'Gerou a ordem de serviço ' + num + ' para o instalador');
+    // resumo para mandar no WhatsApp do instalador (sem preço)
+    const txt = `🛠️ *${num} · ${o.nome || ''}*\n📍 ${enderecoTxt}\n🗺️ ${mapa}${fone ? `\n📞 Cliente: ${o.whatsapp}` : ''}\n\n⚡ ${n(kwp, 2)} kWp · ${placas}× ${placaNome}${placaW ? ` ${placaW} W` : ''}\n🔌 ${inv}\n🏠 ${TEL[o.telhado] || o.telhado || ''}${ar.fileiras && ar.fileiras.length ? ` · ${ar.fileiras.length} fileira(s) (${ar.fileiras.join(' + ')})` : ''}${o.trocaPadrao ? '\n⚠️ Com troca do padrão de entrada' : ''}\n\nA OS completa (layout, ficha técnica e checklist) vai em PDF.`;
+    const ov = modal(`<div class="entre"><span class="rotulo">🛠️ Ordem de serviço ${esc(num)}</span><button class="link" data-fechar>fechar</button></div>
+      <p class="mini" style="margin:8px 0">A OS abriu em outra aba: toque em <b>Salvar em PDF</b> e mande o arquivo para o instalador. <b>Não tem nenhum preço</b>.</p>
+      <label class="campo"><span>Observações da obra (saem na OS)</span><textarea id="osObs" rows="3" placeholder="ex.: chave com o vizinho, cachorro no quintal, acesso pela lateral, instalar inversor na garagem">${esc(o.osObs || '')}</textarea></label>
+      <label class="campo" style="margin-top:6px"><span>Resumo para o WhatsApp do instalador</span><textarea id="osTxt" rows="8">${esc(txt)}</textarea></label>
+      <div class="acoes-r" style="margin-top:8px"><button class="btn vidro pequeno" id="osRe">Salvar observações e gerar de novo</button><button class="btn vidro pequeno" id="osCp">Copiar resumo</button><a class="btn zap pequeno" id="osZap" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(txt)}">Mandar no WhatsApp</a></div>`);
+    ov.querySelector('#osTxt').oninput = (ev) => { ov.querySelector('#osZap').href = 'https://wa.me/?text=' + encodeURIComponent(ev.target.value); };
+    ov.querySelector('#osCp').onclick = () => { navigator.clipboard.writeText(ov.querySelector('#osTxt').value).then(() => toast('Resumo copiado')); };
+    ov.querySelector('#osRe').onclick = () => { o.osObs = ov.querySelector('#osObs').value.trim(); B.salvar(o); ov.remove(); ordemServico(o, p); };
+  }
   /* de qual aplicativo é a usina e por onde o sistema lê */
   const APPS = { Growatt: 'Growatt (ShinePhone / OSS)', Hoymiles: 'Hoymiles (S-Miles Cloud)', Huawei: 'Huawei (FusionSolar)', Deye: 'Deye (Solarman)', Sungrow: 'Sungrow (iSolarCloud)', Solis: 'Solis (SolisCloud)', Auxsol: 'Auxsol (Auxsol Cloud)', Chint: 'Chint (Chint Power)', Sunweg: 'Sunweg', Solplanet: 'Solplanet', GoodWe: 'GoodWe (SEMS)', TSuness: 'TSuness' };
   function appDe(u) {
@@ -2382,7 +2528,7 @@
     document.querySelectorAll('[data-rota]').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === (rota === 'lead' ? 'painel' : rota === 'servico' ? 'servicos' : rota)));
     try { const at = document.querySelector('.nav a.ativo'); if (at && innerWidth < 900) at.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch { /* */ }
     if (rota !== 'novo') { document.body.classList.remove('com-barra'); $('#barra').hidden = true; }
-    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') { diaPag(); setTimeout(avisoEspaco, 1200); } else if (rota === 'servicos') servicosPag(); else if (rota === 'clientes') clientesPag(); else if (rota === 'parceiros') parceirosPag(); else if (rota === 'radar') radarPag(); else if (rota === 'arquivo') arquivoPag(); else if (rota === 'servico') servicoEd(arg); else if (rota === 'parametros') { faixasMg = null; faixasEng = null; parametrosPag(); } else painel(); };
+    const ir = () => { if (rota === 'novo') { orc = B.rascunho.ler() || novoOrc(); etapa = B.rascunho.etapa(); novo(); } else if (rota === 'lead') ficha(arg); else if (rota === 'agentes') agentesPag(); else if (rota === 'catalogo') catalogoPag(); else if (rota === 'usinas') usinasPag(); else if (rota === 'treino') treinoPag(); else if (rota === 'dia') { diaPag(); setTimeout(avisoEspaco, 1200); } else if (rota === 'servicos') servicosPag(); else if (rota === 'clientes') clientesPag(); else if (rota === 'parceiros') parceirosPag(); else if (rota === 'radar') radarPag(); else if (rota === 'arquivo') arquivoPag(); else if (rota === 'vendas') vendasPag(); else if (rota === 'servico') servicoEd(arg); else if (rota === 'parametros') { faixasMg = null; faixasEng = null; parametrosPag(); } else painel(); };
     if (document.startViewTransition) {
       // erro dentro da animação some calado: mostra para o vendedor e deixa no console
       const t = document.startViewTransition(() => { try { ir(); } catch (e) { console.error(e); toast('Algo falhou nesta tela: ' + e.message); } });
