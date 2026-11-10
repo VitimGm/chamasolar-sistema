@@ -1,0 +1,18 @@
+/* Ícones: tamanho, preenchimentos e animações leves (desligam com "reduzir movimento") */
+.ico { width: 1.35em; height: 1.35em; flex: none; display: inline-block; vertical-align: -0.25em; }
+.ico .i-cheio { fill: currentColor; fill-opacity: .18; }
+.ico-sol .i-raios { transform-origin: 12px 12px; animation: ico-girar 24s linear infinite; }
+.ico .i-pulso { fill: currentColor; fill-opacity: .25; animation: ico-pulso 2.4s ease-in-out infinite; }
+.ico .i-carga { fill: currentColor; fill-opacity: .35; stroke: none; animation: ico-carga 3s ease-in-out infinite; transform-origin: 5.2px 12px; }
+.ico .i-linha { stroke-dasharray: 22; animation: ico-traco 3.2s ease-in-out infinite; }
+.ico .i-ponteiro { transform-origin: 12px 12.5px; animation: ico-girar 6s linear infinite; }
+.ico .i-moeda { fill: currentColor; animation: ico-cair 2.6s ease-in infinite; }
+.ico .i-onda { animation: ico-pulso 1.6s ease-in-out infinite; }
+.ico .i-pontos { animation: ico-pulso 1.4s ease-in-out infinite; }
+.ico .i-check { stroke-dasharray: 8; animation: ico-traco 2.8s ease-in-out infinite; }
+@keyframes ico-girar { to { transform: rotate(360deg); } }
+@keyframes ico-pulso { 50% { opacity: .35; } }
+@keyframes ico-carga { 0% { transform: scaleX(.25); } 70%, 100% { transform: scaleX(1.6); } }
+@keyframes ico-traco { 0% { stroke-dashoffset: 22; } 60%, 100% { stroke-dashoffset: 0; } }
+@keyframes ico-cair { 0% { transform: translateY(-2px); opacity: 0; } 30% { opacity: 1; } 80%, 100% { transform: translateY(7px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ico * { animation: none !important; } }

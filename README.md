@@ -12,6 +12,13 @@ Módulo solar que vai entrar no Chamae como uma "representada", usando o mesmo S
 | `fontes/solar-*/` | Edge Functions (leitura de conta com IA, preços, monitoramento). |
 | `sql/solar/` | SQL numerado. Todo arquivo tem o seu `_DESFAZER.sql` junto. |
 
+## O que já existe em `solar-teste/`
+Central de vendas (painel, funil com temperatura, ficha com 5 agentes, orçamento em 6 passos) e a **Proposta Viva**, o link interativo que substitui o PDF. Detalhes em `solar-teste/LEIAME.md`.
+
+## SQL
+- `001_fase1_orcamento` — clientes, orçamentos, opções, equipamentos, preços, parâmetros, irradiação.
+- `002_conversao` — link público da proposta, eventos do cliente, interações, execuções dos agentes; funções `sol_proposta_publica` e `sol_registrar_evento` (únicas portas para quem não tem login).
+
 ## Regras do banco
 
 - O `chamae-apps` é o banco de **produção** do Chamae.

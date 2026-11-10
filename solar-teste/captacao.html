@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1322">
+  <title>Chama Solar · Quanto você economiza?</title>
+  <meta name="description" content="Mande o valor da sua conta de luz e receba hoje a simulação da sua energia solar em Ribeirão Preto e região.">
+  <link rel="icon" href="marca/logo-cor.webp">
+  <link href="https://fonts.googleapis.com/css2?family=Albert+Sans:wght@400;500;600;700&family=Exo:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg: #0d1322; --sup: #16203a; --tx: #eef2fb; --tx2: #a3aec8; --linha: #2a3658; --sol: #ff6700; --sol2: #ffb000; --ok: #3fbf74; color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(120% 70% at 80% -10%, #3a2410 0%, var(--bg) 55%); color: var(--tx); font: 16px/1.5 'Albert Sans', system-ui, sans-serif; padding: 24px max(16px, env(safe-area-inset-right)) 40px max(16px, env(safe-area-inset-left)); }
+    main { max-width: 520px; margin: 0 auto; display: grid; gap: 18px; }
+    img.logo { width: 132px; }
+    h1 { font: 800 clamp(28px, 7vw, 38px)/1.1 Exo, sans-serif; margin: 0; text-wrap: balance; }
+    h1 em { font-style: normal; background: linear-gradient(90deg, var(--sol), var(--sol2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    p { margin: 0; color: var(--tx2); }
+    form { background: var(--sup); border: 1px solid var(--linha); border-radius: 20px; padding: 18px; display: grid; gap: 12px; }
+    label { display: grid; gap: 5px; font-weight: 600; font-size: 14px; }
+    input, select, textarea { font: 500 16px 'Albert Sans', sans-serif; padding: 12px; border-radius: 12px; border: 1px solid var(--linha); background: #0f1830; color: var(--tx); width: 100%; }
+    input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--sol2); outline-offset: 1px; }
+    .tipos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .tipos label { display: flex; align-items: center; gap: 8px; border: 1px solid var(--linha); border-radius: 12px; padding: 10px; font-weight: 500; cursor: pointer; }
+    .tipos input { width: auto; }
+    .tipos label:has(input:checked) { border-color: var(--sol); background: #2a1a0c; }
+    button { font: 700 17px 'Albert Sans', sans-serif; border: 0; border-radius: 14px; padding: 15px; background: linear-gradient(90deg, var(--sol), var(--sol2)); color: #1a1205; cursor: pointer; }
+    button:disabled { opacity: .6; }
+    .isca { position: absolute; left: -9999px; }
+    .ok { background: #10301f; border: 1px solid var(--ok); border-radius: 16px; padding: 16px; color: var(--tx); }
+    .erro { color: #ff8a80; font-size: 14px; }
+    .selos { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--tx2); }
+    .faixa { font-size: 12px; color: var(--tx2); text-align: center; }
+  </style>
+</head>
+<body>
+<main>
+  <img class="logo" src="marca/logo-cor.webp" alt="Chama Solar">
+  <h1>Quanto da sua conta de luz <em>pode ir embora?</em></h1>
+  <p>Mande o valor médio da conta e o Victor, da Chama Solar, te responde hoje pelo WhatsApp com a simulação. Sem compromisso.</p>
+  <form id="f" novalidate>
+    <label>Seu nome<input id="nome" autocomplete="name" required></label>
+    <label>WhatsApp com DDD<input id="zap" type="tel" inputmode="tel" autocomplete="tel" placeholder="(16) 9 9999-9999" required></label>
+    <label>Cidade<input id="cid" autocomplete="address-level2" placeholder="Ribeirão Preto"></label>
+    <label>Quanto vem sua conta por mês (R$)?<input id="conta" type="number" inputmode="decimal" placeholder="ex.: 450"></label>
+    <div style="display:grid;gap:6px"><span style="font-weight:600;font-size:14px">É para</span>
+      <div class="tipos">
+        <label><input type="radio" name="seg" value="residencial" checked> Casa</label>
+        <label><input type="radio" name="seg" value="comercial"> Comércio</label>
+        <label><input type="radio" name="seg" value="grandes"> Indústria</label>
+        <label><input type="radio" name="seg" value="rural"> Propriedade rural</label>
+      </div></div>
+    <label id="lInd" hidden>Quem te indicou?<input id="ind"></label>
+    <label>Quer contar algo? (opcional)<textarea id="msg" rows="2" placeholder="ex.: tenho ar-condicionado, vou construir..."></textarea></label>
+    <input class="isca" id="site" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <p class="erro" id="erro" role="alert"></p>
+    <button id="enviar" type="submit">Quero minha simulação</button>
+  </form>
+  <div class="ok" id="ok" hidden><b>Recebemos! ☀️</b><br>O Victor vai te chamar no WhatsApp hoje. Se quiser adiantar, mande uma foto da sua conta de luz quando ele chamar.</div>
+  <div class="selos"><span>✔ Projeto e papelada da CPFL inclusos</span><span>✔ Atendimento em Ribeirão Preto e região</span></div>
+  <p class="faixa">Seus dados são usados só para o atendimento da Chama Solar.</p>
+</main>
+<script>
+(() => {
+  const SB = 'https://jmpvmyyokikpwphwylob.supabase.co', KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImptcHZteXlva2lrcHdwaHd5bG9iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIyMTc1MzEsImV4cCI6MjEwNzc5MzUzMX0.e5XT2R7eOj3x-ZYcRFkY4OFg0QEr3_guxT6-W0xpnfY';
+  const q = new URLSearchParams(location.search), ind = q.get('ind');
+  if (ind) { document.getElementById('lInd').hidden = false; document.getElementById('ind').value = ind; }
+  document.getElementById('f').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const v = (id) => document.getElementById(id).value.trim();
+    const err = document.getElementById('erro'), bt = document.getElementById('enviar');
+    if (v('nome').length < 2 || v('zap').replace(/\D/g, '').length < 10) { err.textContent = 'Coloque seu nome e o WhatsApp com DDD.'; return; }
+    err.textContent = ''; bt.disabled = true; bt.textContent = 'Enviando…';
+    try {
+      const r = await fetch(SB + '/rest/v1/rpc/sol_novo_lead', { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p: { nome: v('nome'), whatsapp: v('zap'), cidade: v('cid'), conta: v('conta'), segmento: (document.querySelector('[name=seg]:checked') || {}).value, indicadoPor: v('ind'), mensagem: v('msg'), site: v('site') } }) });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.message || 'Não foi possível enviar agora.'); }
+      document.getElementById('f').hidden = true; document.getElementById('ok').hidden = false;
+    } catch (x) { err.textContent = x.message + ' Se preferir, chame no WhatsApp (16) 98136-6288.'; bt.disabled = false; bt.textContent = 'Quero minha simulação'; }
+  });
+})();
+</script>
+</body>
+</html>
