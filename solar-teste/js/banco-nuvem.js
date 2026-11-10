@@ -41,6 +41,16 @@
     };
     return navigator.locks ? navigator.locks.request('chamae-auth', renova) : renova();
   }
+  /* o banco devolve no máximo 1000 linhas por vez: busca a geração em páginas, 6 de cada vez */
+  async function geracaoPaginada(desde) {
+    const todas = []; let pag = 0, fim = false;
+    while (!fim) {
+      const lote = await Promise.all(Array.from({ length: 6 }, (_, k) => api('sol_geracao?select=usina_id,dia,kwh&dia=gte.' + desde + '&order=usina_id.asc,dia.asc&limit=1000&offset=' + (pag + k) * 1000)));
+      lote.forEach((l) => { todas.push(...l); if (l.length < 1000) fim = true; });
+      pag += 6; if (pag > 300) break;
+    }
+    return todas;
+  }
   async function api(caminho, opt = {}, anonimo = false) {
     const t = anonimo ? null : await token();
     if (!anonimo && !t) throw new Error('sem-login');
@@ -315,7 +325,7 @@
       interacoes = it.map((i) => ({ orcId: (porId[i.orcamento_id] || {}).codigo, tipo: i.tipo, texto: i.texto, em: i.em }));
       paramVigente = (pr[0] && pr[0].dados) || {};
       const desde = new Date(Date.now() - 400 * 864e5).toISOString().slice(0, 10);
-      const [us, ge] = await Promise.all([api('sol_usinas?select=*&order=cliente_nome.asc'), api('sol_geracao?select=usina_id,dia,kwh&dia=gte.' + desde + '&order=dia.asc&limit=100000')]);
+      const [us, ge] = await Promise.all([api('sol_usinas?select=*&order=cliente_nome.asc'), geracaoPaginada(desde)]);
       try { (await api('sol_modelos?select=chave,titulo,corpo,versao')).forEach((m) => { modelos[m.chave] = m; }); } catch { /* sem modelos: usa os genéricos */ }
       try { leituraPor = {}; (await api('sol_usina_leituras?select=usina_id,dia,total_kwh,potencia_w,status,em&order=dia.desc&limit=3000')).forEach((l) => { if (!leituraPor[l.usina_id]) leituraPor[l.usina_id] = l; }); } catch { /* sem leituras */ }
       usinas = us; geracaoPor = {}; ge.forEach((g) => { (geracaoPor[g.usina_id] = geracaoPor[g.usina_id] || []).push({ dia: g.dia, kwh: +g.kwh }); });
