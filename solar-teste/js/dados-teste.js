@@ -48,7 +48,7 @@
     // Percentuais sobre o preço
     impostoTotal: 0.10,                 // TESTE — aguardando contador
     impostoServico: 0.06,               // quando o kit é faturado direto pela Belenergy
-    taxaPagamento: { avista: 0, financiamento: 0, cartao: 0.09 },
+    taxaPagamento: { avista: 0, financiamento: 0, cartao: 0.1346 }, // cartão: usado só se faltar a tabela por parcela (cartao.taxas)
     margens: [                           // margem cai devagar com o tamanho
       { ate: 5, margem: 0.18 },
       { ate: 10, margem: 0.16 },
@@ -76,7 +76,9 @@
 
     // Financiamento
     financiamento: { jurosMes: 0.0169, prazos: [36, 60, 84] },
-    cartao: { parcelas: 12 },
+    // Cartão: taxas da Cielo com antecipação D+1 (passadas pelo Victor em 10/11/2026). Preço no cartão = à vista "embutindo" a taxa da parcela.
+    cartao: { parcelas: 12, maxParcelas: 18, debito: 0.0147,
+      taxas: { 1: 0.0410, 2: 0.0560, 3: 0.0618, 4: 0.0686, 5: 0.0757, 6: 0.0828, 7: 0.0909, 8: 0.0994, 9: 0.1097, 10: 0.1154, 11: 0.1249, 12: 0.1346, 13: 0.1382, 14: 0.1468, 15: 0.1554, 16: 0.1640, 17: 0.1726, 18: 0.1812 } },
 
     // Conversão
     validadeDias: 7,                    // validade real da cotação do kit (Belenergy)

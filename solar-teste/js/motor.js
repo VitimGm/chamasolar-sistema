@@ -129,7 +129,31 @@
     return { linhas, custos: arred(custos), percentual: G.percentual + X + cm, fatorX: X, preco: arred(preco), rsPorWp: arred(preco / (kwp * 1000 || 1), 2) };
   }
 
+  /* Taxa do cartão para n parcelas (tabela da maquininha, já com a antecipação) */
+  function taxaCartao(p, n) {
+    const t = ((p.cartao || {}).taxas || {})[n];
+    return Number.isFinite(+t) && t !== null ? +t : ((p.taxaPagamento || {}).cartao ?? 0);
+  }
+  /* Cartão = a Chama Solar vende tudo (kit + serviço numa nota). O preço sai do À VISTA (kit direto pela Belenus):
+       à vista: a Chama recebe a nota do serviço S e paga o imposto do serviço  → fica com S·(1 − impServ)
+       cartão:  recebe Pc, paga a taxa da parcela, o imposto sobre tudo e o kit à Belenus → Pc·(1 − taxa − impTotal) − K
+     Igualando os dois (a empresa fica com o mesmo dinheiro):  Pc = (S·(1 − impServ) + K) ÷ (1 − taxa − impTotal)
+     Sem imposto é o "à vista ÷ (1 − taxa)" da maquininha (R$ 15.000 em 12x a 13,46% = R$ 17.333,02). */
+  function precificarCartao(entrada, p) {
+    const n = Math.max(1, Math.round(+entrada.parcelasCartao || (p.cartao || {}).parcelas || 12));
+    const taxa = taxaCartao(p, n);
+    const v = precificar({ ...entrada, formaPagamento: 'avista', kitFaturadoDireto: true }, p);
+    const S = v.notaChamaSolar, K = v.kitDireto, tS = p.impostoServico ?? 0, tT = p.impostoTotal ?? tS;
+    const den = 1 - taxa - tT;
+    if (den <= 0.05) throw new Error('Taxa do cartão + imposto altos demais. Revise os parâmetros.');
+    const Pc = (S * (1 - tS) + K) / den;
+    const r = precificar({ ...entrada, _cartao: true, kitFaturadoDireto: false, precoAlvo: Pc, taxaPagamentoPct: taxa, descontoPct: 0 }, p);
+    return { ...r, precoAlvo: v.precoAlvo, margemTabela: v.margemTabela, margemManual: v.margemManual,
+      cartao: { parcelas: n, taxa, parcela: arred(Pc / n, 2), total: arred(Pc), precoVista: v.precoFinal, impostoKit: arred(Pc * tT - S * tS) } };
+  }
+
   function precificar(entrada, p) {
+    if (entrada.formaPagamento === 'cartao' && !entrada._cartao && p.cartao && p.cartao.taxas) return precificarCartao(entrada, p);
     const linhas = custosDiretos(entrada, p);
     const C = linhas.reduce((s, l) => s + l.valor, 0);
     const K = entrada.kit;
@@ -138,7 +162,7 @@
     const margemTabela = faixaDe(p.margens, entrada.kwp).margem;
     let margem = Number.isFinite(entrada.margemManual) ? entrada.margemManual : margemTabela;
     const t = entrada.kitFaturadoDireto ? p.impostoServico : p.impostoTotal;
-    const pg = p.taxaPagamento[entrada.formaPagamento] ?? 0;
+    const pg = Number.isFinite(entrada.taxaPagamentoPct) ? entrada.taxaPagamentoPct : (p.taxaPagamento[entrada.formaPagamento] ?? 0);
     const cm = entrada.comissaoParceria || 0;
     const rs = p.reservaNegociacao;
     const alvo = Number(entrada.precoAlvo) > 0 ? +entrada.precoAlvo : 0;
@@ -307,7 +331,7 @@
     return res;
   }
 
-  const Motor = { DISPONIBILIDADE, FATOR_ORIENTACAO, dimensionar, escolherInversor, conferirStrings, custosDiretos, precificar, precoGroner, parcelaPrice, economia, fioBPct, tir, vpl, montarOpcoes, opcaoKitFechado, freteDentroDoKit };
+  const Motor = { DISPONIBILIDADE, FATOR_ORIENTACAO, dimensionar, escolherInversor, conferirStrings, custosDiretos, precificar, taxaCartao, precoGroner, parcelaPrice, economia, fioBPct, tir, vpl, montarOpcoes, opcaoKitFechado, freteDentroDoKit };
   if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
   else raiz.Motor = Motor;
 })(typeof window !== 'undefined' ? window : globalThis);

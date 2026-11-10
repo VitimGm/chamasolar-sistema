@@ -83,6 +83,7 @@
     Object.assign(z, { maoDeObraPorPlaca: 0, art: 0, materialCaBase: 0, materialCaPorKwp: 0, fretePadrao: 0, freteIncluso: true, custoKm: 0, trocaPadrao: 0,
       reservaGarantia: 0, custoFixoMes: 0, obrasPrevistasMes: 1, kwpPrevistosMes: 0, kitRefWp: 0, impostoTotal: 0, impostoServico: 0, reservaNegociacao: 0 });
     z.taxaPagamento = Object.fromEntries(Object.keys(p.taxaPagamento || {}).map((k) => [k, 0]));
+    if (z.cartao) z.cartao = { ...z.cartao, taxas: null }; // o preço do cliente já vem com a taxa do cartão
     z.margens = (p.margens || []).map((m) => ({ ...m, margem: 0 }));
     z.engenharia = (p.engenharia || []).map((f) => ({ ...f, valor: 0 }));
     delete z.groner;
@@ -92,7 +93,7 @@
     if (AVULSO(o)) { // serviço/manutenção: só os preços finais, nunca custo e margem
       const p = Banco.parametros(), c = raiz.Avulso ? raiz.Avulso.calcular(o, p) : null; if (!c) return null;
       const cliente = raiz.Avulso.publico(o, c);
-      return { orc: json(cliente), parametros: { tarifaKwh: p.tarifaKwh, taxaPagamento: { cartao: (p.taxaPagamento || {}).cartao ?? 0.09 } }, geradoEm: agora() };
+      return { orc: json(cliente), parametros: { tarifaKwh: p.tarifaKwh, taxaPagamento: { cartao: c.pagamento && Number.isFinite(c.pagamento.taxa) ? c.pagamento.taxa : ((p.taxaPagamento || {}).cartao ?? 0.09) } }, geradoEm: agora() };
     }
     const C = raiz.Conversao;
     if (!C || !o.kitsFechados || !o.kitsFechados.some(Boolean)) return null;

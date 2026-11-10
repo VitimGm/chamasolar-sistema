@@ -69,8 +69,9 @@
     return { tipo: 'servico', linhas, total, calculado: calc0, ajustado: +o.precoManual > 0, custo, imposto: impostoF, lucro, margemReal: total ? lucro / total : 0, porCat, deslocamento: desl, pagamento: pagamentos(o, total, p), impostoCalc: imposto };
   }
   function pagamentos(o, total, p) {
-    const taxa = ((p && p.taxaPagamento) || {}).cartao ?? 0.09, n = Math.max(1, +o.parcelasCartao || 6), cartao = arred(total / (1 - taxa));
-    return { pix: total, cartaoTotal: cartao, parcelas: n, parcela: arred(cartao / n) };
+    const n = Math.max(1, +o.parcelasCartao || 6), tab = ((p && p.cartao) || {}).taxas || {};
+    const taxa = Number.isFinite(+tab[n]) && tab[n] !== null ? +tab[n] : (((p && p.taxaPagamento) || {}).cartao ?? 0.09), cartao = arred(total / (1 - taxa));
+    return { pix: total, cartaoTotal: cartao, parcelas: n, parcela: arred(cartao / n), taxa };
   }
 
   /* o que vai para o cliente: preços finais, sem custo, margem nem imposto */

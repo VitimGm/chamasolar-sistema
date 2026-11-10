@@ -25,7 +25,7 @@
   const COR = { equipamento: '#4cc3ff', material: '#ffb23d', mao: '#3ddc97', outro: '#8792ad' };
   const primeiro = String(o.nome || '').trim().split(' ')[0];
   const validade = (() => { const ini = new Date(o.enviadoEm || o.criadoEm || Date.now()), fim = new Date(ini.getTime() + (+o.validadeDias || 10) * 864e5), dias = Math.ceil((fim - Date.now()) / 864e5); return { fim, dias }; })();
-  const valorAtual = () => { const base = M && est.plano && c.plano ? c.plano.porVisita : c.total; const taxa = ((P.taxaPagamento || {}).cartao ?? 0.09); return est.pag === 'cartao' ? { total: base / (1 - taxa), parcela: base / (1 - taxa) / c.pagamento.parcelas } : { total: base }; };
+  const valorAtual = () => { const base = M && est.plano && c.plano ? c.plano.porVisita : c.total; const taxa = (c.pagamento && Number.isFinite(c.pagamento.taxa) ? c.pagamento.taxa : ((P.taxaPagamento || {}).cartao ?? 0.09)); return est.pag === 'cartao' ? { total: base / (1 - taxa), parcela: base / (1 - taxa) / c.pagamento.parcelas } : { total: base }; };
   const zap = (txt) => `https://wa.me/${E.whatsapp}?text=${encodeURIComponent(txt)}`;
 
   function blocoItens() {
@@ -70,7 +70,7 @@
         <div class="tempo"><div><b>Aceite</b>aqui no link</div><div><b>Agenda</b>data no WhatsApp</div><div><b>Instalação</b>equipe da Chama Solar</div><div><b>Entrega</b>teste e explicação</div></div></section>`;
   }
   function blocoPagar() {
-    const v = valorAtual(), taxa = ((P.taxaPagamento || {}).cartao ?? 0.09), base = M && est.plano && c.plano ? c.plano.porVisita : c.total;
+    const v = valorAtual(), taxa = (c.pagamento && Number.isFinite(c.pagamento.taxa) ? c.pagamento.taxa : ((P.taxaPagamento || {}).cartao ?? 0.09)), base = M && est.plano && c.plano ? c.plano.porVisita : c.total;
     return `<section class="bloco vis" data-secao="pagamento" id="sPag"><h2><i>💳</i>Como prefere pagar?</h2>
       <div class="opcoes"><button class="op" data-pag="pix" aria-pressed="${est.pag === 'pix'}"><small>PIX ou transferência</small><b>${brl(base)}</b><small>à vista</small></button>
         <button class="op" data-pag="cartao" aria-pressed="${est.pag === 'cartao'}"><small>cartão de crédito</small><b>${c.pagamento.parcelas}× ${brl(base / (1 - taxa) / c.pagamento.parcelas)}</b><small>total ${brl(base / (1 - taxa))}</small></button></div>
