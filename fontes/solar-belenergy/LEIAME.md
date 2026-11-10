@@ -25,6 +25,9 @@ No sistema: Novo orçamento → passo 4 "Kit Belenergy". Dá para montar até 3 
 | `cotador.mjs` | Robô que conduz o Personalize seu Gerador no seu PC e responde ao sistema em `http://127.0.0.1:8787`. |
 | `robo.mjs` | Leitura do catálogo avulso (estoque, preço por Wp). Serve só de referência; **não** é o preço do orçamento. |
 
+## Versão 2026-11-10b
+- Tira o aviso falso "Valor da tela diferente do carrinho": o carrinho é lido antes do frete, então a diferença era o frete. Agora compara só o valor dos produtos.
+
 ## Versão 2026-11-10a
 - A Belenergy trocou o campo "Tipo de estrutura" (agora `.combo__trigger`). O robô não achava o campo antigo e dava "arranjo travado / Modificar layout". Agora reconhece os dois jeitos.
 

@@ -47,7 +47,7 @@ try { ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenerg
 catch (e) { console.log('Chrome não encontrado, usando o navegador do robô.'); ctx = await chromium.launchPersistentContext(path.resolve('sessao-belenergy'), OPC); }
 const pg = ctx.pages()[0] || (await ctx.newPage());
 pg.setDefaultTimeout(30000);
-const VERSAO = '2026-11-10a'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
+const VERSAO = '2026-11-10b'; // aparece no sistema: se estiver velho, ele avisa para baixar o novo
 /* Rede: conta as chamadas do portal em andamento (ignora rastreadores e conexões longas).
    Mais rápido que esperar "networkidle", que no Angular às vezes nunca chega e custava 4 s por espera. */
 const voando = new Map(); let ultimoFim = Date.now();
@@ -597,7 +597,10 @@ async function passoInterno(etapa, e = {}) {
     if (iv) { const f = iv.index / iv.precoBruto; if (f > 1 && f < 10) FATOR = f; }
     const produtos = produtosTela || produtosApi;
     let valor = valorTela || (produtosApi ? produtosApi + freteApi : 0);
-    if (valorTela && produtosApi && Math.abs(valorTela - (produtosApi + freteApi)) > Math.max(2, valorTela * 0.01)) AVISOS.push(`Valor da tela (R$ ${valorTela.toFixed(2)}) diferente do carrinho do portal (R$ ${(produtosApi + freteApi).toFixed(2)}): confira no portal.`);
+    // o carrinho é lido ANTES de escolher o frete: compara só os produtos (a diferença do total é o frete escolhido)
+    const tolera = (x) => Math.max(2, x * 0.01);
+    if (produtosTela && produtosApi && Math.abs(produtosTela - produtosApi) > tolera(produtosTela)) AVISOS.push(`Valor dos produtos na tela (R$ ${produtosTela.toFixed(2)}) diferente do carrinho do portal (R$ ${produtosApi.toFixed(2)}): confira na tela de Confirmação da Belenergy.`);
+    else if (!produtosTela && valorTela && produtosApi && valorTela < produtosApi - tolera(produtosApi)) AVISOS.push(`Valor da tela (R$ ${valorTela.toFixed(2)}) menor que o carrinho do portal (R$ ${produtosApi.toFixed(2)}): confira na tela de Confirmação da Belenergy.`);
     if (cart && (+cart.acrescimoPlanoDePagamento > 0)) AVISOS.push(`O plano de pagamento do portal tem acréscimo de R$ ${(+cart.acrescimoPlanoDePagamento).toFixed(2)}.`);
     let numero = 'não salvo', pdf = null, diagSalvar = null;
     const fs = await import('node:fs');
